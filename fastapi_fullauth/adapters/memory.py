@@ -10,7 +10,8 @@ from fastapi_fullauth.types import CreateUserSchema, RefreshToken, UserSchema
 class InMemoryAdapter(AbstractUserAdapter):
     """Simple in-memory adapter for testing and prototyping."""
 
-    def __init__(self) -> None:
+    def __init__(self, user_schema: type[UserSchema] = UserSchema) -> None:
+        self._user_schema = user_schema
         self._users: dict[str, dict[str, Any]] = {}
         self._passwords: dict[str, str] = {}
         self._refresh_tokens: dict[str, RefreshToken] = {}
@@ -20,12 +21,12 @@ class InMemoryAdapter(AbstractUserAdapter):
         data = self._users.get(user_id)
         if data is None:
             return None
-        return UserSchema(**data)
+        return self._user_schema(**data)
 
     async def get_user_by_email(self, email: str) -> UserSchema | None:
         for data in self._users.values():
             if data["email"] == email:
-                return UserSchema(**data)
+                return self._user_schema(**data)
         return None
 
     async def create_user(
@@ -43,7 +44,7 @@ class InMemoryAdapter(AbstractUserAdapter):
         self._users[user_id] = user_data
         self._passwords[user_id] = hashed_password
         self._roles[user_id] = []
-        return UserSchema(**user_data)
+        return self._user_schema(**user_data)
 
     async def update_user(self, user_id: str, data: dict[str, Any]) -> UserSchema:
         self._users[user_id].update(data)

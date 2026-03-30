@@ -16,23 +16,23 @@ from fastapi_fullauth.types import CreateUserSchema, RefreshToken, UserSchema
 class SQLAlchemyAdapter(AbstractUserAdapter):
     """Async SQLAlchemy adapter for fastapi-fullauth."""
 
-    def __init__(self, session_maker: async_sessionmaker[AsyncSession]) -> None:
+    def __init__(
+        self,
+        session_maker: async_sessionmaker[AsyncSession],
+        user_schema: type[UserSchema] = UserSchema,
+        user_model: type[UserModel] = UserModel,
+    ) -> None:
         self._session_maker = session_maker
+        self._user_schema = user_schema
+        self._user_model = user_model
 
     def _to_schema(self, user: UserModel) -> UserSchema:
-        return UserSchema(
-            id=user.id,
-            email=user.email,
-            is_active=user.is_active,
-            is_verified=user.is_verified,
-            is_superuser=user.is_superuser,
-            roles=[r.name for r in user.roles],
-        )
+        return self._user_schema.model_validate(user, from_attributes=True)
 
     async def get_user_by_id(self, user_id: str) -> UserSchema | None:
         async with self._session_maker() as session:
             result = await session.execute(
-                select(UserModel).where(UserModel.id == user_id)
+                select(self._user_model).where(self._user_model.id == user_id)
             )
             user = result.scalars().first()
             return self._to_schema(user) if user else None
@@ -40,7 +40,7 @@ class SQLAlchemyAdapter(AbstractUserAdapter):
     async def get_user_by_email(self, email: str) -> UserSchema | None:
         async with self._session_maker() as session:
             result = await session.execute(
-                select(UserModel).where(UserModel.email == email)
+                select(self._user_model).where(self._user_model.email == email)
             )
             user = result.scalars().first()
             return self._to_schema(user) if user else None
@@ -49,7 +49,7 @@ class SQLAlchemyAdapter(AbstractUserAdapter):
         self, data: CreateUserSchema, hashed_password: str
     ) -> UserSchema:
         async with self._session_maker() as session:
-            user = UserModel(
+            user = self._user_model(
                 email=data.email,
                 hashed_password=hashed_password,
             )
@@ -61,11 +61,11 @@ class SQLAlchemyAdapter(AbstractUserAdapter):
     async def update_user(self, user_id: str, data: dict[str, Any]) -> UserSchema:
         async with self._session_maker() as session:
             await session.execute(
-                update(UserModel).where(UserModel.id == user_id).values(**data)
+                update(self._user_model).where(self._user_model.id == user_id).values(**data)
             )
             await session.commit()
             result = await session.execute(
-                select(UserModel).where(UserModel.id == user_id)
+                select(self._user_model).where(self._user_model.id == user_id)
             )
             user = result.scalars().first()
             if user is None:
@@ -75,7 +75,7 @@ class SQLAlchemyAdapter(AbstractUserAdapter):
     async def delete_user(self, user_id: str) -> None:
         async with self._session_maker() as session:
             result = await session.execute(
-                select(UserModel).where(UserModel.id == user_id)
+                select(self._user_model).where(self._user_model.id == user_id)
             )
             user = result.scalars().first()
             if user:
@@ -85,7 +85,7 @@ class SQLAlchemyAdapter(AbstractUserAdapter):
     async def get_user_roles(self, user_id: str) -> list[str]:
         async with self._session_maker() as session:
             result = await session.execute(
-                select(UserModel).where(UserModel.id == user_id)
+                select(self._user_model).where(self._user_model.id == user_id)
             )
             user = result.scalars().first()
             if user is None:
@@ -95,7 +95,7 @@ class SQLAlchemyAdapter(AbstractUserAdapter):
     async def get_hashed_password(self, user_id: str) -> str | None:
         async with self._session_maker() as session:
             result = await session.execute(
-                select(UserModel.hashed_password).where(UserModel.id == user_id)
+                select(self._user_model.hashed_password).where(self._user_model.id == user_id)
             )
             return result.scalars().first()
 

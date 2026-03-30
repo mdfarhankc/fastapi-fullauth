@@ -14,26 +14,26 @@ from fastapi_fullauth.types import CreateUserSchema, RefreshToken, UserSchema
 class SQLModelAdapter(AbstractUserAdapter):
     """Async SQLModel adapter for fastapi-fullauth."""
 
-    def __init__(self, session_maker: async_sessionmaker[AsyncSession]) -> None:
+    def __init__(
+        self,
+        session_maker: async_sessionmaker[AsyncSession],
+        user_schema: type[UserSchema] = UserSchema,
+        user_model: type[User] = User,
+    ) -> None:
         self._session_maker = session_maker
+        self._user_schema = user_schema
+        self._user_model = user_model
 
     def _user_query(self):
-        return select(User).options(selectinload(User.roles))  # type: ignore[arg-type]
+        return select(self._user_model).options(selectinload(self._user_model.roles))  # type: ignore[arg-type]
 
     def _to_schema(self, user: User) -> UserSchema:
-        return UserSchema(
-            id=user.id,
-            email=user.email,
-            is_active=user.is_active,
-            is_verified=user.is_verified,
-            is_superuser=user.is_superuser,
-            roles=[r.name for r in user.roles],
-        )
+        return self._user_schema.model_validate(user, from_attributes=True)
 
     async def get_user_by_id(self, user_id: str) -> UserSchema | None:
         async with self._session_maker() as session:
             result = await session.execute(
-                self._user_query().where(User.id == user_id)
+                self._user_query().where(self._user_model.id == user_id)
             )
             user = result.scalars().first()
             return self._to_schema(user) if user else None
@@ -41,7 +41,7 @@ class SQLModelAdapter(AbstractUserAdapter):
     async def get_user_by_email(self, email: str) -> UserSchema | None:
         async with self._session_maker() as session:
             result = await session.execute(
-                self._user_query().where(User.email == email)
+                self._user_query().where(self._user_model.email == email)
             )
             user = result.scalars().first()
             return self._to_schema(user) if user else None
@@ -50,7 +50,7 @@ class SQLModelAdapter(AbstractUserAdapter):
         self, data: CreateUserSchema, hashed_password: str
     ) -> UserSchema:
         async with self._session_maker() as session:
-            user = User(
+            user = self._user_model(
                 email=data.email,
                 hashed_password=hashed_password,
             )
@@ -66,11 +66,11 @@ class SQLModelAdapter(AbstractUserAdapter):
     async def update_user(self, user_id: str, data: dict[str, Any]) -> UserSchema:
         async with self._session_maker() as session:
             await session.execute(
-                update(User).where(User.id == user_id).values(**data)
+                update(self._user_model).where(self._user_model.id == user_id).values(**data)
             )
             await session.commit()
             result = await session.execute(
-                self._user_query().where(User.id == user_id)
+                self._user_query().where(self._user_model.id == user_id)
             )
             user = result.scalars().first()
             if user is None:
@@ -79,7 +79,7 @@ class SQLModelAdapter(AbstractUserAdapter):
 
     async def delete_user(self, user_id: str) -> None:
         async with self._session_maker() as session:
-            result = await session.execute(select(User).where(User.id == user_id))
+            result = await session.execute(select(User).where(self._user_model.id == user_id))
             user = result.scalars().first()
             if user:
                 await session.delete(user)
@@ -88,7 +88,7 @@ class SQLModelAdapter(AbstractUserAdapter):
     async def get_user_roles(self, user_id: str) -> list[str]:
         async with self._session_maker() as session:
             result = await session.execute(
-                self._user_query().where(User.id == user_id)
+                self._user_query().where(self._user_model.id == user_id)
             )
             user = result.scalars().first()
             if user is None:
@@ -98,15 +98,15 @@ class SQLModelAdapter(AbstractUserAdapter):
     async def get_hashed_password(self, user_id: str) -> str | None:
         async with self._session_maker() as session:
             result = await session.execute(
-                select(User.hashed_password).where(User.id == user_id)
+                select(self._user_model.hashed_password).where(self._user_model.id == user_id)
             )
             return result.scalars().first()
 
     async def set_password(self, user_id: str, hashed_password: str) -> None:
         async with self._session_maker() as session:
             await session.execute(
-                update(User)
-                .where(User.id == user_id)
+                update(self._user_model)
+                .where(self._user_model.id == user_id)
                 .values(hashed_password=hashed_password)
             )
             await session.commit()
@@ -160,8 +160,8 @@ class SQLModelAdapter(AbstractUserAdapter):
     async def set_user_verified(self, user_id: str) -> None:
         async with self._session_maker() as session:
             await session.execute(
-                update(User)
-                .where(User.id == user_id)
+                update(self._user_model)
+                .where(self._user_model.id == user_id)
                 .values(is_verified=True)
             )
             await session.commit()
