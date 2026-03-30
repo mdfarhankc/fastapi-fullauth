@@ -132,6 +132,43 @@ adapter = SQLAlchemyAdapter(
 
 Custom fields will flow through `current_user` and all other dependencies automatically.
 
+## Custom Registration Fields
+
+Add extra fields to the registration endpoint:
+
+```python
+from fastapi_fullauth.types import CreateUserSchema
+
+class MyCreateSchema(CreateUserSchema):
+    display_name: str
+    phone: str | None = None
+
+fullauth = FullAuth(
+    config=config,
+    adapter=adapter,
+    create_user_schema=MyCreateSchema,
+)
+# POST /auth/register now accepts {email, password, display_name, phone}
+```
+
+## Custom Token Claims
+
+Inject extra data into JWT tokens:
+
+```python
+async def build_claims(user):
+    return {"org_id": "org-123", "plan": "pro"}
+
+fullauth = FullAuth(
+    config=config,
+    adapter=adapter,
+    on_create_token_claims=build_claims,
+)
+# tokens now contain {sub, exp, ..., extra: {org_id: "org-123", plan: "pro"}}
+```
+
+Claims are embedded on both login and token refresh.
+
 ## Custom Adapter
 
 Implement `AbstractUserAdapter` to plug in any database:
