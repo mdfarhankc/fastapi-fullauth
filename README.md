@@ -146,6 +146,95 @@ class MyAdapter(AbstractUserAdapter):
     # ... see base.py for the full interface
 ```
 
+## Event Hooks
+
+React to auth events with async callbacks:
+
+```python
+async def welcome_email(user):
+    await send_email(user.email, "Welcome!")
+
+async def log_login(user):
+    print(f"{user.email} logged in")
+
+async def log_logout(user_id):
+    print(f"User {user_id} logged out")
+
+fullauth.hooks.on("after_register", welcome_email)
+fullauth.hooks.on("after_login", log_login)
+fullauth.hooks.on("after_logout", log_logout)
+```
+
+Supported events: `after_register`, `after_login`, `after_logout`, `after_password_reset`, `after_email_verify`
+
+## Password Validation
+
+Configure password strength rules:
+
+```python
+from fastapi_fullauth import PasswordValidator
+
+fullauth = FullAuth(
+    config=config,
+    adapter=adapter,
+    password_validator=PasswordValidator(
+        min_length=12,
+        require_uppercase=True,
+        require_digit=True,
+        require_special=True,
+        blocked_passwords=["password123", "qwerty123"],
+    ),
+)
+```
+
+Applied on both registration and password reset.
+
+## Email Callbacks
+
+Plug in your own email sending for verification and password reset:
+
+```python
+async def send_verify(email: str, token: str):
+    await send_email(email, subject="Verify", body=f"Token: {token}")
+
+async def send_reset(email: str, token: str):
+    await send_email(email, subject="Reset", body=f"Token: {token}")
+
+fullauth = FullAuth(
+    config=config,
+    adapter=adapter,
+    on_send_verification_email=send_verify,
+    on_send_password_reset_email=send_reset,
+)
+```
+
+## Disable Routes
+
+Only enable the routes you need:
+
+```python
+fullauth = FullAuth(
+    config=config,
+    adapter=adapter,
+    enabled_routes=["login", "logout", "refresh"],  # no register, no reset
+)
+```
+
+Route names: `register`, `login`, `logout`, `refresh`, `verify-email`, `password-reset`
+
+## Login Response With User
+
+Include user data alongside tokens in the login response:
+
+```python
+fullauth = FullAuth(
+    config=config,
+    adapter=adapter,
+    include_user_in_login=True,
+)
+# POST /auth/login returns: {access_token, refresh_token, token_type, user: {...}}
+```
+
 ## Middleware
 
 ```python
