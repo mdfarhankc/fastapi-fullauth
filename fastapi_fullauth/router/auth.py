@@ -1,8 +1,6 @@
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Body, Depends, Request, Response
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel, EmailStr
 
@@ -68,17 +66,10 @@ def create_auth_router(
     async def register_route(
         request: Request,
         fullauth: FullAuth = Depends(_get_fullauth),
+        data: create_user_schema = Body(...),  # type: ignore[valid-type]
     ):
         if not fullauth.is_route_enabled("register"):
             return Response(status_code=404)
-
-        body = await request.json()
-        try:
-            data = fullauth.create_user_schema(**body)
-        except Exception as e:
-            from fastapi import HTTPException
-
-            raise HTTPException(status_code=422, detail=str(e))
 
         # validate password strength
         try:

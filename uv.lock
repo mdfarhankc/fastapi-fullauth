@@ -493,7 +493,7 @@ requires-dist = [
     { name = "itsdangerous", marker = "extra == 'magic-link'", specifier = ">=2.1" },
     { name = "pydantic", extras = ["email"], specifier = ">=2.0" },
     { name = "pydantic-settings", specifier = ">=2.0" },
-    { name = "pyjwt", extras = ["cryptography"], specifier = ">=2.8" },
+    { name = "pyjwt", specifier = ">=2.8" },
     { name = "pyotp", marker = "extra == 'all'", specifier = ">=2.9" },
     { name = "pyotp", marker = "extra == 'totp'", specifier = ">=2.9" },
     { name = "python-multipart", specifier = ">=0.0.22" },
