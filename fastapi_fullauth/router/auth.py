@@ -28,6 +28,13 @@ if TYPE_CHECKING:
     from fastapi_fullauth.fullauth import FullAuth
 
 
+async def _get_custom_claims(fullauth: FullAuth, user: UserSchema) -> dict:
+    """Build custom token claims if a callback is configured."""
+    if fullauth.on_create_token_claims:
+        return await fullauth.on_create_token_claims(user)
+    return {}
+
+
 class PasswordResetRequest(BaseModel):
     email: EmailStr
 
@@ -52,17 +59,26 @@ WEAK_PASSWORD_EXCEPTION = lambda errors: Response(  # noqa: E731
 )
 
 
-def create_auth_router() -> APIRouter:
+def create_auth_router(
+    create_user_schema: type[CreateUserSchema] = CreateUserSchema,
+) -> APIRouter:
     router = APIRouter(tags=["auth"])
 
-    @router.post("/register", response_model=UserSchema, status_code=201)
+    @router.post("/register", status_code=201)
     async def register_route(
-        data: CreateUserSchema,
         request: Request,
         fullauth: FullAuth = Depends(_get_fullauth),
     ):
         if not fullauth.is_route_enabled("register"):
             return Response(status_code=404)
+
+        body = await request.json()
+        try:
+            data = fullauth.create_user_schema(**body)
+        except Exception as e:
+            from fastapi import HTTPException
+
+            raise HTTPException(status_code=422, detail=str(e))
 
         # validate password strength
         try:
@@ -90,6 +106,10 @@ def create_auth_router() -> APIRouter:
         if not fullauth.is_route_enabled("login"):
             return Response(status_code=404)
 
+        # build custom claims before login so they get embedded in the token
+        user = await fullauth.adapter.get_user_by_email(form_data.username)
+        extra_claims = await _get_custom_claims(fullauth, user) if user else {}
+
         try:
             tokens = await login(
                 adapter=fullauth.adapter,
@@ -97,6 +117,7 @@ def create_auth_router() -> APIRouter:
                 email=form_data.username,
                 password=form_data.password,
                 lockout=fullauth.lockout,
+                extra_claims=extra_claims,
             )
         except AccountLockedError:
             raise ACCOUNT_LOCKED_EXCEPTION
@@ -107,7 +128,6 @@ def create_auth_router() -> APIRouter:
         for backend in fullauth.backends:
             await backend.write_token(response, tokens.access_token)
 
-        user = await fullauth.adapter.get_user_by_email(form_data.username)
         await fullauth.hooks.emit("after_login", user=user)
 
         if fullauth.include_user_in_login and user:
@@ -167,8 +187,9 @@ def create_auth_router() -> APIRouter:
         fullauth.token_engine.blacklist_token(payload.jti)
 
         roles = await fullauth.adapter.get_user_roles(str(user.id))
+        extra_claims = await _get_custom_claims(fullauth, user)
         access, refresh = fullauth.token_engine.create_token_pair(
-            user_id=str(user.id), roles=roles
+            user_id=str(user.id), roles=roles, extra=extra_claims
         )
         return TokenPair(access_token=access, refresh_token=refresh)
 

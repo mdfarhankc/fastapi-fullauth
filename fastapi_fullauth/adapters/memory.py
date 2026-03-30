@@ -41,6 +41,10 @@ class InMemoryAdapter(AbstractUserAdapter):
             "is_superuser": False,
             "roles": [],
         }
+        # include any extra fields from custom CreateUserSchema
+        extra = data.model_dump(exclude={"email", "password"})
+        user_data.update(extra)
+
         self._users[user_id] = user_data
         self._passwords[user_id] = hashed_password
         self._roles[user_id] = []

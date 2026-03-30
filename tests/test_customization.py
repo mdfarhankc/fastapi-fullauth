@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import pytest
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from httpx import ASGITransport, AsyncClient
 
 from fastapi_fullauth import FullAuth, FullAuthConfig, PasswordValidator
@@ -261,3 +261,119 @@ async def test_login_excludes_user_by_default(client, registered_user):
     data = r.json()
     assert "access_token" in data
     assert "user" not in data
+
+
+# --- Custom CreateUserSchema ---
+
+
+@pytest.mark.asyncio
+async def test_custom_create_user_schema():
+    from fastapi_fullauth.types import CreateUserSchema, UserSchema
+
+    class MyCreateSchema(CreateUserSchema):
+        display_name: str
+
+    class MyUserSchema(UserSchema):
+        display_name: str | None = None
+
+    adapter = InMemoryAdapter(user_schema=MyUserSchema)
+    config = FullAuthConfig(SECRET_KEY="test-secret-key-that-is-long-enough-32b")
+    fullauth = FullAuth(
+        config=config,
+        adapter=adapter,
+        create_user_schema=MyCreateSchema,
+    )
+    app = FastAPI()
+    fullauth.init_app(app)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        r = await client.post(
+            "/auth/register",
+            json={
+                "email": "custom@test.com",
+                "password": "securepass123",
+                "display_name": "John",
+            },
+        )
+        assert r.status_code == 201
+        assert r.json()["display_name"] == "John"
+
+
+@pytest.mark.asyncio
+async def test_custom_schema_rejects_missing_field():
+    from fastapi_fullauth.types import CreateUserSchema
+
+    class MyCreateSchema(CreateUserSchema):
+        display_name: str
+
+    adapter = InMemoryAdapter()
+    config = FullAuthConfig(SECRET_KEY="test-secret-key-that-is-long-enough-32b")
+    fullauth = FullAuth(
+        config=config,
+        adapter=adapter,
+        create_user_schema=MyCreateSchema,
+    )
+    app = FastAPI()
+    fullauth.init_app(app)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        # missing display_name should fail
+        r = await client.post(
+            "/auth/register",
+            json={"email": "test@test.com", "password": "securepass123"},
+        )
+        assert r.status_code == 422
+
+
+# --- Custom Token Claims ---
+
+
+@pytest.mark.asyncio
+async def test_custom_token_claims():
+
+    async def add_claims(user):
+        return {"org_id": "org-123", "plan": "pro"}
+
+    adapter = InMemoryAdapter()
+    config = FullAuthConfig(SECRET_KEY="test-secret-key-that-is-long-enough-32b")
+    fullauth = FullAuth(
+        config=config,
+        adapter=adapter,
+        on_create_token_claims=add_claims,
+    )
+    app = FastAPI()
+    fullauth.init_app(app)
+
+
+    @app.get("/claims")
+    async def get_claims(
+        request: Request,
+    ):
+        from fastapi_fullauth.dependencies.current_user import _get_fullauth
+
+        fa = _get_fullauth(request)
+        token = request.headers["authorization"].split(" ")[1]
+        payload = fa.token_engine.decode_token(token)
+        return payload.extra
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        await client.post(
+            "/auth/register",
+            json={"email": "claims@test.com", "password": "securepass123"},
+        )
+        r = await client.post(
+            "/auth/login",
+            data={"username": "claims@test.com", "password": "securepass123"},
+        )
+        token = r.json()["access_token"]
+
+        r = await client.get(
+            "/claims", headers={"Authorization": f"Bearer {token}"}
+        )
+        assert r.status_code == 200
+        data = r.json()
+        assert data["org_id"] == "org-123"
+        assert data["plan"] == "pro"

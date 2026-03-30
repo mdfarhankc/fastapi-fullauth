@@ -14,6 +14,7 @@ async def login(
     email: str,
     password: str,
     lockout: LockoutManager | None = None,
+    extra_claims: dict | None = None,
 ) -> TokenPair:
     if lockout and lockout.is_locked(email):
         raise AccountLockedError(f"Account {email} is temporarily locked")
@@ -40,5 +41,6 @@ async def login(
     access, refresh = token_engine.create_token_pair(
         user_id=str(user.id),
         roles=roles,
+        extra=extra_claims,
     )
     return TokenPair(access_token=access, refresh_token=refresh)
