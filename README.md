@@ -99,6 +99,39 @@ FullAuthConfig(
 
 Or set them as env vars: `FULLAUTH_SECRET_KEY`, `FULLAUTH_ACCESS_TOKEN_EXPIRE_MINUTES`, etc.
 
+## Custom User Fields
+
+Subclass `UserSchema` and your ORM model to add custom fields:
+
+```python
+from fastapi_fullauth.types import UserSchema
+from fastapi_fullauth.adapters.sqlalchemy.models import UserModel
+from sqlalchemy import String
+from sqlalchemy.orm import Mapped, mapped_column
+
+# 1. extend the schema
+class MyUserSchema(UserSchema):
+    phone: str | None = None
+    display_name: str | None = None
+
+# 2. extend the ORM model
+class MyUser(UserModel):
+    __tablename__ = "fullauth_users"
+    __table_args__ = {"extend_existing": True}
+
+    phone: Mapped[str] = mapped_column(String(20), nullable=True)
+    display_name: Mapped[str] = mapped_column(String(100), nullable=True)
+
+# 3. pass both to the adapter
+adapter = SQLAlchemyAdapter(
+    session_maker=session_maker,
+    user_schema=MyUserSchema,
+    user_model=MyUser,
+)
+```
+
+Custom fields will flow through `current_user` and all other dependencies automatically.
+
 ## Custom Adapter
 
 Implement `AbstractUserAdapter` to plug in any database:
@@ -111,6 +144,22 @@ class MyAdapter(AbstractUserAdapter):
     async def get_user_by_email(self, email: str) -> UserSchema | None: ...
     async def create_user(self, data, hashed_password: str) -> UserSchema: ...
     # ... see base.py for the full interface
+```
+
+## Middleware
+
+```python
+from fastapi_fullauth.middleware import SecurityHeadersMiddleware, CSRFMiddleware
+from fastapi_fullauth.protection.ratelimit import RateLimitMiddleware
+
+# auto-inject security headers (HSTS, X-Frame-Options, etc.)
+app.add_middleware(SecurityHeadersMiddleware)
+
+# CSRF protection (for cookie-based auth)
+app.add_middleware(CSRFMiddleware, secret="your-csrf-secret")
+
+# rate limiting (per-IP, in-memory)
+app.add_middleware(RateLimitMiddleware, max_requests=60, window_seconds=60)
 ```
 
 ## Alembic Migrations
