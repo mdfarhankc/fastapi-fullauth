@@ -4,6 +4,7 @@ from fastapi_fullauth.adapters.base import AbstractUserAdapter
 from fastapi_fullauth.core.crypto import hash_password
 from fastapi_fullauth.core.tokens import TokenEngine
 from fastapi_fullauth.exceptions import TokenError, UserNotFoundError
+from fastapi_fullauth.types import UserSchema
 
 
 async def request_password_reset(
@@ -28,7 +29,7 @@ async def reset_password(
     token_engine: TokenEngine,
     token: str,
     new_password: str,
-) -> None:
+) -> UserSchema | None:
     payload = token_engine.decode_token(token)
 
     if payload.extra.get("purpose") != "password_reset":
@@ -43,3 +44,5 @@ async def reset_password(
 
     # Blacklist the reset token so it can't be reused
     token_engine.blacklist_token(payload.jti)
+
+    return user

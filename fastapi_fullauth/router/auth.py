@@ -13,6 +13,7 @@ from fastapi_fullauth.exceptions import (
     USER_EXISTS_EXCEPTION,
     AccountLockedError,
     AuthenticationError,
+    InvalidPasswordError,
     TokenError,
     UserAlreadyExistsError,
 )
@@ -25,11 +26,6 @@ from fastapi_fullauth.types import CreateUserSchema, TokenPair, UserSchema
 
 if TYPE_CHECKING:
     from fastapi_fullauth.fullauth import FullAuth
-
-
-class LoginRequest(BaseModel):
-    email: EmailStr
-    password: str
 
 
 class PasswordResetRequest(BaseModel):
@@ -49,6 +45,13 @@ class RefreshRequest(BaseModel):
     refresh_token: str
 
 
+WEAK_PASSWORD_EXCEPTION = lambda errors: Response(  # noqa: E731
+    status_code=422,
+    content='{"detail": "' + str(errors) + '"}',
+    media_type="application/json",
+)
+
+
 def create_auth_router() -> APIRouter:
     router = APIRouter(tags=["auth"])
 
@@ -58,19 +61,35 @@ def create_auth_router() -> APIRouter:
         request: Request,
         fullauth: FullAuth = Depends(_get_fullauth),
     ):
+        if not fullauth.is_route_enabled("register"):
+            return Response(status_code=404)
+
+        # validate password strength
+        try:
+            fullauth.password_validator.validate(data.password)
+        except InvalidPasswordError as e:
+            from fastapi import HTTPException
+
+            raise HTTPException(status_code=422, detail=str(e))
+
         try:
             user = await register(fullauth.adapter, data)
         except UserAlreadyExistsError:
             raise USER_EXISTS_EXCEPTION
+
+        await fullauth.hooks.emit("after_register", user=user)
         return user
 
-    @router.post("/login", response_model=TokenPair)
+    @router.post("/login")
     async def login_route(
         request: Request,
         response: Response,
         fullauth: FullAuth = Depends(_get_fullauth),
         form_data: OAuth2PasswordRequestForm = Depends(),
     ):
+        if not fullauth.is_route_enabled("login"):
+            return Response(status_code=404)
+
         try:
             tokens = await login(
                 adapter=fullauth.adapter,
@@ -88,6 +107,17 @@ def create_auth_router() -> APIRouter:
         for backend in fullauth.backends:
             await backend.write_token(response, tokens.access_token)
 
+        user = await fullauth.adapter.get_user_by_email(form_data.username)
+        await fullauth.hooks.emit("after_login", user=user)
+
+        if fullauth.include_user_in_login and user:
+            return {
+                "access_token": tokens.access_token,
+                "refresh_token": tokens.refresh_token,
+                "token_type": tokens.token_type,
+                "user": user.model_dump(),
+            }
+
         return tokens
 
     @router.post("/logout", status_code=204)
@@ -96,12 +126,16 @@ def create_auth_router() -> APIRouter:
         fullauth: FullAuth = Depends(_get_fullauth),
         token: str = Depends(_extract_token),
     ):
+        if not fullauth.is_route_enabled("logout"):
+            return Response(status_code=404)
+
         try:
             payload = fullauth.token_engine.decode_token(token)
         except TokenError:
             raise CREDENTIALS_EXCEPTION
 
         await logout(fullauth.token_engine, payload)
+        await fullauth.hooks.emit("after_logout", user_id=payload.sub)
 
         response = Response(status_code=204)
         for backend in fullauth.backends:
@@ -114,6 +148,9 @@ def create_auth_router() -> APIRouter:
         request: Request,
         fullauth: FullAuth = Depends(_get_fullauth),
     ):
+        if not fullauth.is_route_enabled("refresh"):
+            return Response(status_code=404)
+
         try:
             payload = fullauth.token_engine.decode_token(data.refresh_token)
         except TokenError:
@@ -141,6 +178,9 @@ def create_auth_router() -> APIRouter:
         fullauth: FullAuth = Depends(_get_fullauth),
         token: str = Depends(_extract_token),
     ):
+        if not fullauth.is_route_enabled("verify-email"):
+            return Response(status_code=404)
+
         try:
             payload = fullauth.token_engine.decode_token(token)
         except TokenError:
@@ -162,10 +202,17 @@ def create_auth_router() -> APIRouter:
         request: Request,
         fullauth: FullAuth = Depends(_get_fullauth),
     ):
+        if not fullauth.is_route_enabled("verify-email"):
+            return Response(status_code=404)
+
         try:
-            await verify_email(fullauth.adapter, fullauth.token_engine, data.token)
+            user = await verify_email(fullauth.adapter, fullauth.token_engine, data.token)
         except TokenError:
             raise CREDENTIALS_EXCEPTION
+
+        if user:
+            await fullauth.hooks.emit("after_email_verify", user=user)
+
         return {"detail": "Email verified."}
 
     @router.post("/password-reset/request", status_code=202)
@@ -174,8 +221,18 @@ def create_auth_router() -> APIRouter:
         request: Request,
         fullauth: FullAuth = Depends(_get_fullauth),
     ):
+        if not fullauth.is_route_enabled("password-reset"):
+            return Response(status_code=404)
+
+        token = await request_password_reset(
+            fullauth.adapter, fullauth.token_engine, data.email
+        )
+
+        # send email if callback is set and token was generated
+        if token and fullauth.on_send_password_reset_email:
+            await fullauth.on_send_password_reset_email(data.email, token)
+
         # always return 202 to prevent email enumeration
-        await request_password_reset(fullauth.adapter, fullauth.token_engine, data.email)
         return {"detail": "If the email exists, a reset link has been sent."}
 
     @router.post("/password-reset/confirm", status_code=200)
@@ -184,8 +241,19 @@ def create_auth_router() -> APIRouter:
         request: Request,
         fullauth: FullAuth = Depends(_get_fullauth),
     ):
+        if not fullauth.is_route_enabled("password-reset"):
+            return Response(status_code=404)
+
+        # validate new password strength
         try:
-            await reset_password(
+            fullauth.password_validator.validate(data.new_password)
+        except InvalidPasswordError as e:
+            from fastapi import HTTPException
+
+            raise HTTPException(status_code=422, detail=str(e))
+
+        try:
+            user = await reset_password(
                 fullauth.adapter,
                 fullauth.token_engine,
                 data.token,
@@ -193,6 +261,10 @@ def create_auth_router() -> APIRouter:
             )
         except TokenError:
             raise CREDENTIALS_EXCEPTION
+
+        if user:
+            await fullauth.hooks.emit("after_password_reset", user=user)
+
         return {"detail": "Password has been reset."}
 
     return router
