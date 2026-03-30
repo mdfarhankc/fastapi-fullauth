@@ -1,6 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
+from sqlalchemy import Column, DateTime
 from sqlmodel import Field, Relationship, SQLModel
 
 
@@ -29,7 +30,10 @@ class UserBase(SQLModel):
     is_active: bool = Field(default=True)
     is_verified: bool = Field(default=False)
     is_superuser: bool = Field(default=False)
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        sa_column=Column(DateTime(timezone=True), nullable=False),
+    )
 
 
 class User(UserBase, table=True):
@@ -46,8 +50,11 @@ class RefreshTokenRecord(SQLModel, table=True):
     token: str = Field(unique=True, index=True)
     user_id: str = Field(foreign_key="fullauth_users.id", max_length=36)
     family_id: str = Field(index=True, max_length=36)
-    expires_at: datetime
+    expires_at: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
     revoked: bool = Field(default=False)
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        sa_column=Column(DateTime(timezone=True), nullable=False),
+    )
 
     user: User | None = Relationship(back_populates="refresh_tokens")
