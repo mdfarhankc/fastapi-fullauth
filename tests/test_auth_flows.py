@@ -6,7 +6,7 @@ import pytest
 @pytest.mark.asyncio
 async def test_register(client):
     r = await client.post(
-        "/auth/register",
+        "/api/v1/auth/register",
         json={"email": "new@test.com", "password": "securepass123"},
     )
     assert r.status_code == 201
@@ -19,7 +19,7 @@ async def test_register(client):
 @pytest.mark.asyncio
 async def test_register_duplicate(client, registered_user):
     r = await client.post(
-        "/auth/register",
+        "/api/v1/auth/register",
         json={"email": "user@test.com", "password": "securepass123"},
     )
     assert r.status_code == 409
@@ -28,7 +28,7 @@ async def test_register_duplicate(client, registered_user):
 @pytest.mark.asyncio
 async def test_register_weak_password(client):
     r = await client.post(
-        "/auth/register",
+        "/api/v1/auth/register",
         json={"email": "weak@test.com", "password": "short"},
     )
     assert r.status_code == 422
@@ -37,7 +37,7 @@ async def test_register_weak_password(client):
 @pytest.mark.asyncio
 async def test_login_success(client, registered_user):
     r = await client.post(
-        "/auth/login",
+        "/api/v1/auth/login",
         data={"username": "user@test.com", "password": "securepass123"},
     )
     assert r.status_code == 200
@@ -50,7 +50,7 @@ async def test_login_success(client, registered_user):
 @pytest.mark.asyncio
 async def test_login_wrong_password(client, registered_user):
     r = await client.post(
-        "/auth/login",
+        "/api/v1/auth/login",
         data={"username": "user@test.com", "password": "wrongpassword"},
     )
     assert r.status_code == 401
@@ -59,7 +59,7 @@ async def test_login_wrong_password(client, registered_user):
 @pytest.mark.asyncio
 async def test_login_nonexistent_user(client):
     r = await client.post(
-        "/auth/login",
+        "/api/v1/auth/login",
         data={"username": "nobody@test.com", "password": "whatever123"},
     )
     assert r.status_code == 401
@@ -86,7 +86,7 @@ async def test_me_invalid_token(client):
 
 @pytest.mark.asyncio
 async def test_logout(client, auth_headers, login_tokens):
-    r = await client.post("/auth/logout", headers=auth_headers)
+    r = await client.post("/api/v1/auth/logout", headers=auth_headers)
     assert r.status_code == 204
 
     # token should be blacklisted now
@@ -97,7 +97,7 @@ async def test_logout(client, auth_headers, login_tokens):
 @pytest.mark.asyncio
 async def test_refresh(client, login_tokens):
     r = await client.post(
-        "/auth/refresh",
+        "/api/v1/auth/refresh",
         json={"refresh_token": login_tokens["refresh_token"]},
     )
     assert r.status_code == 200
@@ -110,14 +110,14 @@ async def test_refresh(client, login_tokens):
 async def test_refresh_reuse_blocked(client, login_tokens):
     # first refresh works
     r = await client.post(
-        "/auth/refresh",
+        "/api/v1/auth/refresh",
         json={"refresh_token": login_tokens["refresh_token"]},
     )
     assert r.status_code == 200
 
     # second use of same refresh token should fail (blacklisted)
     r = await client.post(
-        "/auth/refresh",
+        "/api/v1/auth/refresh",
         json={"refresh_token": login_tokens["refresh_token"]},
     )
     assert r.status_code == 401
@@ -126,7 +126,7 @@ async def test_refresh_reuse_blocked(client, login_tokens):
 @pytest.mark.asyncio
 async def test_refresh_with_access_token_fails(client, login_tokens):
     r = await client.post(
-        "/auth/refresh",
+        "/api/v1/auth/refresh",
         json={"refresh_token": login_tokens["access_token"]},
     )
     assert r.status_code == 401
@@ -136,7 +136,7 @@ async def test_refresh_with_access_token_fails(client, login_tokens):
 async def test_password_reset_flow(client, registered_user, fullauth):
     # request reset
     r = await client.post(
-        "/auth/password-reset/request",
+        "/api/v1/auth/password-reset/request",
         json={"email": "user@test.com"},
     )
     assert r.status_code == 202
@@ -151,21 +151,21 @@ async def test_password_reset_flow(client, registered_user, fullauth):
 
     # confirm reset
     r = await client.post(
-        "/auth/password-reset/confirm",
+        "/api/v1/auth/password-reset/confirm",
         json={"token": token, "new_password": "newpassword123"},
     )
     assert r.status_code == 200
 
     # login with new password
     r = await client.post(
-        "/auth/login",
+        "/api/v1/auth/login",
         data={"username": "user@test.com", "password": "newpassword123"},
     )
     assert r.status_code == 200
 
     # old password should fail
     r = await client.post(
-        "/auth/login",
+        "/api/v1/auth/login",
         data={"username": "user@test.com", "password": "securepass123"},
     )
     assert r.status_code == 401
@@ -174,7 +174,7 @@ async def test_password_reset_flow(client, registered_user, fullauth):
 @pytest.mark.asyncio
 async def test_password_reset_nonexistent_user(client):
     r = await client.post(
-        "/auth/password-reset/request",
+        "/api/v1/auth/password-reset/request",
         json={"email": "nobody@test.com"},
     )
     # should still return 202 to prevent enumeration

@@ -46,7 +46,7 @@ async def client(app):
 @pytest.fixture
 async def registered_user(client):
     r = await client.post(
-        "/auth/register",
+        "/api/v1/auth/register",
         json={"email": "user@test.com", "password": "securepass123"},
     )
     return r.json()
@@ -55,7 +55,7 @@ async def registered_user(client):
 @pytest.fixture
 async def auth_headers(client, registered_user):
     r = await client.post(
-        "/auth/login",
+        "/api/v1/auth/login",
         data={"username": "user@test.com", "password": "securepass123"},
     )
     tokens = r.json()
@@ -65,7 +65,7 @@ async def auth_headers(client, registered_user):
 @pytest.fixture
 async def login_tokens(client, registered_user):
     r = await client.post(
-        "/auth/login",
+        "/api/v1/auth/login",
         data={"username": "user@test.com", "password": "securepass123"},
     )
     return r.json()

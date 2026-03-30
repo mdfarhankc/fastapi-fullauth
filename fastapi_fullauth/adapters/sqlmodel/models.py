@@ -20,8 +20,8 @@ class Role(SQLModel, table=True):
     users: list["User"] = Relationship(back_populates="roles", link_model=UserRoleLink)
 
 
-class User(SQLModel, table=True):
-    __tablename__ = "fullauth_users"
+class UserBase(SQLModel):
+    """Non-table base with all auth fields. Subclass this with table=True to add custom fields."""
 
     id: str = Field(default_factory=lambda: uuid.uuid4().hex, primary_key=True, max_length=36)
     email: str = Field(unique=True, index=True, max_length=320)
@@ -30,6 +30,10 @@ class User(SQLModel, table=True):
     is_verified: bool = Field(default=False)
     is_superuser: bool = Field(default=False)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class User(UserBase, table=True):
+    __tablename__ = "fullauth_users"
 
     roles: list[Role] = Relationship(back_populates="users", link_model=UserRoleLink)
     refresh_tokens: list["RefreshTokenRecord"] = Relationship(back_populates="user")

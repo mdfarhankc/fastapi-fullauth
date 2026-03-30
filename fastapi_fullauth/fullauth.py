@@ -69,12 +69,18 @@ class FullAuth:
     @property
     def router(self) -> APIRouter:
         if self._router is None:
-            self._router = APIRouter(prefix=self.config.AUTH_ROUTER_PREFIX)
+            prefix = self.config.API_PREFIX.rstrip("/") + self.config.AUTH_ROUTER_PREFIX
+            self._router = APIRouter(prefix=prefix, tags=self.config.ROUTER_TAGS)
             self._router.include_router(
                 create_auth_router(create_user_schema=self.create_user_schema)
             )
         return self._router
 
     def init_app(self, app: FastAPI) -> None:
+        from fastapi_fullauth.dependencies.current_user import configure_oauth2_scheme
+
+        prefix = self.config.API_PREFIX.rstrip("/") + self.config.AUTH_ROUTER_PREFIX
+        configure_oauth2_scheme(f"{prefix}/login")
+
         app.state.fullauth = self
         app.include_router(self.router)

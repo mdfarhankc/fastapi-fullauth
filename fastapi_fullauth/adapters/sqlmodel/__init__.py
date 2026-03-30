@@ -3,6 +3,7 @@ from fastapi_fullauth.adapters.sqlmodel.models import (
     RefreshTokenRecord,
     Role,
     User,
+    UserBase,
     UserRoleLink,
 )
 
@@ -11,5 +12,6 @@ __all__ = [
     "Role",
     "SQLModelAdapter",
     "User",
+    "UserBase",
     "UserRoleLink",
 ]

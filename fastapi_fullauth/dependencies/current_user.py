@@ -10,7 +10,14 @@ from fastapi_fullauth.exceptions import CREDENTIALS_EXCEPTION
 if TYPE_CHECKING:
     from fastapi_fullauth.fullauth import FullAuth
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login", auto_error=False)
+# default scheme — updated by FullAuth.init_app() with the correct tokenUrl
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=False)
+
+
+def configure_oauth2_scheme(token_url: str) -> None:
+    """Called by FullAuth.init_app() to set the correct tokenUrl."""
+    global oauth2_scheme
+    oauth2_scheme = OAuth2PasswordBearer(tokenUrl=token_url, auto_error=False)
 
 
 def _get_fullauth(request: Request) -> FullAuth:

@@ -53,14 +53,14 @@ That gives you these endpoints out of the box:
 
 | Endpoint | Description |
 |----------|-------------|
-| `POST /auth/register` | Create a new user |
-| `POST /auth/login` | Get access + refresh tokens |
-| `POST /auth/logout` | Blacklist current token |
-| `POST /auth/refresh` | Rotate token pair |
-| `POST /auth/password-reset/request` | Request a reset token |
-| `POST /auth/password-reset/confirm` | Set new password |
-| `POST /auth/verify-email/request` | Send verification email |
-| `POST /auth/verify-email/confirm` | Verify email address |
+| `POST /api/v1/auth/register` | Create a new user |
+| `POST /api/v1/auth/login` | Get access + refresh tokens |
+| `POST /api/v1/auth/logout` | Blacklist current token |
+| `POST /api/v1/auth/refresh` | Rotate token pair |
+| `POST /api/v1/auth/password-reset/request` | Request a reset token |
+| `POST /api/v1/auth/password-reset/confirm` | Set new password |
+| `POST /api/v1/auth/verify-email/request` | Send verification email |
+| `POST /api/v1/auth/verify-email/confirm` | Verify email address |
 
 ## Protecting Routes
 
@@ -94,6 +94,9 @@ FullAuthConfig(
     MAX_LOGIN_ATTEMPTS=5,
     LOCKOUT_DURATION_MINUTES=15,
     BLACKLIST_ENABLED=True,
+    API_PREFIX="/api/v1",                # change to "" for no prefix
+    AUTH_ROUTER_PREFIX="/auth",           # change to "/authentication" etc.
+    ROUTER_TAGS=["Auth"],                # Swagger UI tag grouping
 )
 ```
 

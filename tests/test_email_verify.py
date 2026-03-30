@@ -45,11 +45,11 @@ async def verify_client(verify_app):
 
 async def _register_and_login(client):
     await client.post(
-        "/auth/register",
+        "/api/v1/auth/register",
         json={"email": "verify@test.com", "password": "securepass123"},
     )
     r = await client.post(
-        "/auth/login",
+        "/api/v1/auth/login",
         data={"username": "verify@test.com", "password": "securepass123"},
     )
     return r.json()
@@ -65,14 +65,14 @@ async def test_verify_email_full_flow(verify_client, sent_emails):
     assert r.json()["is_verified"] is False
 
     # request verification
-    r = await verify_client.post("/auth/verify-email/request", headers=headers)
+    r = await verify_client.post("/api/v1/auth/verify-email/request", headers=headers)
     assert r.status_code == 202
     assert len(sent_emails) == 1
     assert sent_emails[0]["email"] == "verify@test.com"
 
     # confirm
     r = await verify_client.post(
-        "/auth/verify-email/confirm",
+        "/api/v1/auth/verify-email/confirm",
         json={"token": sent_emails[0]["token"]},
     )
     assert r.status_code == 200
@@ -87,19 +87,19 @@ async def test_verify_token_single_use(verify_client, sent_emails):
     tokens = await _register_and_login(verify_client)
     headers = {"Authorization": f"Bearer {tokens['access_token']}"}
 
-    await verify_client.post("/auth/verify-email/request", headers=headers)
+    await verify_client.post("/api/v1/auth/verify-email/request", headers=headers)
     verify_token = sent_emails[0]["token"]
 
     # first use works
     r = await verify_client.post(
-        "/auth/verify-email/confirm",
+        "/api/v1/auth/verify-email/confirm",
         json={"token": verify_token},
     )
     assert r.status_code == 200
 
     # second use fails
     r = await verify_client.post(
-        "/auth/verify-email/confirm",
+        "/api/v1/auth/verify-email/confirm",
         json={"token": verify_token},
     )
     assert r.status_code == 401
@@ -108,7 +108,7 @@ async def test_verify_token_single_use(verify_client, sent_emails):
 @pytest.mark.asyncio
 async def test_verify_invalid_token(verify_client):
     r = await verify_client.post(
-        "/auth/verify-email/confirm",
+        "/api/v1/auth/verify-email/confirm",
         json={"token": "garbage"},
     )
     assert r.status_code == 401
@@ -117,5 +117,5 @@ async def test_verify_invalid_token(verify_client):
 @pytest.mark.asyncio
 async def test_verify_without_callback(client, auth_headers):
     """No email callback configured — request still returns 202 but no email sent."""
-    r = await client.post("/auth/verify-email/request", headers=auth_headers)
+    r = await client.post("/api/v1/auth/verify-email/request", headers=auth_headers)
     assert r.status_code == 202

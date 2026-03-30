@@ -49,7 +49,7 @@ async def hooks_client(hooks_app):
 @pytest.mark.asyncio
 async def test_hooks_fire_on_register(hooks_client, hook_log):
     await hooks_client.post(
-        "/auth/register",
+        "/api/v1/auth/register",
         json={"email": "hook@test.com", "password": "securepass123"},
     )
     assert ("register", "hook@test.com") in hook_log
@@ -58,11 +58,11 @@ async def test_hooks_fire_on_register(hooks_client, hook_log):
 @pytest.mark.asyncio
 async def test_hooks_fire_on_login(hooks_client, hook_log):
     await hooks_client.post(
-        "/auth/register",
+        "/api/v1/auth/register",
         json={"email": "hook@test.com", "password": "securepass123"},
     )
     await hooks_client.post(
-        "/auth/login",
+        "/api/v1/auth/login",
         data={"username": "hook@test.com", "password": "securepass123"},
     )
     assert ("login", "hook@test.com") in hook_log
@@ -71,16 +71,16 @@ async def test_hooks_fire_on_login(hooks_client, hook_log):
 @pytest.mark.asyncio
 async def test_hooks_fire_on_logout(hooks_client, hook_log):
     await hooks_client.post(
-        "/auth/register",
+        "/api/v1/auth/register",
         json={"email": "hook@test.com", "password": "securepass123"},
     )
     r = await hooks_client.post(
-        "/auth/login",
+        "/api/v1/auth/login",
         data={"username": "hook@test.com", "password": "securepass123"},
     )
     token = r.json()["access_token"]
     await hooks_client.post(
-        "/auth/logout", headers={"Authorization": f"Bearer {token}"}
+        "/api/v1/auth/logout", headers={"Authorization": f"Bearer {token}"}
     )
     assert any(event == "logout" for event, _ in hook_log)
 
@@ -145,14 +145,14 @@ async def test_register_rejects_weak_password_via_validator():
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         # weak: no uppercase, no digit
         r = await client.post(
-            "/auth/register",
+            "/api/v1/auth/register",
             json={"email": "test@test.com", "password": "alllowercase"},
         )
         assert r.status_code == 422
 
         # strong: has uppercase and digit
         r = await client.post(
-            "/auth/register",
+            "/api/v1/auth/register",
             json={"email": "test@test.com", "password": "Strong1pass"},
         )
         assert r.status_code == 201
@@ -176,7 +176,7 @@ async def test_disabled_register_route():
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         r = await client.post(
-            "/auth/register",
+            "/api/v1/auth/register",
             json={"email": "test@test.com", "password": "securepass123"},
         )
         assert r.status_code == 404
@@ -206,13 +206,13 @@ async def test_password_reset_email_callback():
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         # register a user first
         await client.post(
-            "/auth/register",
+            "/api/v1/auth/register",
             json={"email": "reset@test.com", "password": "securepass123"},
         )
 
         # request reset
         r = await client.post(
-            "/auth/password-reset/request",
+            "/api/v1/auth/password-reset/request",
             json={"email": "reset@test.com"},
         )
         assert r.status_code == 202
@@ -239,11 +239,11 @@ async def test_login_includes_user():
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         await client.post(
-            "/auth/register",
+            "/api/v1/auth/register",
             json={"email": "user@test.com", "password": "securepass123"},
         )
         r = await client.post(
-            "/auth/login",
+            "/api/v1/auth/login",
             data={"username": "user@test.com", "password": "securepass123"},
         )
         data = r.json()
@@ -255,7 +255,7 @@ async def test_login_includes_user():
 @pytest.mark.asyncio
 async def test_login_excludes_user_by_default(client, registered_user):
     r = await client.post(
-        "/auth/login",
+        "/api/v1/auth/login",
         data={"username": "user@test.com", "password": "securepass123"},
     )
     data = r.json()
@@ -289,7 +289,7 @@ async def test_custom_create_user_schema():
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         r = await client.post(
-            "/auth/register",
+            "/api/v1/auth/register",
             json={
                 "email": "custom@test.com",
                 "password": "securepass123",
@@ -321,7 +321,7 @@ async def test_custom_schema_rejects_missing_field():
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         # missing display_name should fail
         r = await client.post(
-            "/auth/register",
+            "/api/v1/auth/register",
             json={"email": "test@test.com", "password": "securepass123"},
         )
         assert r.status_code == 422
@@ -361,11 +361,11 @@ async def test_custom_token_claims():
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         await client.post(
-            "/auth/register",
+            "/api/v1/auth/register",
             json={"email": "claims@test.com", "password": "securepass123"},
         )
         r = await client.post(
-            "/auth/login",
+            "/api/v1/auth/login",
             data={"username": "claims@test.com", "password": "securepass123"},
         )
         token = r.json()["access_token"]

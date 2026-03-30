@@ -51,4 +51,6 @@ class FullAuthConfig(BaseSettings):
     COOKIE_DOMAIN: str | None = None
 
     # --- Paths ---
+    API_PREFIX: str = "/api/v1"
     AUTH_ROUTER_PREFIX: str = "/auth"
+    ROUTER_TAGS: list[str] = ["Auth"]

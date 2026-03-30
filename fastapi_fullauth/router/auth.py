@@ -62,7 +62,7 @@ WEAK_PASSWORD_EXCEPTION = lambda errors: Response(  # noqa: E731
 def create_auth_router(
     create_user_schema: type[CreateUserSchema] = CreateUserSchema,
 ) -> APIRouter:
-    router = APIRouter(tags=["auth"])
+    router = APIRouter()
 
     @router.post("/register", status_code=201)
     async def register_route(
