@@ -277,6 +277,19 @@ fullauth = FullAuth(
 # POST /auth/login returns: {access_token, refresh_token, token_type, user: {...}}
 ```
 
+## Utilities
+
+```python
+from fastapi_fullauth import create_superuser, generate_secret_key
+
+# generate a secure secret key
+key = generate_secret_key()
+
+# create a superuser (use in a setup script)
+user = await create_superuser(adapter, email="admin@example.com", password="securepass")
+# user is auto-verified and marked as superuser
+```
+
 ## Middleware
 
 ```python

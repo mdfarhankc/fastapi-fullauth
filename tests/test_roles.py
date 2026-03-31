@@ -6,7 +6,7 @@ from httpx import ASGITransport, AsyncClient
 
 from fastapi_fullauth import FullAuth, FullAuthConfig
 from fastapi_fullauth.adapters.memory import InMemoryAdapter
-from fastapi_fullauth.dependencies import current_user, require_role
+from fastapi_fullauth.dependencies import require_role
 
 
 @pytest.fixture
@@ -54,10 +54,6 @@ async def test_assign_role(role_client, role_app):
 
     # register superuser
     tokens = await _register_and_login(role_client, "admin@test.com")
-    admin_id = (await role_client.get(
-        "/api/v1/auth/me" if False else "/admin",
-        headers={"Authorization": f"Bearer {tokens['access_token']}"},
-    )).status_code  # will be 403, just need the user id
 
     # get user id from adapter
     user = await adapter.get_user_by_email("admin@test.com")
