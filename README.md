@@ -316,8 +316,10 @@ uv run ruff format --check .
 # run tests
 uv run pytest tests/ -v
 
-# run example app
-uv run uvicorn examples.basic_app:app --reload
+# run example apps
+uv run uvicorn examples.memory_app:app --reload
+uv run uvicorn examples.sqlalchemy_app:app --reload
+uv run uvicorn examples.sqlmodel_app:app --reload
 ```
 
 ## Requirements
