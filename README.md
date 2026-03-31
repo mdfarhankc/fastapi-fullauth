@@ -61,6 +61,8 @@ That gives you these endpoints out of the box:
 | `POST /api/v1/auth/password-reset/confirm` | Set new password |
 | `POST /api/v1/auth/verify-email/request` | Send verification email |
 | `POST /api/v1/auth/verify-email/confirm` | Verify email address |
+| `POST /api/v1/auth/admin/assign-role` | Assign role to user (superuser only) |
+| `POST /api/v1/auth/admin/remove-role` | Remove role from user (superuser only) |
 
 ## Protecting Routes
 

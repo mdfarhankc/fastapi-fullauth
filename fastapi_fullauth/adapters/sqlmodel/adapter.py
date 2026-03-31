@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import selectinload
 
 from fastapi_fullauth.adapters.base import AbstractUserAdapter
-from fastapi_fullauth.adapters.sqlmodel.models import RefreshTokenRecord, User
+from fastapi_fullauth.adapters.sqlmodel.models import RefreshTokenRecord, Role, User
 from fastapi_fullauth.types import CreateUserSchema, RefreshToken, UserSchema
 
 
@@ -165,3 +165,34 @@ class SQLModelAdapter(AbstractUserAdapter):
                 .values(is_verified=True)
             )
             await session.commit()
+
+    async def assign_role(self, user_id: str, role_name: str) -> None:
+        async with self._session_maker() as session:
+            result = await session.execute(
+                select(Role).where(Role.name == role_name)
+            )
+            role = result.scalars().first()
+            if role is None:
+                role = Role(name=role_name)
+                session.add(role)
+                await session.flush()
+
+            result = await session.execute(
+                self._user_query().where(self._user_model.id == user_id)
+            )
+            user = result.scalars().first()
+            if user and role not in user.roles:
+                user.roles.append(role)
+                session.add(user)
+                await session.commit()
+
+    async def remove_role(self, user_id: str, role_name: str) -> None:
+        async with self._session_maker() as session:
+            result = await session.execute(
+                self._user_query().where(self._user_model.id == user_id)
+            )
+            user = result.scalars().first()
+            if user:
+                user.roles = [r for r in user.roles if r.name != role_name]
+                session.add(user)
+                await session.commit()

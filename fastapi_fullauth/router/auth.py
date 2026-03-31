@@ -8,6 +8,7 @@ from fastapi_fullauth.dependencies.current_user import _extract_token, _get_full
 from fastapi_fullauth.exceptions import (
     ACCOUNT_LOCKED_EXCEPTION,
     CREDENTIALS_EXCEPTION,
+    FORBIDDEN_EXCEPTION,
     USER_EXISTS_EXCEPTION,
     AccountLockedError,
     AuthenticationError,
@@ -48,6 +49,11 @@ class VerifyEmailRequest(BaseModel):
 
 class RefreshRequest(BaseModel):
     refresh_token: str
+
+
+class RoleAssignment(BaseModel):
+    user_id: str
+    role: str
 
 
 class MessageResponse(BaseModel):
@@ -282,5 +288,51 @@ def create_auth_router(
             await fullauth.hooks.emit("after_password_reset", user=user)
 
         return MessageResponse(detail="Password has been reset.")
+
+    # --- Admin: Role management (superuser only) ---
+
+    @router.post("/admin/assign-role", response_model=MessageResponse)
+    async def assign_role_route(
+        data: RoleAssignment,
+        request: Request,
+        fullauth: FullAuth = Depends(_get_fullauth),
+        token: str = Depends(_extract_token),
+    ) -> MessageResponse:
+        try:
+            payload = fullauth.token_engine.decode_token(token)
+        except TokenError:
+            raise CREDENTIALS_EXCEPTION
+
+        caller = await fullauth.adapter.get_user_by_id(payload.sub)
+        if caller is None or not caller.is_superuser:
+            raise FORBIDDEN_EXCEPTION
+
+        target = await fullauth.adapter.get_user_by_id(data.user_id)
+        if target is None:
+            from fastapi import HTTPException
+
+            raise HTTPException(status_code=404, detail="User not found")
+
+        await fullauth.adapter.assign_role(data.user_id, data.role)
+        return MessageResponse(detail=f"Role '{data.role}' assigned to user {data.user_id}.")
+
+    @router.post("/admin/remove-role", response_model=MessageResponse)
+    async def remove_role_route(
+        data: RoleAssignment,
+        request: Request,
+        fullauth: FullAuth = Depends(_get_fullauth),
+        token: str = Depends(_extract_token),
+    ) -> MessageResponse:
+        try:
+            payload = fullauth.token_engine.decode_token(token)
+        except TokenError:
+            raise CREDENTIALS_EXCEPTION
+
+        caller = await fullauth.adapter.get_user_by_id(payload.sub)
+        if caller is None or not caller.is_superuser:
+            raise FORBIDDEN_EXCEPTION
+
+        await fullauth.adapter.remove_role(data.user_id, data.role)
+        return MessageResponse(detail=f"Role '{data.role}' removed from user {data.user_id}.")
 
     return router

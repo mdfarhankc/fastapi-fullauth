@@ -55,3 +55,9 @@ class AbstractUserAdapter(ABC):
 
     @abstractmethod
     async def set_user_verified(self, user_id: str) -> None: ...
+
+    @abstractmethod
+    async def assign_role(self, user_id: str, role_name: str) -> None: ...
+
+    @abstractmethod
+    async def remove_role(self, user_id: str, role_name: str) -> None: ...

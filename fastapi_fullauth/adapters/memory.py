@@ -87,3 +87,17 @@ class InMemoryAdapter(AbstractUserAdapter):
     async def set_user_verified(self, user_id: str) -> None:
         if user_id in self._users:
             self._users[user_id]["is_verified"] = True
+
+    async def assign_role(self, user_id: str, role_name: str) -> None:
+        roles = self._roles.setdefault(user_id, [])
+        if role_name not in roles:
+            roles.append(role_name)
+        if user_id in self._users:
+            self._users[user_id]["roles"] = roles
+
+    async def remove_role(self, user_id: str, role_name: str) -> None:
+        roles = self._roles.get(user_id, [])
+        if role_name in roles:
+            roles.remove(role_name)
+        if user_id in self._users:
+            self._users[user_id]["roles"] = roles
