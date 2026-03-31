@@ -50,6 +50,10 @@ class RefreshRequest(BaseModel):
     refresh_token: str
 
 
+class MessageResponse(BaseModel):
+    detail: str
+
+
 WEAK_PASSWORD_EXCEPTION = lambda errors: Response(  # noqa: E731
     status_code=422,
     content='{"detail": "' + str(errors) + '"}',
@@ -158,7 +162,7 @@ def create_auth_router(
         data: RefreshRequest,
         request: Request,
         fullauth: FullAuth = Depends(_get_fullauth),
-    ):
+    ) -> TokenPair:
         if not fullauth.is_route_enabled("refresh"):
             return Response(status_code=404)
 
@@ -184,12 +188,12 @@ def create_auth_router(
         )
         return TokenPair(access_token=access, refresh_token=refresh)
 
-    @router.post("/verify-email/request", status_code=202)
+    @router.post("/verify-email/request", status_code=202, response_model=MessageResponse)
     async def verify_email_request_route(
         request: Request,
         fullauth: FullAuth = Depends(_get_fullauth),
         token: str = Depends(_extract_token),
-    ):
+    ) -> MessageResponse:
         if not fullauth.is_route_enabled("verify-email"):
             return Response(status_code=404)
 
@@ -206,14 +210,14 @@ def create_auth_router(
             if user:
                 await fullauth.on_send_verification_email(user.email, verify_token)
 
-        return {"detail": "If eligible, a verification email has been sent."}
+        return MessageResponse(detail="If eligible, a verification email has been sent.")
 
-    @router.post("/verify-email/confirm", status_code=200)
+    @router.post("/verify-email/confirm", status_code=200, response_model=MessageResponse)
     async def verify_email_confirm_route(
         data: VerifyEmailRequest,
         request: Request,
         fullauth: FullAuth = Depends(_get_fullauth),
-    ):
+    ) -> MessageResponse:
         if not fullauth.is_route_enabled("verify-email"):
             return Response(status_code=404)
 
@@ -225,14 +229,14 @@ def create_auth_router(
         if user:
             await fullauth.hooks.emit("after_email_verify", user=user)
 
-        return {"detail": "Email verified."}
+        return MessageResponse(detail="Email verified.")
 
-    @router.post("/password-reset/request", status_code=202)
+    @router.post("/password-reset/request", status_code=202, response_model=MessageResponse)
     async def password_reset_request_route(
         data: PasswordResetRequest,
         request: Request,
         fullauth: FullAuth = Depends(_get_fullauth),
-    ):
+    ) -> MessageResponse:
         if not fullauth.is_route_enabled("password-reset"):
             return Response(status_code=404)
 
@@ -245,14 +249,14 @@ def create_auth_router(
             await fullauth.on_send_password_reset_email(data.email, token)
 
         # always return 202 to prevent email enumeration
-        return {"detail": "If the email exists, a reset link has been sent."}
+        return MessageResponse(detail="If the email exists, a reset link has been sent.")
 
-    @router.post("/password-reset/confirm", status_code=200)
+    @router.post("/password-reset/confirm", status_code=200, response_model=MessageResponse)
     async def password_reset_confirm_route(
         data: PasswordResetConfirm,
         request: Request,
         fullauth: FullAuth = Depends(_get_fullauth),
-    ):
+    ) -> MessageResponse:
         if not fullauth.is_route_enabled("password-reset"):
             return Response(status_code=404)
 
@@ -277,6 +281,6 @@ def create_auth_router(
         if user:
             await fullauth.hooks.emit("after_password_reset", user=user)
 
-        return {"detail": "Password has been reset."}
+        return MessageResponse(detail="Password has been reset.")
 
     return router
