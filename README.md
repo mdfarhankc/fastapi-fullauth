@@ -106,36 +106,62 @@ Or set them as env vars: `FULLAUTH_SECRET_KEY`, `FULLAUTH_ACCESS_TOKEN_EXPIRE_MI
 
 ## Custom User Fields
 
-Subclass `UserSchema` and your ORM model to add custom fields:
+### SQLAlchemy
+
+Subclass `UserModel` directly:
 
 ```python
-from fastapi_fullauth.types import UserSchema
-from fastapi_fullauth.adapters.sqlalchemy.models import UserModel
+from fastapi_fullauth.adapters.sqlalchemy import UserModel
 from sqlalchemy import String
 from sqlalchemy.orm import Mapped, mapped_column
 
-# 1. extend the schema
-class MyUserSchema(UserSchema):
-    phone: str | None = None
-    display_name: str | None = None
-
-# 2. extend the ORM model
 class MyUser(UserModel):
     __tablename__ = "fullauth_users"
     __table_args__ = {"extend_existing": True}
 
     phone: Mapped[str] = mapped_column(String(20), nullable=True)
     display_name: Mapped[str] = mapped_column(String(100), nullable=True)
-
-# 3. pass both to the adapter
-adapter = SQLAlchemyAdapter(
-    session_maker=session_maker,
-    user_schema=MyUserSchema,
-    user_model=MyUser,
-)
 ```
 
-Custom fields will flow through `current_user` and all other dependencies automatically.
+### SQLModel
+
+Subclass `UserBase` (not `User`) and re-declare relationships:
+
+```python
+from fastapi_fullauth.adapters.sqlmodel import UserBase, Role, UserRoleLink, RefreshTokenRecord
+from sqlmodel import Field, Relationship
+
+class MyUser(UserBase, table=True):
+    __tablename__ = "fullauth_users"
+    __table_args__ = {"extend_existing": True}
+
+    display_name: str = Field(default="", max_length=100)
+    phone: str = Field(default="", max_length=20)
+
+    roles: list[Role] = Relationship(back_populates="users", link_model=UserRoleLink)
+    refresh_tokens: list[RefreshTokenRecord] = Relationship(back_populates="user")
+```
+
+Then extend the schema and adapter to return your custom fields:
+
+```python
+from fastapi_fullauth.types import UserSchema
+
+class MyUserSchema(UserSchema):
+    display_name: str = ""
+    phone: str = ""
+
+class MyAdapter(SQLModelAdapter):  # or SQLAlchemyAdapter
+    def _to_schema(self, user):
+        return MyUserSchema(
+            id=user.id, email=user.email,
+            is_active=user.is_active, is_verified=user.is_verified,
+            is_superuser=user.is_superuser,
+            roles=[r.name for r in user.roles],
+            display_name=user.display_name or "",
+            phone=user.phone or "",
+        )
+```
 
 ## Custom Registration Fields
 

@@ -12,10 +12,16 @@ from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
-from sqlmodel import Field, SQLModel
+from sqlmodel import Field, Relationship, SQLModel
 
 from fastapi_fullauth import FullAuth, FullAuthConfig
-from fastapi_fullauth.adapters.sqlmodel import SQLModelAdapter, User
+from fastapi_fullauth.adapters.sqlmodel import (
+    RefreshTokenRecord,
+    Role,
+    SQLModelAdapter,
+    UserBase,
+    UserRoleLink,
+)
 from fastapi_fullauth.dependencies import (
     current_active_verified_user,
     current_user,
@@ -35,12 +41,16 @@ session_maker = async_sessionmaker(engine, expire_on_commit=False)
 # --- Custom user model (extend the built-in one) ---
 
 
-class MyUser(User, table=True):
+class MyUser(UserBase, table=True):
     __tablename__ = "fullauth_users"
     __table_args__ = {"extend_existing": True}
 
     display_name: str = Field(default="", max_length=100)
     phone: str = Field(default="", max_length=20)
+
+    # must re-declare relationships when subclassing UserBase
+    roles: list[Role] = Relationship(back_populates="users", link_model=UserRoleLink)
+    refresh_tokens: list[RefreshTokenRecord] = Relationship(back_populates="user")
 
 
 # --- Custom schemas ---
