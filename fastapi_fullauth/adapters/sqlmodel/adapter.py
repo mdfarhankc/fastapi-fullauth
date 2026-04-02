@@ -28,7 +28,16 @@ class SQLModelAdapter(AbstractUserAdapter):
         return select(self._user_model).options(selectinload(self._user_model.roles))  # type: ignore[arg-type]
 
     def _to_schema(self, user: User) -> UserSchema:
-        return self._user_schema.model_validate(user, from_attributes=True)
+        # convert Role objects to role name strings before validation
+        data = {}
+        for field_name in self._user_schema.model_fields:
+            val = getattr(user, field_name, None)
+            if val is not None:
+                data[field_name] = val
+        # roles need special handling: list[Role] -> list[str]
+        if hasattr(user, "roles"):
+            data["roles"] = [r.name for r in user.roles]
+        return self._user_schema.model_validate(data)
 
     async def get_user_by_id(self, user_id: str) -> UserSchema | None:
         async with self._session_maker() as session:

@@ -29,7 +29,14 @@ class SQLAlchemyAdapter(AbstractUserAdapter):
         self._user_model = user_model
 
     def _to_schema(self, user: UserModel) -> UserSchema:
-        return self._user_schema.model_validate(user, from_attributes=True)
+        data = {}
+        for field_name in self._user_schema.model_fields:
+            val = getattr(user, field_name, None)
+            if val is not None:
+                data[field_name] = val
+        if hasattr(user, "roles"):
+            data["roles"] = [r.name for r in user.roles]
+        return self._user_schema.model_validate(data)
 
     async def get_user_by_id(self, user_id: str) -> UserSchema | None:
         async with self._session_maker() as session:
