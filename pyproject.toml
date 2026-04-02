@@ -26,6 +26,7 @@ dependencies = [
     "pyjwt>=2.8",
     "argon2-cffi>=23.0",
     "python-multipart>=0.0.22",
+    "uuid-utils>=0.14.1",
 ]
 
 [project.optional-dependencies]

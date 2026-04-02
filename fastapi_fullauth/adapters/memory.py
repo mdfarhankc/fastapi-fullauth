@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-import uuid
 from typing import Any
+
+from uuid_utils import uuid7
 
 from fastapi_fullauth.adapters.base import AbstractUserAdapter
 from fastapi_fullauth.types import CreateUserSchema, RefreshToken, UserSchema
@@ -32,7 +33,7 @@ class InMemoryAdapter(AbstractUserAdapter):
     async def create_user(
         self, data: CreateUserSchema, hashed_password: str
     ) -> UserSchema:
-        user_id = uuid.uuid4().hex
+        user_id = str(uuid7())
         user_data = {
             "id": user_id,
             "email": data.email,

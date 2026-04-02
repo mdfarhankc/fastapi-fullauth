@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-import uuid
 from datetime import datetime, timezone
+from uuid import UUID
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Text, Uuid
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from uuid_utils import uuid7
 
 
 class FullAuthBase(DeclarativeBase):
@@ -14,10 +15,8 @@ class FullAuthBase(DeclarativeBase):
 class UserModel(FullAuthBase):
     __tablename__ = "fullauth_users"
 
-    id: Mapped[str] = mapped_column(
-        String(36), primary_key=True, default=lambda: uuid.uuid4().hex
-    )
-    email: Mapped[str] = mapped_column(String(320), unique=True, index=True, nullable=False)
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid7)
+    email: Mapped[str] = mapped_column(unique=True, index=True, nullable=False)
     hashed_password: Mapped[str] = mapped_column(Text, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     is_verified: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -37,10 +36,8 @@ class UserModel(FullAuthBase):
 class RoleModel(FullAuthBase):
     __tablename__ = "fullauth_roles"
 
-    id: Mapped[str] = mapped_column(
-        String(36), primary_key=True, default=lambda: uuid.uuid4().hex
-    )
-    name: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid7)
+    name: Mapped[str] = mapped_column(unique=True, nullable=False)
 
     users: Mapped[list[UserModel]] = relationship(
         secondary="fullauth_user_roles", back_populates="roles", lazy="noload"
@@ -50,25 +47,23 @@ class RoleModel(FullAuthBase):
 class UserRoleModel(FullAuthBase):
     __tablename__ = "fullauth_user_roles"
 
-    user_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("fullauth_users.id", ondelete="CASCADE"), primary_key=True
+    user_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("fullauth_users.id", ondelete="CASCADE"), primary_key=True
     )
-    role_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("fullauth_roles.id", ondelete="CASCADE"), primary_key=True
+    role_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("fullauth_roles.id", ondelete="CASCADE"), primary_key=True
     )
 
 
 class RefreshTokenModel(FullAuthBase):
     __tablename__ = "fullauth_refresh_tokens"
 
-    id: Mapped[str] = mapped_column(
-        String(36), primary_key=True, default=lambda: uuid.uuid4().hex
-    )
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid7)
     token: Mapped[str] = mapped_column(Text, unique=True, index=True, nullable=False)
-    user_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("fullauth_users.id", ondelete="CASCADE"), nullable=False
+    user_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("fullauth_users.id", ondelete="CASCADE"), nullable=False
     )
-    family_id: Mapped[str] = mapped_column(String(36), index=True, nullable=False)
+    family_id: Mapped[str] = mapped_column(index=True, nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     revoked: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(
