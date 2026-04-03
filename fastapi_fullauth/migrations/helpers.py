@@ -18,7 +18,6 @@ Usage in your alembic env.py:
     target_metadata = SQLModel.metadata
 """
 
-from __future__ import annotations
 
 from sqlalchemy import MetaData
 

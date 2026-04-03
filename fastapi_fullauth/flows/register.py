@@ -1,4 +1,3 @@
-from __future__ import annotations
 
 from fastapi_fullauth.adapters.base import AbstractUserAdapter
 from fastapi_fullauth.core.crypto import hash_password

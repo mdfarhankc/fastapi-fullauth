@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import re
 
 from fastapi_fullauth.exceptions import InvalidPasswordError

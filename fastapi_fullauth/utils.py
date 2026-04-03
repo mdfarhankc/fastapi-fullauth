@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import secrets
 
 from fastapi_fullauth.adapters.base import AbstractUserAdapter
