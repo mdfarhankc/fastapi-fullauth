@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from typing import Any
 
 from sqlalchemy import select, update
@@ -14,6 +12,25 @@ from fastapi_fullauth.adapters.sqlalchemy.models import (
 )
 from fastapi_fullauth.types import CreateUserSchema, RefreshToken, UserSchema
 
+# Map SQLAlchemy column types to Python types for schema auto-derivation
+_SA_TYPE_MAP: dict[type, type] = {}
+
+
+def _get_sa_type_map() -> dict[type, type]:
+    """Lazy-init the SA type map to avoid import at module level."""
+    if not _SA_TYPE_MAP:
+        from sqlalchemy import Boolean, Float, Integer, Numeric, String, Text
+
+        _SA_TYPE_MAP.update({
+            String: str,
+            Text: str,
+            Integer: int,
+            Float: float,
+            Numeric: float,
+            Boolean: bool,
+        })
+    return _SA_TYPE_MAP
+
 
 class SQLAlchemyAdapter(AbstractUserAdapter):
     """Async SQLAlchemy adapter for fastapi-fullauth."""
@@ -21,12 +38,34 @@ class SQLAlchemyAdapter(AbstractUserAdapter):
     def __init__(
         self,
         session_maker: async_sessionmaker[AsyncSession],
-        user_schema: type[UserSchema] = UserSchema,
+        user_schema: type[UserSchema] | None = None,
         user_model: type[UserModel] = UserModel,
     ) -> None:
         self._session_maker = session_maker
-        self._user_schema = user_schema
         self._user_model = user_model
+        self._user_schema = (
+            user_schema if user_schema is not None
+            else self._derive_user_schema(user_model)
+        )
+
+    @staticmethod
+    def _derive_user_schema(model_class: type) -> type[UserSchema]:
+        """Build a UserSchema subclass that includes extra columns from the model."""
+        from pydantic import create_model
+
+        skip = {"hashed_password", "created_at"}
+        base_fields = set(UserSchema.model_fields.keys())
+        type_map = _get_sa_type_map()
+        extra: dict[str, Any] = {}
+        for col in model_class.__table__.columns:
+            if col.name in base_fields or col.name in skip:
+                continue
+            py_type = type_map.get(type(col.type), str)
+            default = col.default.arg if col.default is not None else None
+            extra[col.name] = (py_type | None, default)
+        if not extra:
+            return UserSchema
+        return create_model("DerivedUserSchema", __base__=UserSchema, **extra)
 
     def _to_schema(self, user: UserModel) -> UserSchema:
         data = {}
@@ -58,9 +97,11 @@ class SQLAlchemyAdapter(AbstractUserAdapter):
         self, data: CreateUserSchema, hashed_password: str
     ) -> UserSchema:
         async with self._session_maker() as session:
+            extra = data.model_dump(exclude={"email", "password"})
             user = self._user_model(
                 email=data.email,
                 hashed_password=hashed_password,
+                **extra,
             )
             session.add(user)
             await session.commit()
@@ -70,7 +111,8 @@ class SQLAlchemyAdapter(AbstractUserAdapter):
     async def update_user(self, user_id: str, data: dict[str, Any]) -> UserSchema:
         async with self._session_maker() as session:
             await session.execute(
-                update(self._user_model).where(self._user_model.id == user_id).values(**data)
+                update(self._user_model).where(
+                    self._user_model.id == user_id).values(**data)
             )
             await session.commit()
             result = await session.execute(
@@ -104,7 +146,8 @@ class SQLAlchemyAdapter(AbstractUserAdapter):
     async def get_hashed_password(self, user_id: str) -> str | None:
         async with self._session_maker() as session:
             result = await session.execute(
-                select(self._user_model.hashed_password).where(self._user_model.id == user_id)
+                select(self._user_model.hashed_password).where(
+                    self._user_model.id == user_id)
             )
             return result.scalars().first()
 
@@ -132,7 +175,8 @@ class SQLAlchemyAdapter(AbstractUserAdapter):
     async def get_refresh_token(self, token_str: str) -> RefreshToken | None:
         async with self._session_maker() as session:
             result = await session.execute(
-                select(RefreshTokenModel).where(RefreshTokenModel.token == token_str)
+                select(RefreshTokenModel).where(
+                    RefreshTokenModel.token == token_str)
             )
             row = result.scalars().first()
             if row is None:

@@ -1,4 +1,3 @@
-from __future__ import annotations
 
 import pytest
 from fastapi import Depends, FastAPI
@@ -11,7 +10,10 @@ from fastapi_fullauth.dependencies import current_user
 
 @pytest.fixture
 def config():
-    return FullAuthConfig(SECRET_KEY="test-secret-key-that-is-long-enough-32b")
+    return FullAuthConfig(
+        SECRET_KEY="test-secret-key-that-is-long-enough-32b",
+        INJECT_SECURITY_HEADERS=False,
+    )
 
 
 @pytest.fixture

@@ -1,10 +1,21 @@
-from __future__ import annotations
-
 from datetime import datetime
+from enum import Enum
 from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, Field
+
+
+class Route(str, Enum):
+    """Type-safe route names for ``enabled_routes``."""
+
+    LOGIN = "login"
+    LOGOUT = "logout"
+    REGISTER = "register"
+    REFRESH = "refresh"
+    VERIFY_EMAIL = "verify-email"
+    PASSWORD_RESET = "password-reset"
+    ME = "me"
 
 UserID = str | int | UUID
 
@@ -47,3 +58,4 @@ class TokenPayload(BaseModel):
     type: str  # "access" or "refresh"
     roles: list[str] = Field(default_factory=list)
     extra: dict[str, Any] = Field(default_factory=dict)
+    family_id: str | None = None

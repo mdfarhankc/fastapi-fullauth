@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from typing import Any
 
 from sqlalchemy import select, update
@@ -17,15 +15,37 @@ class SQLModelAdapter(AbstractUserAdapter):
     def __init__(
         self,
         session_maker: async_sessionmaker[AsyncSession],
-        user_schema: type[UserSchema] = UserSchema,
+        user_schema: type[UserSchema] | None = None,
         user_model: type[User] = User,
     ) -> None:
         self._session_maker = session_maker
-        self._user_schema = user_schema
         self._user_model = user_model
+        self._user_schema = (
+            user_schema if user_schema is not None
+            else self._derive_user_schema(user_model)
+        )
+
+    @staticmethod
+    def _derive_user_schema(model_class: type) -> type[UserSchema]:
+        """Build a UserSchema subclass that includes extra fields from the model."""
+        from pydantic import create_model
+
+        skip = {"hashed_password", "created_at", "roles", "refresh_tokens"}
+        base_fields = set(UserSchema.model_fields.keys())
+        extra: dict[str, Any] = {}
+        for name, field in model_class.model_fields.items():
+            if name in base_fields or name in skip:
+                continue
+            default = field.default if field.default is not None else None
+            # type: ignore[operator]
+            extra[name] = (field.annotation | None, default)
+        if not extra:
+            return UserSchema
+        return create_model("DerivedUserSchema", __base__=UserSchema, **extra)
 
     def _user_query(self):
-        return select(self._user_model).options(selectinload(self._user_model.roles))  # type: ignore[arg-type]
+        # type: ignore[arg-type]
+        return select(self._user_model).options(selectinload(self._user_model.roles))
 
     def _to_schema(self, user: User) -> UserSchema:
         # convert Role objects to role name strings before validation
@@ -59,9 +79,11 @@ class SQLModelAdapter(AbstractUserAdapter):
         self, data: CreateUserSchema, hashed_password: str
     ) -> UserSchema:
         async with self._session_maker() as session:
+            extra = data.model_dump(exclude={"email", "password"})
             user = self._user_model(
                 email=data.email,
                 hashed_password=hashed_password,
+                **extra,
             )
             session.add(user)
             await session.commit()
@@ -75,7 +97,8 @@ class SQLModelAdapter(AbstractUserAdapter):
     async def update_user(self, user_id: str, data: dict[str, Any]) -> UserSchema:
         async with self._session_maker() as session:
             await session.execute(
-                update(self._user_model).where(self._user_model.id == user_id).values(**data)
+                update(self._user_model).where(
+                    self._user_model.id == user_id).values(**data)
             )
             await session.commit()
             result = await session.execute(
@@ -107,7 +130,8 @@ class SQLModelAdapter(AbstractUserAdapter):
     async def get_hashed_password(self, user_id: str) -> str | None:
         async with self._session_maker() as session:
             result = await session.execute(
-                select(self._user_model.hashed_password).where(self._user_model.id == user_id)
+                select(self._user_model.hashed_password).where(
+                    self._user_model.id == user_id)
             )
             return result.scalars().first()
 
@@ -135,7 +159,8 @@ class SQLModelAdapter(AbstractUserAdapter):
     async def get_refresh_token(self, token_str: str) -> RefreshToken | None:
         async with self._session_maker() as session:
             result = await session.execute(
-                select(RefreshTokenRecord).where(RefreshTokenRecord.token == token_str)
+                select(RefreshTokenRecord).where(
+                    RefreshTokenRecord.token == token_str)
             )
             row = result.scalars().first()
             if row is None:

@@ -1,4 +1,3 @@
-from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
@@ -6,6 +5,7 @@ from fastapi import Depends, Request
 from fastapi.security import OAuth2PasswordBearer
 
 from fastapi_fullauth.exceptions import CREDENTIALS_EXCEPTION
+from fastapi_fullauth.types import UserSchema
 
 if TYPE_CHECKING:
     from fastapi_fullauth.fullauth import FullAuth
@@ -21,7 +21,7 @@ def configure_oauth2_scheme(token_url: str) -> None:
 
 
 def _get_fullauth(request: Request) -> FullAuth:
-    fullauth: FullAuth | None = request.app.state.fullauth  # type: ignore[union-attr]
+    fullauth: "FullAuth" | None = request.app.state.fullauth  # type: ignore[union-attr]
     if fullauth is None:
         raise RuntimeError("FullAuth not initialized on app.state")
     return fullauth
@@ -29,7 +29,7 @@ def _get_fullauth(request: Request) -> FullAuth:
 
 async def _extract_token(
     request: Request,
-    fullauth: FullAuth = Depends(_get_fullauth),
+    fullauth: "FullAuth" = Depends(_get_fullauth),
     bearer_token: str | None = Depends(oauth2_scheme),
 ) -> str:
     # try OAuth2 bearer from Swagger first
@@ -45,13 +45,13 @@ async def _extract_token(
 
 async def current_user(
     request: Request,
-    fullauth: FullAuth = Depends(_get_fullauth),
+    fullauth: "FullAuth" = Depends(_get_fullauth),
     token: str = Depends(_extract_token),
-):
+) -> UserSchema:
     from fastapi_fullauth.exceptions import TokenError
 
     try:
-        payload = fullauth.token_engine.decode_token(token)
+        payload = await fullauth.token_engine.decode_token(token)
     except TokenError:
         raise CREDENTIALS_EXCEPTION
 
@@ -67,13 +67,13 @@ async def current_user(
 
 async def current_active_verified_user(
     request: Request,
-    fullauth: FullAuth = Depends(_get_fullauth),
+    fullauth: "FullAuth" = Depends(_get_fullauth),
     token: str = Depends(_extract_token),
-):
+) -> UserSchema:
     from fastapi_fullauth.exceptions import FORBIDDEN_EXCEPTION, TokenError
 
     try:
-        payload = fullauth.token_engine.decode_token(token)
+        payload = await fullauth.token_engine.decode_token(token)
     except TokenError:
         raise CREDENTIALS_EXCEPTION
 

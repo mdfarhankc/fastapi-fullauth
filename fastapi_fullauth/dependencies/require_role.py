@@ -1,4 +1,3 @@
-from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
@@ -6,6 +5,7 @@ from fastapi import Depends, Request
 
 from fastapi_fullauth.dependencies.current_user import _extract_token, _get_fullauth
 from fastapi_fullauth.exceptions import CREDENTIALS_EXCEPTION, FORBIDDEN_EXCEPTION
+from fastapi_fullauth.types import UserSchema
 
 if TYPE_CHECKING:
     from fastapi_fullauth.fullauth import FullAuth
@@ -16,13 +16,13 @@ def require_role(*roles: str):
 
     async def _dep(
         request: Request,
-        fullauth: FullAuth = Depends(_get_fullauth),
+        fullauth: "FullAuth" = Depends(_get_fullauth),
         token: str = Depends(_extract_token),
-    ):
+    ) -> UserSchema:
         from fastapi_fullauth.exceptions import TokenError
 
         try:
-            payload = fullauth.token_engine.decode_token(token)
+            payload = await fullauth.token_engine.decode_token(token)
         except TokenError:
             raise CREDENTIALS_EXCEPTION
 
@@ -51,13 +51,13 @@ def require_permission(*permissions: str):
 
     async def _dep(
         request: Request,
-        fullauth: FullAuth = Depends(_get_fullauth),
+        fullauth: "FullAuth" = Depends(_get_fullauth),
         token: str = Depends(_extract_token),
-    ):
+    ) -> UserSchema:
         from fastapi_fullauth.exceptions import TokenError
 
         try:
-            payload = fullauth.token_engine.decode_token(token)
+            payload = await fullauth.token_engine.decode_token(token)
         except TokenError:
             raise CREDENTIALS_EXCEPTION
 

@@ -1,15 +1,16 @@
-from __future__ import annotations
-
+import warnings
 from typing import Literal
 
-from pydantic_settings import BaseSettings
+from pydantic import model_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class FullAuthConfig(BaseSettings):
-    model_config = {"env_prefix": "FULLAUTH_"}
+    model_config = SettingsConfigDict(
+        env_prefix="FULLAUTH_", case_sensitive=True)
 
     # --- Security ---
-    SECRET_KEY: str
+    SECRET_KEY: str | None = None
     ALGORITHM: str = "HS256"
 
     # --- Tokens ---
@@ -54,3 +55,18 @@ class FullAuthConfig(BaseSettings):
     API_PREFIX: str = "/api/v1"
     AUTH_ROUTER_PREFIX: str = "/auth"
     ROUTER_TAGS: list[str] = ["Auth"]
+
+    @model_validator(mode="after")
+    def _ensure_secret_key(self) -> FullAuthConfig:
+        if self.SECRET_KEY is None:
+            from fastapi_fullauth.utils import generate_secret_key
+
+            object.__setattr__(self, "SECRET_KEY", generate_secret_key())
+            warnings.warn(
+                "FULLAUTH_SECRET_KEY is not set. A random key has been generated. "
+                "Tokens will be invalidated on restart. "
+                "Set FULLAUTH_SECRET_KEY for production.",
+                UserWarning,
+                stacklevel=2,
+            )
+        return self

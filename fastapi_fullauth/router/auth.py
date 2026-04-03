@@ -1,10 +1,14 @@
 from typing import TYPE_CHECKING
 
-from fastapi import APIRouter, Body, Depends, Request, Response
+from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel, EmailStr
 
-from fastapi_fullauth.dependencies.current_user import _extract_token, _get_fullauth
+from fastapi_fullauth.dependencies.current_user import (
+    _extract_token,
+    _get_fullauth,
+    current_user,
+)
 from fastapi_fullauth.exceptions import (
     ACCOUNT_LOCKED_EXCEPTION,
     CREDENTIALS_EXCEPTION,
@@ -21,13 +25,13 @@ from fastapi_fullauth.flows.login import login
 from fastapi_fullauth.flows.logout import logout
 from fastapi_fullauth.flows.password_reset import request_password_reset, reset_password
 from fastapi_fullauth.flows.register import register
-from fastapi_fullauth.types import CreateUserSchema, TokenPair, UserSchema
+from fastapi_fullauth.types import CreateUserSchema, RefreshToken, Route, TokenPair, UserSchema
 
 if TYPE_CHECKING:
     from fastapi_fullauth.fullauth import FullAuth
 
 
-async def _get_custom_claims(fullauth: FullAuth, user: UserSchema) -> dict:
+async def _get_custom_claims(fullauth: "FullAuth", user: UserSchema) -> dict:
     """Build custom token claims if a callback is configured."""
     if fullauth.on_create_token_claims:
         return await fullauth.on_create_token_claims(user)
@@ -51,6 +55,10 @@ class RefreshRequest(BaseModel):
     refresh_token: str
 
 
+class LogoutRequest(BaseModel):
+    refresh_token: str | None = None
+
+
 class RoleAssignment(BaseModel):
     user_id: str
     role: str
@@ -72,21 +80,29 @@ def create_auth_router(
 ) -> APIRouter:
     router = APIRouter()
 
+    @router.get("/me")
+    async def me_route(
+        request: Request,
+        fullauth: "FullAuth" = Depends(_get_fullauth),
+        user: UserSchema = Depends(current_user),
+    ):
+        if not fullauth.is_route_enabled(Route.ME):
+            return Response(status_code=404)
+        return user
+
     @router.post("/register", status_code=201)
     async def register_route(
         request: Request,
-        fullauth: FullAuth = Depends(_get_fullauth),
+        fullauth: "FullAuth" = Depends(_get_fullauth),
         data: create_user_schema = Body(...),  # type: ignore[valid-type]
     ):
-        if not fullauth.is_route_enabled("register"):
+        if not fullauth.is_route_enabled(Route.REGISTER):
             return Response(status_code=404)
 
         # validate password strength
         try:
             fullauth.password_validator.validate(data.password)
         except InvalidPasswordError as e:
-            from fastapi import HTTPException
-
             raise HTTPException(status_code=422, detail=str(e))
 
         try:
@@ -101,10 +117,10 @@ def create_auth_router(
     async def login_route(
         request: Request,
         response: Response,
-        fullauth: FullAuth = Depends(_get_fullauth),
+        fullauth: "FullAuth" = Depends(_get_fullauth),
         form_data: OAuth2PasswordRequestForm = Depends(),
     ):
-        if not fullauth.is_route_enabled("login"):
+        if not fullauth.is_route_enabled(Route.LOGIN):
             return Response(status_code=404)
 
         # build custom claims before login so they get embedded in the token
@@ -144,18 +160,24 @@ def create_auth_router(
     @router.post("/logout", status_code=204)
     async def logout_route(
         request: Request,
-        fullauth: FullAuth = Depends(_get_fullauth),
+        fullauth: "FullAuth" = Depends(_get_fullauth),
         token: str = Depends(_extract_token),
+        data: LogoutRequest | None = Body(None),
     ):
-        if not fullauth.is_route_enabled("logout"):
+        if not fullauth.is_route_enabled(Route.LOGOUT):
             return Response(status_code=404)
 
         try:
-            payload = fullauth.token_engine.decode_token(token)
+            payload = await fullauth.token_engine.decode_token(token)
         except TokenError:
             raise CREDENTIALS_EXCEPTION
 
-        await logout(fullauth.token_engine, payload)
+        await logout(
+            fullauth.token_engine,
+            payload,
+            adapter=fullauth.adapter,
+            refresh_token=data.refresh_token if data else None,
+        )
         await fullauth.hooks.emit("after_logout", user_id=payload.sub)
 
         response = Response(status_code=204)
@@ -167,13 +189,13 @@ def create_auth_router(
     async def refresh_route(
         data: RefreshRequest,
         request: Request,
-        fullauth: FullAuth = Depends(_get_fullauth),
+        fullauth: "FullAuth" = Depends(_get_fullauth),
     ) -> TokenPair:
-        if not fullauth.is_route_enabled("refresh"):
+        if not fullauth.is_route_enabled(Route.REFRESH):
             return Response(status_code=404)
 
         try:
-            payload = fullauth.token_engine.decode_token(data.refresh_token)
+            payload = await fullauth.token_engine.decode_token(data.refresh_token)
         except TokenError:
             raise CREDENTIALS_EXCEPTION
 
@@ -184,37 +206,72 @@ def create_auth_router(
         if user is None or not user.is_active:
             raise CREDENTIALS_EXCEPTION
 
-        # blacklist old refresh token
-        fullauth.token_engine.blacklist_token(payload.jti)
+        # check DB for revocation / reuse detection
+        stored = await fullauth.adapter.get_refresh_token(data.refresh_token)
+        if stored is not None and stored.revoked:
+            # token was already used — possible theft, revoke entire family
+            await fullauth.adapter.revoke_refresh_token_family(stored.family_id)
+            raise CREDENTIALS_EXCEPTION
 
-        roles = await fullauth.adapter.get_user_roles(str(user.id))
-        extra_claims = await _get_custom_claims(fullauth, user)
-        access, refresh = fullauth.token_engine.create_token_pair(
-            user_id=str(user.id), roles=roles, extra=extra_claims
-        )
+        if fullauth.config.REFRESH_TOKEN_ROTATION:
+            # revoke old token
+            await fullauth.token_engine.blacklist_token(
+                payload.jti,
+                ttl_seconds=fullauth.config.REFRESH_TOKEN_EXPIRE_DAYS * 86400,
+            )
+            if stored is not None:
+                await fullauth.adapter.revoke_refresh_token(data.refresh_token)
+
+            # issue new pair in the same family
+            roles = await fullauth.adapter.get_user_roles(str(user.id))
+            extra_claims = await _get_custom_claims(fullauth, user)
+            access, refresh = fullauth.token_engine.create_token_pair(
+                user_id=str(user.id), roles=roles, extra=extra_claims,
+                family_id=payload.family_id,
+            )
+
+            # persist new refresh token
+            new_payload = await fullauth.token_engine.decode_token(refresh)
+            await fullauth.adapter.store_refresh_token(RefreshToken(
+                token=refresh,
+                user_id=str(user.id),
+                expires_at=new_payload.exp,
+                family_id=payload.family_id,
+            ))
+        else:
+            # no rotation — only issue a new access token
+            roles = await fullauth.adapter.get_user_roles(str(user.id))
+            extra_claims = await _get_custom_claims(fullauth, user)
+            access = fullauth.token_engine.create_access_token(
+                user_id=str(user.id), roles=roles, extra=extra_claims,
+            )
+            refresh = data.refresh_token
+
         return TokenPair(access_token=access, refresh_token=refresh)
 
     @router.post("/verify-email/request", status_code=202, response_model=MessageResponse)
     async def verify_email_request_route(
         request: Request,
-        fullauth: FullAuth = Depends(_get_fullauth),
+        fullauth: "FullAuth" = Depends(_get_fullauth),
         token: str = Depends(_extract_token),
     ) -> MessageResponse:
-        if not fullauth.is_route_enabled("verify-email"):
+        if not fullauth.is_route_enabled(Route.VERIFY_EMAIL):
             return Response(status_code=404)
 
         try:
-            payload = fullauth.token_engine.decode_token(token)
+            payload = await fullauth.token_engine.decode_token(token)
         except TokenError:
             raise CREDENTIALS_EXCEPTION
 
         verify_token = await create_email_verification_token(
             fullauth.adapter, fullauth.token_engine, payload.sub
         )
-        if verify_token and fullauth.on_send_verification_email:
+        if verify_token:
             user = await fullauth.adapter.get_user_by_id(payload.sub)
             if user:
-                await fullauth.on_send_verification_email(user.email, verify_token)
+                await fullauth.hooks.emit(
+                    "send_verification_email", email=user.email, token=verify_token
+                )
 
         return MessageResponse(detail="If eligible, a verification email has been sent.")
 
@@ -222,9 +279,9 @@ def create_auth_router(
     async def verify_email_confirm_route(
         data: VerifyEmailRequest,
         request: Request,
-        fullauth: FullAuth = Depends(_get_fullauth),
+        fullauth: "FullAuth" = Depends(_get_fullauth),
     ) -> MessageResponse:
-        if not fullauth.is_route_enabled("verify-email"):
+        if not fullauth.is_route_enabled(Route.VERIFY_EMAIL):
             return Response(status_code=404)
 
         try:
@@ -241,18 +298,19 @@ def create_auth_router(
     async def password_reset_request_route(
         data: PasswordResetRequest,
         request: Request,
-        fullauth: FullAuth = Depends(_get_fullauth),
+        fullauth: "FullAuth" = Depends(_get_fullauth),
     ) -> MessageResponse:
-        if not fullauth.is_route_enabled("password-reset"):
+        if not fullauth.is_route_enabled(Route.PASSWORD_RESET):
             return Response(status_code=404)
 
         token = await request_password_reset(
             fullauth.adapter, fullauth.token_engine, data.email
         )
 
-        # send email if callback is set and token was generated
-        if token and fullauth.on_send_password_reset_email:
-            await fullauth.on_send_password_reset_email(data.email, token)
+        if token:
+            await fullauth.hooks.emit(
+                "send_password_reset_email", email=data.email, token=token
+            )
 
         # always return 202 to prevent email enumeration
         return MessageResponse(detail="If the email exists, a reset link has been sent.")
@@ -261,17 +319,15 @@ def create_auth_router(
     async def password_reset_confirm_route(
         data: PasswordResetConfirm,
         request: Request,
-        fullauth: FullAuth = Depends(_get_fullauth),
+        fullauth: "FullAuth" = Depends(_get_fullauth),
     ) -> MessageResponse:
-        if not fullauth.is_route_enabled("password-reset"):
+        if not fullauth.is_route_enabled(Route.PASSWORD_RESET):
             return Response(status_code=404)
 
         # validate new password strength
         try:
             fullauth.password_validator.validate(data.new_password)
         except InvalidPasswordError as e:
-            from fastapi import HTTPException
-
             raise HTTPException(status_code=422, detail=str(e))
 
         try:
@@ -295,11 +351,11 @@ def create_auth_router(
     async def assign_role_route(
         data: RoleAssignment,
         request: Request,
-        fullauth: FullAuth = Depends(_get_fullauth),
+        fullauth: "FullAuth" = Depends(_get_fullauth),
         token: str = Depends(_extract_token),
     ) -> MessageResponse:
         try:
-            payload = fullauth.token_engine.decode_token(token)
+            payload = await fullauth.token_engine.decode_token(token)
         except TokenError:
             raise CREDENTIALS_EXCEPTION
 
@@ -309,8 +365,6 @@ def create_auth_router(
 
         target = await fullauth.adapter.get_user_by_id(data.user_id)
         if target is None:
-            from fastapi import HTTPException
-
             raise HTTPException(status_code=404, detail="User not found")
 
         await fullauth.adapter.assign_role(data.user_id, data.role)
@@ -320,11 +374,11 @@ def create_auth_router(
     async def remove_role_route(
         data: RoleAssignment,
         request: Request,
-        fullauth: FullAuth = Depends(_get_fullauth),
+        fullauth: "FullAuth" = Depends(_get_fullauth),
         token: str = Depends(_extract_token),
     ) -> MessageResponse:
         try:
-            payload = fullauth.token_engine.decode_token(token)
+            payload = await fullauth.token_engine.decode_token(token)
         except TokenError:
             raise CREDENTIALS_EXCEPTION
 
