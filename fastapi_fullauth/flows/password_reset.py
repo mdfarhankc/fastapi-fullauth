@@ -1,4 +1,3 @@
-from __future__ import annotations
 
 from fastapi_fullauth.adapters.base import AbstractUserAdapter
 from fastapi_fullauth.core.crypto import hash_password
@@ -30,7 +29,7 @@ async def reset_password(
     token: str,
     new_password: str,
 ) -> UserSchema | None:
-    payload = token_engine.decode_token(token)
+    payload = await token_engine.decode_token(token)
 
     if payload.extra.get("purpose") != "password_reset":
         raise TokenError("Invalid password reset token")
@@ -43,6 +42,6 @@ async def reset_password(
     await adapter.set_password(str(user.id), hashed)
 
     # Blacklist the reset token so it can't be reused
-    token_engine.blacklist_token(payload.jti)
+    await token_engine.blacklist_token(payload.jti)
 
     return user

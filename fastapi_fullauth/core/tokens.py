@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -8,6 +6,27 @@ import jwt
 from fastapi_fullauth.config import FullAuthConfig
 from fastapi_fullauth.exceptions import TokenBlacklistedError, TokenError, TokenExpiredError
 from fastapi_fullauth.types import TokenPayload
+
+
+class TokenBlacklist:
+    """Interface for token blacklist backends."""
+
+    async def add(self, jti: str, ttl_seconds: int | None = None) -> None:
+        raise NotImplementedError
+
+    async def is_blacklisted(self, jti: str) -> bool:
+        raise NotImplementedError
+
+
+class InMemoryBlacklist(TokenBlacklist):
+    def __init__(self) -> None:
+        self._blacklisted: set[str] = set()
+
+    async def add(self, jti: str, ttl_seconds: int | None = None) -> None:
+        self._blacklisted.add(jti)
+
+    async def is_blacklisted(self, jti: str) -> bool:
+        return jti in self._blacklisted
 
 
 class TokenEngine:
@@ -49,7 +68,7 @@ class TokenEngine:
         }
         return jwt.encode(payload, self.config.SECRET_KEY, algorithm=self.config.ALGORITHM)
 
-    def decode_token(self, token: str) -> TokenPayload:
+    async def decode_token(self, token: str) -> TokenPayload:
         try:
             data = jwt.decode(token, self.config.SECRET_KEY,
                               algorithms=[self.config.ALGORITHM])
@@ -59,7 +78,7 @@ class TokenEngine:
             raise TokenError(f"Invalid token: {e}")
 
         jti = data.get("jti", "")
-        if self.config.BLACKLIST_ENABLED and self.blacklist.is_blacklisted(jti):
+        if self.config.BLACKLIST_ENABLED and await self.blacklist.is_blacklisted(jti):
             raise TokenBlacklistedError("Token has been revoked")
 
         return TokenPayload(
@@ -70,10 +89,11 @@ class TokenEngine:
             type=data.get("type", "access"),
             roles=data.get("roles", []),
             extra=data.get("extra", {}),
+            family_id=data.get("family_id"),
         )
 
-    def blacklist_token(self, jti: str) -> None:
-        self.blacklist.add(jti)
+    async def blacklist_token(self, jti: str, ttl_seconds: int | None = None) -> None:
+        await self.blacklist.add(jti, ttl_seconds)
 
     def create_token_pair(
         self,
@@ -85,24 +105,3 @@ class TokenEngine:
         access = self.create_access_token(user_id, roles, extra)
         refresh = self.create_refresh_token(user_id, family_id)
         return access, refresh
-
-
-class TokenBlacklist:
-    """Interface for token blacklist backends."""
-
-    def add(self, jti: str) -> None:
-        raise NotImplementedError
-
-    def is_blacklisted(self, jti: str) -> bool:
-        raise NotImplementedError
-
-
-class InMemoryBlacklist(TokenBlacklist):
-    def __init__(self) -> None:
-        self._blacklisted: set[str] = set()
-
-    def add(self, jti: str) -> None:
-        self._blacklisted.add(jti)
-
-    def is_blacklisted(self, jti: str) -> bool:
-        return jti in self._blacklisted

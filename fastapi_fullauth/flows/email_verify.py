@@ -1,4 +1,3 @@
-from __future__ import annotations
 
 from fastapi_fullauth.adapters.base import AbstractUserAdapter
 from fastapi_fullauth.core.tokens import TokenEngine
@@ -29,7 +28,7 @@ async def verify_email(
     token: str,
 ) -> UserSchema | None:
     """Verify a user's email using the verification token. Returns the user."""
-    payload = token_engine.decode_token(token)
+    payload = await token_engine.decode_token(token)
 
     if payload.extra.get("purpose") != "email_verify":
         raise TokenError("Invalid email verification token")
@@ -44,7 +43,7 @@ async def verify_email(
     await adapter.set_user_verified(str(user.id))
 
     # blacklist the token so it can't be reused
-    token_engine.blacklist_token(payload.jti)
+    await token_engine.blacklist_token(payload.jti)
 
     # re-fetch to get updated is_verified
     return await adapter.get_user_by_id(payload.sub)

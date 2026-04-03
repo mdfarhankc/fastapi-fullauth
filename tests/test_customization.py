@@ -1,4 +1,3 @@
-from __future__ import annotations
 
 import pytest
 from fastapi import FastAPI, Request
@@ -355,7 +354,7 @@ async def test_custom_token_claims():
 
         fa = _get_fullauth(request)
         token = request.headers["authorization"].split(" ")[1]
-        payload = fa.token_engine.decode_token(token)
+        payload = await fa.token_engine.decode_token(token)
         return payload.extra
 
     transport = ASGITransport(app=app)
