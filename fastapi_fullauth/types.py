@@ -7,8 +7,6 @@ from pydantic import BaseModel, EmailStr, Field
 
 
 class Route(str, Enum):
-    """Type-safe route names for ``enabled_routes``."""
-
     LOGIN = "login"
     LOGOUT = "logout"
     REGISTER = "register"
@@ -16,6 +14,11 @@ class Route(str, Enum):
     VERIFY_EMAIL = "verify-email"
     PASSWORD_RESET = "password-reset"
     ME = "me"
+    VERIFIED_ME = "verified-me"
+    CHANGE_PASSWORD = "change-password"
+    UPDATE_PROFILE = "update-profile"
+    DELETE_ACCOUNT = "delete-account"
+
 
 UserID = str | int | UUID
 
@@ -40,6 +43,7 @@ class TokenPair(BaseModel):
     access_token: str
     refresh_token: str
     token_type: str = "bearer"
+    expires_in: int | None = None
 
 
 class RefreshToken(BaseModel):

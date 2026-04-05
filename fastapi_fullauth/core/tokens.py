@@ -9,8 +9,6 @@ from fastapi_fullauth.types import TokenPayload
 
 
 class TokenBlacklist:
-    """Interface for token blacklist backends."""
-
     async def add(self, jti: str, ttl_seconds: int | None = None) -> None:
         raise NotImplementedError
 
@@ -70,8 +68,7 @@ class TokenEngine:
 
     async def decode_token(self, token: str) -> TokenPayload:
         try:
-            data = jwt.decode(token, self.config.SECRET_KEY,
-                              algorithms=[self.config.ALGORITHM])
+            data = jwt.decode(token, self.config.SECRET_KEY, algorithms=[self.config.ALGORITHM])
         except jwt.ExpiredSignatureError:
             raise TokenExpiredError("Token has expired")
         except jwt.InvalidTokenError as e:

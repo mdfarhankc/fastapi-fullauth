@@ -5,29 +5,25 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import selectinload
 
 from fastapi_fullauth.adapters.base import AbstractUserAdapter
-from fastapi_fullauth.adapters.sqlmodel.models import RefreshTokenRecord, Role, User
+from fastapi_fullauth.adapters.sqlmodel.models import RefreshTokenRecord, Role, User, UserBase
 from fastapi_fullauth.types import CreateUserSchema, RefreshToken, UserSchema
 
 
 class SQLModelAdapter(AbstractUserAdapter):
-    """Async SQLModel adapter for fastapi-fullauth."""
-
     def __init__(
         self,
         session_maker: async_sessionmaker[AsyncSession],
         user_schema: type[UserSchema] | None = None,
-        user_model: type[User] = User,
+        user_model: type[UserBase] = User,
     ) -> None:
         self._session_maker = session_maker
         self._user_model = user_model
         self._user_schema = (
-            user_schema if user_schema is not None
-            else self._derive_user_schema(user_model)
+            user_schema if user_schema is not None else self._derive_user_schema(user_model)
         )
 
     @staticmethod
     def _derive_user_schema(model_class: type) -> type[UserSchema]:
-        """Build a UserSchema subclass that includes extra fields from the model."""
         from pydantic import create_model
 
         skip = {"hashed_password", "created_at", "roles", "refresh_tokens"}
@@ -61,9 +57,7 @@ class SQLModelAdapter(AbstractUserAdapter):
 
     async def get_user_by_id(self, user_id: str) -> UserSchema | None:
         async with self._session_maker() as session:
-            result = await session.execute(
-                self._user_query().where(self._user_model.id == user_id)
-            )
+            result = await session.execute(self._user_query().where(self._user_model.id == user_id))
             user = result.scalars().first()
             return self._to_schema(user) if user else None
 
@@ -75,9 +69,7 @@ class SQLModelAdapter(AbstractUserAdapter):
             user = result.scalars().first()
             return self._to_schema(user) if user else None
 
-    async def create_user(
-        self, data: CreateUserSchema, hashed_password: str
-    ) -> UserSchema:
+    async def create_user(self, data: CreateUserSchema, hashed_password: str) -> UserSchema:
         async with self._session_maker() as session:
             extra = data.model_dump(exclude={"email", "password"})
             user = self._user_model(
@@ -88,22 +80,17 @@ class SQLModelAdapter(AbstractUserAdapter):
             session.add(user)
             await session.commit()
             # re-fetch with roles loaded
-            result = await session.execute(
-                self._user_query().where(User.id == user.id)
-            )
+            result = await session.execute(self._user_query().where(User.id == user.id))
             user = result.scalars().first()  # type: ignore[assignment]
             return self._to_schema(user)  # type: ignore[arg-type]
 
     async def update_user(self, user_id: str, data: dict[str, Any]) -> UserSchema:
         async with self._session_maker() as session:
             await session.execute(
-                update(self._user_model).where(
-                    self._user_model.id == user_id).values(**data)
+                update(self._user_model).where(self._user_model.id == user_id).values(**data)
             )
             await session.commit()
-            result = await session.execute(
-                self._user_query().where(self._user_model.id == user_id)
-            )
+            result = await session.execute(self._user_query().where(self._user_model.id == user_id))
             user = result.scalars().first()
             if user is None:
                 raise ValueError(f"User {user_id} not found")
@@ -119,9 +106,7 @@ class SQLModelAdapter(AbstractUserAdapter):
 
     async def get_user_roles(self, user_id: str) -> list[str]:
         async with self._session_maker() as session:
-            result = await session.execute(
-                self._user_query().where(self._user_model.id == user_id)
-            )
+            result = await session.execute(self._user_query().where(self._user_model.id == user_id))
             user = result.scalars().first()
             if user is None:
                 return []
@@ -130,8 +115,7 @@ class SQLModelAdapter(AbstractUserAdapter):
     async def get_hashed_password(self, user_id: str) -> str | None:
         async with self._session_maker() as session:
             result = await session.execute(
-                select(self._user_model.hashed_password).where(
-                    self._user_model.id == user_id)
+                select(self._user_model.hashed_password).where(self._user_model.id == user_id)
             )
             return result.scalars().first()
 
@@ -159,8 +143,7 @@ class SQLModelAdapter(AbstractUserAdapter):
     async def get_refresh_token(self, token_str: str) -> RefreshToken | None:
         async with self._session_maker() as session:
             result = await session.execute(
-                select(RefreshTokenRecord).where(
-                    RefreshTokenRecord.token == token_str)
+                select(RefreshTokenRecord).where(RefreshTokenRecord.token == token_str)
             )
             row = result.scalars().first()
             if row is None:
@@ -202,18 +185,14 @@ class SQLModelAdapter(AbstractUserAdapter):
 
     async def assign_role(self, user_id: str, role_name: str) -> None:
         async with self._session_maker() as session:
-            result = await session.execute(
-                select(Role).where(Role.name == role_name)
-            )
+            result = await session.execute(select(Role).where(Role.name == role_name))
             role = result.scalars().first()
             if role is None:
                 role = Role(name=role_name)
                 session.add(role)
                 await session.flush()
 
-            result = await session.execute(
-                self._user_query().where(self._user_model.id == user_id)
-            )
+            result = await session.execute(self._user_query().where(self._user_model.id == user_id))
             user = result.scalars().first()
             if user and role not in user.roles:
                 user.roles.append(role)
@@ -222,9 +201,7 @@ class SQLModelAdapter(AbstractUserAdapter):
 
     async def remove_role(self, user_id: str, role_name: str) -> None:
         async with self._session_maker() as session:
-            result = await session.execute(
-                self._user_query().where(self._user_model.id == user_id)
-            )
+            result = await session.execute(self._user_query().where(self._user_model.id == user_id))
             user = result.scalars().first()
             if user:
                 user.roles = [r for r in user.roles if r.name != role_name]

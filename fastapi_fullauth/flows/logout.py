@@ -1,4 +1,3 @@
-
 from fastapi_fullauth.adapters.base import AbstractUserAdapter
 from fastapi_fullauth.core.tokens import TokenEngine
 from fastapi_fullauth.types import TokenPayload

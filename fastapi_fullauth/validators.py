@@ -4,8 +4,6 @@ from fastapi_fullauth.exceptions import InvalidPasswordError
 
 
 class PasswordValidator:
-    """Configurable password strength validator."""
-
     def __init__(
         self,
         min_length: int = 8,

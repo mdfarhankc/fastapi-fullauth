@@ -1,4 +1,3 @@
-
 import pytest
 from fastapi import Depends, FastAPI
 from httpx import ASGITransport, AsyncClient

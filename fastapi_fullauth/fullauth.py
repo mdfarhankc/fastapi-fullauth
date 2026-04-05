@@ -1,4 +1,3 @@
-
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -11,55 +10,16 @@ from fastapi_fullauth.config import FullAuthConfig
 from fastapi_fullauth.core.tokens import InMemoryBlacklist, TokenBlacklist, TokenEngine
 from fastapi_fullauth.hooks import EventHooks
 from fastapi_fullauth.protection.lockout import LockoutManager
+from fastapi_fullauth.protection.ratelimit import RateLimiter
 from fastapi_fullauth.router.auth import create_auth_router
 from fastapi_fullauth.types import CreateUserSchema, Route, UserSchema
 from fastapi_fullauth.validators import PasswordValidator
 
-# callback type: async def send_email(email: str, token: str) -> None
 EmailSender = Callable[[str, str], Awaitable[Any]]
-
-# callback type: async def claims_builder(user: UserSchema) -> dict
 TokenClaimsBuilder = Callable[[UserSchema], Awaitable[dict[str, Any]]]
 
 
 class FullAuth:
-    """Central auth manager — wire once, get routes + dependencies + middleware.
-
-    Parameters
-    ----------
-    config:
-        Full ``FullAuthConfig`` object.  Mutually exclusive with *secret_key*
-        and ``**config_kwargs``.
-    adapter:
-        Database backend (``InMemoryAdapter``, ``SQLModelAdapter``, …).
-    secret_key:
-        Shortcut for ``FullAuthConfig(SECRET_KEY=...)``.  Omit to
-        auto-generate a random key (dev-mode, warns on startup).
-    backends:
-        Token transport strategies.  Defaults to ``[BearerBackend()]``.
-    on_send_verification_email:
-        ``async def cb(email, token)`` — registered as a
-        ``"send_verification_email"`` hook.
-    on_send_password_reset_email:
-        ``async def cb(email, token)`` — registered as a
-        ``"send_password_reset_email"`` hook.
-    password_validator:
-        Custom ``PasswordValidator``.  Defaults to min-length from config.
-    enabled_routes:
-        Whitelist of routes to include (``Route`` enum or strings).
-        ``None`` means all routes.
-    include_user_in_login:
-        Return user data alongside tokens in the login response.
-    create_user_schema:
-        Pydantic model for registration input.  ``None`` auto-derives from
-        the adapter's ORM model.
-    on_create_token_claims:
-        ``async def cb(user) -> dict`` — extra claims embedded in JWTs.
-    **config_kwargs:
-        Any ``FullAuthConfig`` field in lowercase, e.g.
-        ``api_prefix="/v2"``, ``access_token_expire_minutes=60``.
-    """
-
     def __init__(
         self,
         config: FullAuthConfig | None = None,
@@ -76,28 +36,37 @@ class FullAuth:
         on_create_token_claims: TokenClaimsBuilder | None = None,
         **config_kwargs: Any,
     ) -> None:
-        # --- resolve config ---
+        # either pass a full config object or inline kwargs, not both
         if config is not None and (secret_key is not None or config_kwargs):
-            raise ValueError(
-                "Pass 'config' or inline config params (secret_key=, ...), not both."
-            )
+            raise ValueError("Pass 'config' or inline config params (secret_key=, ...), not both.")
         if config is None:
             overrides: dict[str, Any] = {}
             if secret_key is not None:
                 overrides["SECRET_KEY"] = secret_key
+            # api_prefix -> API_PREFIX, etc.
             overrides.update({k.upper(): v for k, v in config_kwargs.items()})
             config = FullAuthConfig(**overrides)
 
         self.config = config
         self.adapter = adapter
         self.backends = backends or [BearerBackend()]
-        self.token_engine = TokenEngine(
-            config=config, blacklist=self._create_blacklist(config)
-        )
+        self.token_engine = TokenEngine(config=config, blacklist=self._create_blacklist(config))
         self.lockout = LockoutManager(
             max_attempts=config.MAX_LOGIN_ATTEMPTS,
             lockout_seconds=config.LOCKOUT_DURATION_MINUTES * 60,
         )
+
+        self.auth_rate_limiters: dict[str, RateLimiter] = {}
+        if config.AUTH_RATE_LIMIT_ENABLED:
+            window = config.AUTH_RATE_LIMIT_WINDOW_SECONDS
+            self.auth_rate_limiters["login"] = RateLimiter(config.AUTH_RATE_LIMIT_LOGIN, window)
+            self.auth_rate_limiters["register"] = RateLimiter(
+                config.AUTH_RATE_LIMIT_REGISTER, window
+            )
+            self.auth_rate_limiters["password-reset"] = RateLimiter(
+                config.AUTH_RATE_LIMIT_PASSWORD_RESET, window
+            )
+
         self.on_send_verification_email = on_send_verification_email
         self.on_send_password_reset_email = on_send_password_reset_email
         self.password_validator = password_validator or PasswordValidator(
@@ -108,13 +77,11 @@ class FullAuth:
         self.on_create_token_claims = on_create_token_claims
         self.hooks = EventHooks()
 
-        # bridge constructor email callbacks into the hooks system
         if on_send_verification_email:
             self.hooks.on("send_verification_email", on_send_verification_email)
         if on_send_password_reset_email:
             self.hooks.on("send_password_reset_email", on_send_password_reset_email)
 
-        # routes that will be included — None means all
         self._enabled_routes = set(enabled_routes) if enabled_routes else None
         self._router: APIRouter | None = None
 
@@ -122,9 +89,7 @@ class FullAuth:
     def _create_blacklist(config: FullAuthConfig) -> TokenBlacklist:
         if config.BLACKLIST_BACKEND == "redis":
             if not config.REDIS_URL:
-                raise ValueError(
-                    "REDIS_URL must be set when BLACKLIST_BACKEND='redis'"
-                )
+                raise ValueError("REDIS_URL must be set when BLACKLIST_BACKEND='redis'")
             from fastapi_fullauth.core.redis_blacklist import RedisBlacklist
 
             return RedisBlacklist(
@@ -135,12 +100,10 @@ class FullAuth:
 
     @staticmethod
     def _resolve_create_schema(adapter: AbstractUserAdapter) -> type[CreateUserSchema]:
-        """Auto-derive a CreateUserSchema from the adapter's ORM model if possible."""
         user_model = getattr(adapter, "_user_model", None)
         if user_model is None:
             return CreateUserSchema
 
-        # SQLModel models expose model_fields (they're Pydantic models)
         model_fields = getattr(user_model, "model_fields", None)
         if model_fields is None:
             return CreateUserSchema
@@ -148,8 +111,14 @@ class FullAuth:
         from pydantic import create_model
 
         skip = {
-            "id", "hashed_password", "created_at", "is_active",
-            "is_verified", "is_superuser", "roles", "refresh_tokens",
+            "id",
+            "hashed_password",
+            "created_at",
+            "is_active",
+            "is_verified",
+            "is_superuser",
+            "roles",
+            "refresh_tokens",
         }
         base_fields = set(CreateUserSchema.model_fields.keys())
         extra: dict[str, Any] = {}
@@ -157,12 +126,17 @@ class FullAuth:
             if name in base_fields or name in skip:
                 continue
             default = field.default if field.default is not None else None
-            extra[name] = (field.annotation | None, default)  # type: ignore[operator]
+            extra[name] = (field.annotation | None, default)
         if not extra:
             return CreateUserSchema
-        return create_model(
-            "DerivedCreateUserSchema", __base__=CreateUserSchema, **extra
-        )
+        return create_model("DerivedCreateUserSchema", __base__=CreateUserSchema, **extra)
+
+    def check_auth_rate_limit(self, route_name: str, client_ip: str) -> None:
+        limiter = self.auth_rate_limiters.get(route_name)
+        if limiter and not limiter.is_allowed(client_ip):
+            from fastapi import HTTPException
+
+            raise HTTPException(status_code=429, detail="Too many requests. Try again later.")
 
     def is_route_enabled(self, route_name: str) -> bool:
         if self._enabled_routes is None:
@@ -191,7 +165,6 @@ class FullAuth:
         if not auto_middleware:
             return
 
-        # order matters: last added = outermost in Starlette
         if self.config.CSRF_ENABLED:
             from fastapi_fullauth.middleware.csrf import CSRFMiddleware
 

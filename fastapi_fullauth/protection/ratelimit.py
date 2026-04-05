@@ -1,4 +1,3 @@
-
 import time
 from collections import defaultdict
 
@@ -8,8 +7,6 @@ from starlette.responses import JSONResponse, Response
 
 
 class RateLimiter:
-    """In-memory sliding window rate limiter."""
-
     def __init__(self, max_requests: int = 60, window_seconds: int = 60) -> None:
         self.max_requests = max_requests
         self.window_seconds = window_seconds
@@ -22,7 +19,6 @@ class RateLimiter:
         return timestamps
 
     def is_allowed(self, key: str) -> bool:
-        """Return True if the key is under the rate limit, False otherwise."""
         now = time.monotonic()
         timestamps = self._cleanup(key, now)
 
@@ -33,13 +29,11 @@ class RateLimiter:
         return True
 
     def remaining(self, key: str) -> int:
-        """Return the number of requests remaining in the current window."""
         now = time.monotonic()
         timestamps = self._cleanup(key, now)
         return max(0, self.max_requests - len(timestamps))
 
     def reset_time(self, key: str) -> float:
-        """Return seconds until the oldest request in the window expires."""
         now = time.monotonic()
         timestamps = self._cleanup(key, now)
         if not timestamps:
@@ -48,13 +42,10 @@ class RateLimiter:
         return max(0.0, self.window_seconds - (now - oldest))
 
     def reset(self, key: str) -> None:
-        """Clear the counter for a key."""
         self._hits.pop(key, None)
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
-    """Starlette middleware that enforces per-IP rate limiting."""
-
     def __init__(
         self,
         app,  # noqa: ANN001
@@ -63,14 +54,10 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         exempt_paths: list[str] | None = None,
     ) -> None:
         super().__init__(app)
-        self.limiter = RateLimiter(
-            max_requests=max_requests, window_seconds=window_seconds
-        )
+        self.limiter = RateLimiter(max_requests=max_requests, window_seconds=window_seconds)
         self.exempt_paths: list[str] = exempt_paths or []
 
-    async def dispatch(
-        self, request: Request, call_next: RequestResponseEndpoint
-    ) -> Response:
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         if request.url.path in self.exempt_paths:
             return await call_next(request)
 

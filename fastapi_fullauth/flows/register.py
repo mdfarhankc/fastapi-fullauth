@@ -1,4 +1,3 @@
-
 from fastapi_fullauth.adapters.base import AbstractUserAdapter
 from fastapi_fullauth.core.crypto import hash_password
 from fastapi_fullauth.exceptions import UserAlreadyExistsError

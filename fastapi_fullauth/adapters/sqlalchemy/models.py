@@ -23,10 +23,10 @@ class UserModel(FullAuthBase):
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
 
-    roles: Mapped[list[RoleModel]] = relationship(
+    roles: Mapped[list["RoleModel"]] = relationship(
         secondary="fullauth_user_roles", back_populates="users", lazy="selectin"
     )
-    refresh_tokens: Mapped[list[RefreshTokenModel]] = relationship(
+    refresh_tokens: Mapped[list["RefreshTokenModel"]] = relationship(
         back_populates="user", lazy="noload"
     )
 

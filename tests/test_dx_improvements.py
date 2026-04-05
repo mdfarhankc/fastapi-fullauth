@@ -1,17 +1,15 @@
 """Tests for the 6 DX improvements."""
 
-
 import warnings
 
 import pytest
-from fastapi import Depends, FastAPI
+from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
 from fastapi_fullauth import FullAuth, FullAuthConfig, Route
 from fastapi_fullauth.adapters.memory import InMemoryAdapter
 from fastapi_fullauth.dependencies import current_user
 from fastapi_fullauth.types import CreateUserSchema, UserSchema
-
 
 # ---------------------------------------------------------------------------
 # 1. Route enum

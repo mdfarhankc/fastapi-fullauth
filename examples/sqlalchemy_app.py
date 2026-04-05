@@ -1,10 +1,7 @@
 """
-SQLAlchemy example — full-featured FullAuth with PostgreSQL/SQLite.
-Shows custom user fields with auto-derived schemas.
+SQLAlchemy example with custom user fields.
 
 Run: uv run uvicorn examples.sqlalchemy_app:app --reload
-Docs: http://localhost:8000/docs
-
 Requires: uv add fastapi-fullauth[sqlalchemy] aiosqlite
 """
 
@@ -28,15 +25,9 @@ from fastapi_fullauth.dependencies import (
 )
 from fastapi_fullauth.types import UserSchema
 
-# --- Database setup ---
-
 DATABASE_URL = "sqlite+aiosqlite:///fullauth_sqlalchemy_demo.db"
 engine = create_async_engine(DATABASE_URL)
 session_maker = async_sessionmaker(engine, expire_on_commit=False)
-
-
-# --- Custom user model (extend the built-in one) ---
-# That's it — schemas are auto-derived from the model columns!
 
 
 class MyUser(UserModel):
@@ -47,27 +38,16 @@ class MyUser(UserModel):
     phone: Mapped[str] = mapped_column(String(20), nullable=True, default="")
 
 
-# --- Email callbacks ---
-
-
 async def send_verification_email(email: str, token: str):
-    print(f"\n[VERIFY] To: {email}")
-    print(f"[VERIFY] Token: {token}\n")
+    print(f"\n[VERIFY] To: {email}\n[VERIFY] Token: {token}\n")
 
 
 async def send_password_reset_email(email: str, token: str):
-    print(f"\n[RESET] To: {email}")
-    print(f"[RESET] Token: {token}\n")
-
-
-# --- Custom token claims ---
+    print(f"\n[RESET] To: {email}\n[RESET] Token: {token}\n")
 
 
 async def add_custom_claims(user: UserSchema) -> dict:
     return {"display_name": getattr(user, "display_name", "")}
-
-
-# --- App setup ---
 
 
 @asynccontextmanager
@@ -89,9 +69,6 @@ fullauth = FullAuth(
     include_user_in_login=True,
 )
 fullauth.init_app(app)
-
-
-# --- Protected routes ---
 
 
 @app.get("/api/v1/me")

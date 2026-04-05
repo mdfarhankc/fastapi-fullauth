@@ -1,4 +1,3 @@
-
 from typing import Any
 
 from uuid_utils import uuid7
@@ -8,8 +7,6 @@ from fastapi_fullauth.types import CreateUserSchema, RefreshToken, UserSchema
 
 
 class InMemoryAdapter(AbstractUserAdapter):
-    """Simple in-memory adapter for testing and prototyping."""
-
     def __init__(self, user_schema: type[UserSchema] = UserSchema) -> None:
         self._user_schema = user_schema
         self._users: dict[str, dict[str, Any]] = {}
@@ -29,9 +26,7 @@ class InMemoryAdapter(AbstractUserAdapter):
                 return self._user_schema(**data)
         return None
 
-    async def create_user(
-        self, data: CreateUserSchema, hashed_password: str
-    ) -> UserSchema:
+    async def create_user(self, data: CreateUserSchema, hashed_password: str) -> UserSchema:
         user_id = str(uuid7())
         user_data = {
             "id": user_id,
@@ -52,7 +47,7 @@ class InMemoryAdapter(AbstractUserAdapter):
 
     async def update_user(self, user_id: str, data: dict[str, Any]) -> UserSchema:
         self._users[user_id].update(data)
-        return UserSchema(**self._users[user_id])
+        return self._user_schema(**self._users[user_id])
 
     async def delete_user(self, user_id: str) -> None:
         self._users.pop(user_id, None)

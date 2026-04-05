@@ -1,4 +1,3 @@
-
 import pytest
 from fastapi import FastAPI, Request
 from httpx import ASGITransport, AsyncClient
@@ -78,9 +77,7 @@ async def test_hooks_fire_on_logout(hooks_client, hook_log):
         data={"username": "hook@test.com", "password": "securepass123"},
     )
     token = r.json()["access_token"]
-    await hooks_client.post(
-        "/api/v1/auth/logout", headers={"Authorization": f"Bearer {token}"}
-    )
+    await hooks_client.post("/api/v1/auth/logout", headers={"Authorization": f"Bearer {token}"})
     assert any(event == "logout" for event, _ in hook_log)
 
 
@@ -345,7 +342,6 @@ async def test_custom_token_claims():
     app = FastAPI()
     fullauth.init_app(app)
 
-
     @app.get("/claims")
     async def get_claims(
         request: Request,
@@ -369,9 +365,7 @@ async def test_custom_token_claims():
         )
         token = r.json()["access_token"]
 
-        r = await client.get(
-            "/claims", headers={"Authorization": f"Bearer {token}"}
-        )
+        r = await client.get("/claims", headers={"Authorization": f"Bearer {token}"})
         assert r.status_code == 200
         data = r.json()
         assert data["org_id"] == "org-123"

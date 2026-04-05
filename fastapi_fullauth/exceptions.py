@@ -2,50 +2,48 @@ from fastapi import HTTPException, status
 
 
 class FullAuthError(Exception):
-    """Base exception for all fastapi-fullauth errors."""
+    pass
 
 
 class AuthenticationError(FullAuthError):
-    """Raised when authentication fails."""
+    pass
 
 
 class AuthorizationError(FullAuthError):
-    """Raised when authorization fails."""
+    pass
 
 
 class TokenError(FullAuthError):
-    """Raised for token-related errors (expired, invalid, blacklisted)."""
+    pass
 
 
 class UserAlreadyExistsError(FullAuthError):
-    """Raised when trying to create a user that already exists."""
+    pass
 
 
 class UserNotFoundError(FullAuthError):
-    """Raised when a user cannot be found."""
+    pass
 
 
 class InvalidPasswordError(FullAuthError):
-    """Raised when password validation fails."""
+    pass
 
 
 class AccountLockedError(FullAuthError):
-    """Raised when account is locked due to too many failed attempts."""
+    pass
 
 
 class TokenBlacklistedError(TokenError):
-    """Raised when a blacklisted token is used."""
+    pass
 
 
 class TokenExpiredError(TokenError):
-    """Raised when an expired token is used."""
+    pass
 
 
 class RefreshTokenReuseError(TokenError):
-    """Raised when a refresh token is reused (possible theft)."""
+    pass
 
-
-# --- HTTP exceptions (ready to raise in routes) ---
 
 CREDENTIALS_EXCEPTION = HTTPException(
     status_code=status.HTTP_401_UNAUTHORIZED,

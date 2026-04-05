@@ -1,4 +1,3 @@
-
 from fastapi_fullauth.adapters.base import AbstractUserAdapter
 from fastapi_fullauth.core.crypto import verify_password
 from fastapi_fullauth.core.tokens import TokenEngine
@@ -45,11 +44,17 @@ async def login(
 
     # persist refresh token in DB for revocation / reuse detection
     refresh_payload = await token_engine.decode_token(refresh)
-    await adapter.store_refresh_token(RefreshToken(
-        token=refresh,
-        user_id=str(user.id),
-        expires_at=refresh_payload.exp,
-        family_id=refresh_payload.family_id,
-    ))
+    await adapter.store_refresh_token(
+        RefreshToken(
+            token=refresh,
+            user_id=str(user.id),
+            expires_at=refresh_payload.exp,
+            family_id=refresh_payload.family_id,
+        )
+    )
 
-    return TokenPair(access_token=access, refresh_token=refresh)
+    return TokenPair(
+        access_token=access,
+        refresh_token=refresh,
+        expires_in=token_engine.config.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+    )

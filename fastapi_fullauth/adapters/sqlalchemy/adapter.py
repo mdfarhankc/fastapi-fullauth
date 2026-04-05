@@ -17,24 +17,23 @@ _SA_TYPE_MAP: dict[type, type] = {}
 
 
 def _get_sa_type_map() -> dict[type, type]:
-    """Lazy-init the SA type map to avoid import at module level."""
     if not _SA_TYPE_MAP:
         from sqlalchemy import Boolean, Float, Integer, Numeric, String, Text
 
-        _SA_TYPE_MAP.update({
-            String: str,
-            Text: str,
-            Integer: int,
-            Float: float,
-            Numeric: float,
-            Boolean: bool,
-        })
+        _SA_TYPE_MAP.update(
+            {
+                String: str,
+                Text: str,
+                Integer: int,
+                Float: float,
+                Numeric: float,
+                Boolean: bool,
+            }
+        )
     return _SA_TYPE_MAP
 
 
 class SQLAlchemyAdapter(AbstractUserAdapter):
-    """Async SQLAlchemy adapter for fastapi-fullauth."""
-
     def __init__(
         self,
         session_maker: async_sessionmaker[AsyncSession],
@@ -44,13 +43,11 @@ class SQLAlchemyAdapter(AbstractUserAdapter):
         self._session_maker = session_maker
         self._user_model = user_model
         self._user_schema = (
-            user_schema if user_schema is not None
-            else self._derive_user_schema(user_model)
+            user_schema if user_schema is not None else self._derive_user_schema(user_model)
         )
 
     @staticmethod
     def _derive_user_schema(model_class: type) -> type[UserSchema]:
-        """Build a UserSchema subclass that includes extra columns from the model."""
         from pydantic import create_model
 
         skip = {"hashed_password", "created_at"}
@@ -93,9 +90,7 @@ class SQLAlchemyAdapter(AbstractUserAdapter):
             user = result.scalars().first()
             return self._to_schema(user) if user else None
 
-    async def create_user(
-        self, data: CreateUserSchema, hashed_password: str
-    ) -> UserSchema:
+    async def create_user(self, data: CreateUserSchema, hashed_password: str) -> UserSchema:
         async with self._session_maker() as session:
             extra = data.model_dump(exclude={"email", "password"})
             user = self._user_model(
@@ -111,8 +106,7 @@ class SQLAlchemyAdapter(AbstractUserAdapter):
     async def update_user(self, user_id: str, data: dict[str, Any]) -> UserSchema:
         async with self._session_maker() as session:
             await session.execute(
-                update(self._user_model).where(
-                    self._user_model.id == user_id).values(**data)
+                update(self._user_model).where(self._user_model.id == user_id).values(**data)
             )
             await session.commit()
             result = await session.execute(
@@ -146,8 +140,7 @@ class SQLAlchemyAdapter(AbstractUserAdapter):
     async def get_hashed_password(self, user_id: str) -> str | None:
         async with self._session_maker() as session:
             result = await session.execute(
-                select(self._user_model.hashed_password).where(
-                    self._user_model.id == user_id)
+                select(self._user_model.hashed_password).where(self._user_model.id == user_id)
             )
             return result.scalars().first()
 
@@ -175,8 +168,7 @@ class SQLAlchemyAdapter(AbstractUserAdapter):
     async def get_refresh_token(self, token_str: str) -> RefreshToken | None:
         async with self._session_maker() as session:
             result = await session.execute(
-                select(RefreshTokenModel).where(
-                    RefreshTokenModel.token == token_str)
+                select(RefreshTokenModel).where(RefreshTokenModel.token == token_str)
             )
             row = result.scalars().first()
             if row is None:
@@ -210,18 +202,14 @@ class SQLAlchemyAdapter(AbstractUserAdapter):
     async def set_user_verified(self, user_id: str) -> None:
         async with self._session_maker() as session:
             await session.execute(
-                update(UserModel)
-                .where(UserModel.id == user_id)
-                .values(is_verified=True)
+                update(UserModel).where(UserModel.id == user_id).values(is_verified=True)
             )
             await session.commit()
 
     async def assign_role(self, user_id: str, role_name: str) -> None:
         async with self._session_maker() as session:
             # get or create the role
-            result = await session.execute(
-                select(RoleModel).where(RoleModel.name == role_name)
-            )
+            result = await session.execute(select(RoleModel).where(RoleModel.name == role_name))
             role = result.scalars().first()
             if role is None:
                 role = RoleModel(name=role_name)

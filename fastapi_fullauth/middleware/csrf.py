@@ -1,4 +1,3 @@
-
 import hashlib
 import hmac
 import secrets
@@ -11,21 +10,16 @@ SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
 
 
 def _sign_token(token: str, secret: str) -> str:
-    """Return an HMAC-SHA256 signature for the given token."""
-    return hmac.new(
-        secret.encode(), token.encode(), hashlib.sha256
-    ).hexdigest()
+    return hmac.new(secret.encode(), token.encode(), hashlib.sha256).hexdigest()
 
 
 def _make_csrf_value(secret: str) -> str:
-    """Generate a random token and return ``token.signature``."""
     token = secrets.token_hex(32)
     sig = _sign_token(token, secret)
     return f"{token}.{sig}"
 
 
 def _verify_csrf_value(value: str, secret: str) -> bool:
-    """Verify that a ``token.signature`` pair is authentic."""
     parts = value.split(".", 1)
     if len(parts) != 2:
         return False
@@ -37,34 +31,8 @@ def _verify_csrf_value(value: str, secret: str) -> bool:
 class CSRFMiddleware(BaseHTTPMiddleware):
     """Double-submit cookie CSRF protection.
 
-    On safe requests (GET/HEAD/OPTIONS) a signed CSRF cookie is set when one is
-    not already present.  On state-changing requests the middleware requires an
-    ``X-CSRF-Token`` header whose value matches the cookie.  Both values are
-    HMAC-signed so they cannot be forged without the server secret.
-
-    Parameters
-    ----------
-    app:
-        The ASGI application.
-    secret:
-        The HMAC signing secret.  Falls back to ``FullAuthConfig.CSRF_SECRET``
-        then ``FullAuthConfig.SECRET_KEY`` when *None*.
-    cookie_name:
-        Name of the CSRF cookie.  Defaults to ``"fullauth_csrf"``.
-    exempt_paths:
-        A list of path prefixes that skip CSRF validation (e.g.
-        ``["/auth/login"]``).
-    cookie_secure:
-        Whether the cookie requires HTTPS.
-    cookie_samesite:
-        ``SameSite`` attribute for the cookie.
-    cookie_httponly:
-        Whether the cookie is ``HttpOnly``.  Defaults to *False* so that
-        front-end JavaScript can read the token and send it back in the header.
-    cookie_domain:
-        Optional domain scope for the cookie.
-    header_name:
-        Name of the request header carrying the CSRF token.
+    Sets a signed CSRF cookie on safe requests. State-changing requests
+    must include an X-CSRF-Token header matching the cookie value.
     """
 
     def __init__(
@@ -93,13 +61,8 @@ class CSRFMiddleware(BaseHTTPMiddleware):
         self.cookie_domain = cookie_domain
         self.header_name = header_name
 
-    # ------------------------------------------------------------------
-    # Helpers
-    # ------------------------------------------------------------------
-
     @staticmethod
     def _resolve_secret() -> str:
-        """Pull the secret from FullAuthConfig at import time."""
         from fastapi_fullauth.config import FullAuthConfig
 
         cfg = FullAuthConfig()  # type: ignore[call-arg]
@@ -108,10 +71,6 @@ class CSRFMiddleware(BaseHTTPMiddleware):
     def _is_exempt(self, path: str) -> bool:
         return any(path.startswith(p) for p in self.exempt_paths)
 
-    # ------------------------------------------------------------------
-    # Middleware entry point
-    # ------------------------------------------------------------------
-
     async def dispatch(self, request: Request, call_next) -> Response:
         method = request.method.upper()
         path = request.url.path
@@ -119,7 +78,6 @@ class CSRFMiddleware(BaseHTTPMiddleware):
         if self._is_exempt(path):
             return await call_next(request)
 
-        # --- Safe methods: ensure a CSRF cookie is present ---------------
         if method in SAFE_METHODS:
             response = await call_next(request)
             if self.cookie_name not in request.cookies:
@@ -135,7 +93,6 @@ class CSRFMiddleware(BaseHTTPMiddleware):
                 )
             return response
 
-        # --- State-changing methods: validate token ----------------------
         cookie_value = request.cookies.get(self.cookie_name)
         header_value = request.headers.get(self.header_name)
 

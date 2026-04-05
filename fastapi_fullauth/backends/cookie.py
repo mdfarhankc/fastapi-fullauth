@@ -1,4 +1,3 @@
-
 from fastapi import Request, Response
 
 from fastapi_fullauth.backends.base import AbstractBackend
@@ -6,8 +5,6 @@ from fastapi_fullauth.config import FullAuthConfig
 
 
 class CookieBackend(AbstractBackend):
-    """HttpOnly cookie backend."""
-
     def __init__(self, config: FullAuthConfig) -> None:
         self.config = config
 

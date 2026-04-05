@@ -1,10 +1,7 @@
 """
-SQLModel example — full-featured FullAuth with PostgreSQL/SQLite.
-Shows custom user fields with auto-derived schemas (no manual schema classes needed).
+SQLModel example with custom user fields.
 
 Run: uv run uvicorn examples.sqlmodel_app:app --reload
-Docs: http://localhost:8000/docs
-
 Requires: uv add fastapi-fullauth[sqlmodel] aiosqlite
 """
 
@@ -29,15 +26,9 @@ from fastapi_fullauth.dependencies import (
 )
 from fastapi_fullauth.types import UserSchema
 
-# --- Database setup ---
-
 DATABASE_URL = "sqlite+aiosqlite:///fullauth_sqlmodel_demo.db"
 engine = create_async_engine(DATABASE_URL)
 session_maker = async_sessionmaker(engine, expire_on_commit=False)
-
-
-# --- Custom user model (extend the built-in one) ---
-# That's it — schemas are auto-derived from the model fields!
 
 
 class MyUser(UserBase, table=True):
@@ -47,32 +38,21 @@ class MyUser(UserBase, table=True):
     display_name: str = Field(default="", max_length=100)
     phone: str = Field(default="", max_length=20)
 
-    # must re-declare relationships when subclassing UserBase
+    # need to re-declare these when subclassing UserBase
     roles: list[Role] = Relationship(back_populates="users", link_model=UserRoleLink)
     refresh_tokens: list[RefreshTokenRecord] = Relationship(back_populates="user")
 
 
-# --- Email callbacks ---
-
-
 async def send_verification_email(email: str, token: str):
-    print(f"\n[VERIFY] To: {email}")
-    print(f"[VERIFY] Token: {token}\n")
+    print(f"\n[VERIFY] To: {email}\n[VERIFY] Token: {token}\n")
 
 
 async def send_password_reset_email(email: str, token: str):
-    print(f"\n[RESET] To: {email}")
-    print(f"[RESET] Token: {token}\n")
-
-
-# --- Custom token claims ---
+    print(f"\n[RESET] To: {email}\n[RESET] Token: {token}\n")
 
 
 async def add_custom_claims(user: UserSchema) -> dict:
     return {"display_name": getattr(user, "display_name", "")}
-
-
-# --- App setup ---
 
 
 @asynccontextmanager
@@ -94,9 +74,6 @@ fullauth = FullAuth(
     include_user_in_login=True,
 )
 fullauth.init_app(app)
-
-
-# --- Protected routes ---
 
 
 @app.get("/api/v1/me")

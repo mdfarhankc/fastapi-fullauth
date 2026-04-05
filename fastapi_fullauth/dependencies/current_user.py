@@ -1,4 +1,3 @@
-
 from typing import TYPE_CHECKING
 
 from fastapi import Depends, Request
@@ -15,13 +14,12 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=F
 
 
 def configure_oauth2_scheme(token_url: str) -> None:
-    """Called by FullAuth.init_app() to set the correct tokenUrl."""
     global oauth2_scheme
     oauth2_scheme = OAuth2PasswordBearer(tokenUrl=token_url, auto_error=False)
 
 
 def _get_fullauth(request: Request) -> FullAuth:
-    fullauth: "FullAuth" | None = request.app.state.fullauth  # type: ignore[union-attr]
+    fullauth: FullAuth | None = request.app.state.fullauth  # type: ignore[union-attr]
     if fullauth is None:
         raise RuntimeError("FullAuth not initialized on app.state")
     return fullauth

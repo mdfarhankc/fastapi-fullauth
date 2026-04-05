@@ -2,8 +2,6 @@ from fastapi_fullauth.core.tokens import TokenBlacklist
 
 
 class RedisBlacklist(TokenBlacklist):
-    """Async Redis-backed token blacklist with automatic TTL expiry."""
-
     def __init__(self, redis_url: str, default_ttl_seconds: int = 1800) -> None:
         try:
             import redis.asyncio as aioredis

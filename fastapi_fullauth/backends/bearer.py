@@ -1,12 +1,9 @@
-
 from fastapi import Request, Response
 
 from fastapi_fullauth.backends.base import AbstractBackend
 
 
 class BearerBackend(AbstractBackend):
-    """Bearer token backend — reads from Authorization header."""
-
     async def read_token(self, request: Request) -> str | None:
         auth = request.headers.get("Authorization")
         if auth and auth.startswith("Bearer "):

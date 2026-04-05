@@ -1,4 +1,3 @@
-
 import pytest
 
 
@@ -143,9 +142,7 @@ async def test_password_reset_flow(client, registered_user, fullauth):
     # generate token manually for testing (normally sent via email)
     from fastapi_fullauth.flows.password_reset import request_password_reset
 
-    token = await request_password_reset(
-        fullauth.adapter, fullauth.token_engine, "user@test.com"
-    )
+    token = await request_password_reset(fullauth.adapter, fullauth.token_engine, "user@test.com")
     assert token is not None
 
     # confirm reset

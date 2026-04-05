@@ -1,5 +1,3 @@
-"""fastapi-fullauth: Production-grade auth for FastAPI."""
-
 __version__ = "0.1.0"
 
 from fastapi_fullauth.config import FullAuthConfig

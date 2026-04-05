@@ -1,10 +1,7 @@
-
 import time
 
 
 class LockoutManager:
-    """In-memory brute-force lockout tracker."""
-
     def __init__(self, max_attempts: int = 5, lockout_seconds: int = 900) -> None:
         self.max_attempts = max_attempts
         self.lockout_seconds = lockout_seconds
@@ -16,8 +13,7 @@ class LockoutManager:
         if until is None:
             return False
         if time.monotonic() >= until:
-            self._locked_until.pop(key, None)
-            self._attempts.pop(key, None)
+            self.clear(key)
             return False
         return True
 
