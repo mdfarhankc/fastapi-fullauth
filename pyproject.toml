@@ -5,7 +5,14 @@ description = "Production-grade, async-native authentication and authorization l
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
-keywords = ["fastapi", "authentication", "authorization", "security", "jwt", "webauthn"]
+keywords = [
+    "fastapi",
+    "authentication",
+    "authorization",
+    "security",
+    "jwt",
+    "argon2",
+]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Framework :: FastAPI",
@@ -15,6 +22,7 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Security",
     "Typing :: Typed",
 ]
@@ -42,13 +50,15 @@ magic-link = ["itsdangerous>=2.1"]
 audit = []
 tenants = []
 all = [
-    "sqlalchemy[asyncio]>=2.0", "alembic>=1.13",
+    "sqlalchemy[asyncio]>=2.0",
+    "alembic>=1.13",
     "sqlmodel>=0.0.16",
     "tortoise-orm>=0.21",
     "beanie>=1.25",
     "redis>=5.0",
     "webauthn>=2.0",
-    "pyotp>=2.9", "qrcode>=7.4",
+    "pyotp>=2.9",
+    "qrcode>=7.4",
     "httpx-oauth>=0.13",
     "itsdangerous>=2.1",
 ]
