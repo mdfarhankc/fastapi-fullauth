@@ -36,7 +36,7 @@ class UserSchema(BaseModel):
 
 class CreateUserSchema(BaseModel):
     email: EmailStr
-    password: str = Field(min_length=8)
+    password: str
 
 
 class TokenPair(BaseModel):

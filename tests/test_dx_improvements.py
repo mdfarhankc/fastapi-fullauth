@@ -219,7 +219,7 @@ async def test_builtin_me_route():
         )
         r = await client.post(
             "/api/v1/auth/login",
-            data={"username": "me@test.com", "password": "securepass123"},
+            json={"email": "me@test.com", "password": "securepass123"},
         )
         token = r.json()["access_token"]
 
@@ -249,7 +249,7 @@ async def test_me_route_disabled():
         )
         r = await client.post(
             "/api/v1/auth/login",
-            data={"username": "me@test.com", "password": "securepass123"},
+            json={"email": "me@test.com", "password": "securepass123"},
         )
         token = r.json()["access_token"]
 

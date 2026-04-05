@@ -61,7 +61,7 @@ async def test_hooks_fire_on_login(hooks_client, hook_log):
     )
     await hooks_client.post(
         "/api/v1/auth/login",
-        data={"username": "hook@test.com", "password": "securepass123"},
+        json={"email": "hook@test.com", "password": "securepass123"},
     )
     assert ("login", "hook@test.com") in hook_log
 
@@ -74,7 +74,7 @@ async def test_hooks_fire_on_logout(hooks_client, hook_log):
     )
     r = await hooks_client.post(
         "/api/v1/auth/login",
-        data={"username": "hook@test.com", "password": "securepass123"},
+        json={"email": "hook@test.com", "password": "securepass123"},
     )
     token = r.json()["access_token"]
     await hooks_client.post("/api/v1/auth/logout", headers={"Authorization": f"Bearer {token}"})
@@ -240,7 +240,7 @@ async def test_login_includes_user():
         )
         r = await client.post(
             "/api/v1/auth/login",
-            data={"username": "user@test.com", "password": "securepass123"},
+            json={"email": "user@test.com", "password": "securepass123"},
         )
         data = r.json()
         assert "access_token" in data
@@ -252,7 +252,7 @@ async def test_login_includes_user():
 async def test_login_excludes_user_by_default(client, registered_user):
     r = await client.post(
         "/api/v1/auth/login",
-        data={"username": "user@test.com", "password": "securepass123"},
+        json={"email": "user@test.com", "password": "securepass123"},
     )
     data = r.json()
     assert "access_token" in data
@@ -361,7 +361,7 @@ async def test_custom_token_claims():
         )
         r = await client.post(
             "/api/v1/auth/login",
-            data={"username": "claims@test.com", "password": "securepass123"},
+            json={"email": "claims@test.com", "password": "securepass123"},
         )
         token = r.json()["access_token"]
 

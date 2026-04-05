@@ -1,7 +1,7 @@
 from typing import TYPE_CHECKING
 
 from fastapi import Depends, Request
-from fastapi.security import OAuth2PasswordBearer
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from fastapi_fullauth.exceptions import CREDENTIALS_EXCEPTION
 from fastapi_fullauth.types import UserSchema
@@ -9,16 +9,11 @@ from fastapi_fullauth.types import UserSchema
 if TYPE_CHECKING:
     from fastapi_fullauth.fullauth import FullAuth
 
-# default scheme — updated by FullAuth.init_app() with the correct tokenUrl
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=False)
+# shows the lock icon + "Bearer token" input in Swagger UI
+_bearer_scheme = HTTPBearer(auto_error=False)
 
 
-def configure_oauth2_scheme(token_url: str) -> None:
-    global oauth2_scheme
-    oauth2_scheme = OAuth2PasswordBearer(tokenUrl=token_url, auto_error=False)
-
-
-def _get_fullauth(request: Request) -> FullAuth:
+def _get_fullauth(request: Request) -> "FullAuth":
     fullauth: FullAuth | None = request.app.state.fullauth  # type: ignore[union-attr]
     if fullauth is None:
         raise RuntimeError("FullAuth not initialized on app.state")
@@ -28,11 +23,10 @@ def _get_fullauth(request: Request) -> FullAuth:
 async def _extract_token(
     request: Request,
     fullauth: "FullAuth" = Depends(_get_fullauth),
-    bearer_token: str | None = Depends(oauth2_scheme),
+    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
 ) -> str:
-    # try OAuth2 bearer from Swagger first
-    if bearer_token is not None:
-        return bearer_token
+    if credentials is not None:
+        return credentials.credentials
     # fallback to backends (cookie, etc.)
     for backend in fullauth.backends:
         token = await backend.read_token(request)

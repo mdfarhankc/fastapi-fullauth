@@ -18,6 +18,8 @@ class FullAuthConfig(BaseSettings):
     PASSWORD_HASH_ALGORITHM: Literal["argon2id", "bcrypt"] = "argon2id"
     PASSWORD_MIN_LENGTH: int = 8
 
+    LOGIN_FIELD: str = "email"
+
     MAX_LOGIN_ATTEMPTS: int = 5
     LOCKOUT_DURATION_MINUTES: int = 15
 

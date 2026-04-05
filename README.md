@@ -48,13 +48,12 @@ from sqlmodel import Field, Relationship
 
 class MyUser(UserBase, table=True):
     __tablename__ = "fullauth_users"
-    __table_args__ = {"extend_existing": True}
 
     display_name: str = Field(default="", max_length=100)
     phone: str = Field(default="", max_length=20)
 
-    roles: list[Role] = Relationship(back_populates="users", link_model=UserRoleLink)
-    refresh_tokens: list[RefreshTokenRecord] = Relationship(back_populates="user")
+    roles: list[Role] = Relationship(link_model=UserRoleLink)
+    refresh_tokens: list[RefreshTokenRecord] = Relationship()
 
 fullauth = FullAuth(
     secret_key="...",
@@ -145,6 +144,20 @@ SecurityHeaders, CSRF, and rate limiting are auto-wired from config flags. Pass 
 
 Login, register, and password-reset have per-IP rate limits enabled by default (5/3/3 per minute). Configure via `AUTH_RATE_LIMIT_*` settings.
 
+## Login field
+
+By default, login uses `email`. Change it to any field on your user model:
+
+```python
+# username login: POST /login {"username": "john", "password": "..."}
+fullauth = FullAuth(secret_key="...", adapter=adapter, login_field="username")
+
+# phone login: POST /login {"phone": "+1234567890", "password": "..."}
+fullauth = FullAuth(secret_key="...", adapter=adapter, login_field="phone")
+```
+
+The Swagger UI and request body update automatically. The adapter looks up users by that field.
+
 ## Development
 
 ```bash
@@ -152,6 +165,10 @@ git clone https://github.com/mdfarhankc/fastapi-fullauth.git
 cd fastapi-fullauth
 uv sync --dev --extra sqlalchemy --extra sqlmodel
 uv run pytest tests/ -v
+
+# run examples
+uv run uvicorn examples.memory_app.main:app --reload
+uv run uvicorn examples.sqlmodel_app.main:app --reload
 ```
 
 ## License

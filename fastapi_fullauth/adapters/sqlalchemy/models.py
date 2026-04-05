@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Text, Uuid
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from uuid_utils import uuid7
 
 
@@ -10,8 +10,18 @@ class FullAuthBase(DeclarativeBase):
     pass
 
 
-class UserModel(FullAuthBase):
-    __tablename__ = "fullauth_users"
+class UserBase:
+    """Mixin with all auth columns. Subclass this + FullAuthBase to create your user table:
+
+    class User(UserBase, FullAuthBase):
+        __tablename__ = "fullauth_users"
+
+        display_name: Mapped[str] = mapped_column(String(100), default="")
+        roles: Mapped[list[RoleModel]] = relationship(
+            secondary="fullauth_user_roles", lazy="selectin"
+        )
+        refresh_tokens: Mapped[list[RefreshTokenModel]] = relationship(lazy="noload")
+    """
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid7)
     email: Mapped[str] = mapped_column(unique=True, index=True, nullable=False)
@@ -23,23 +33,12 @@ class UserModel(FullAuthBase):
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
 
-    roles: Mapped[list["RoleModel"]] = relationship(
-        secondary="fullauth_user_roles", back_populates="users", lazy="selectin"
-    )
-    refresh_tokens: Mapped[list["RefreshTokenModel"]] = relationship(
-        back_populates="user", lazy="noload"
-    )
-
 
 class RoleModel(FullAuthBase):
     __tablename__ = "fullauth_roles"
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid7)
     name: Mapped[str] = mapped_column(unique=True, nullable=False)
-
-    users: Mapped[list[UserModel]] = relationship(
-        secondary="fullauth_user_roles", back_populates="roles", lazy="noload"
-    )
 
 
 class UserRoleModel(FullAuthBase):
@@ -67,5 +66,3 @@ class RefreshTokenModel(FullAuthBase):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
-
-    user: Mapped[UserModel] = relationship(back_populates="refresh_tokens", lazy="noload")

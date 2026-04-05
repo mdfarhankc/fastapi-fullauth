@@ -20,6 +20,23 @@ TokenClaimsBuilder = Callable[[UserSchema], Awaitable[dict[str, Any]]]
 
 
 class FullAuth:
+    """Main auth manager. Pass a config object or inline kwargs (not both).
+
+    Args:
+        config: Full FullAuthConfig object. Mutually exclusive with secret_key / **config_kwargs.
+        adapter: Database backend (InMemoryAdapter, SQLModelAdapter, etc.).
+        secret_key: Shortcut for config. Omit to auto-generate in dev mode.
+        backends: Token transport strategies. Defaults to [BearerBackend()].
+        on_send_verification_email: async def cb(email, token) — also registered as a hook.
+        on_send_password_reset_email: async def cb(email, token) — also registered as a hook.
+        password_validator: Custom PasswordValidator. Defaults to min-length from config.
+        enabled_routes: Whitelist of routes (Route enum or strings). None = all.
+        include_user_in_login: Include user data in login response.
+        create_user_schema: Pydantic model for registration. None = auto-derived from adapter model.
+        on_create_token_claims: async def cb(user) -> dict — extra claims embedded in JWTs.
+        **config_kwargs: Any FullAuthConfig field as lowercase, e.g. api_prefix="/v2" -> API_PREFIX.
+    """
+
     def __init__(
         self,
         config: FullAuthConfig | None = None,
@@ -149,16 +166,14 @@ class FullAuth:
             prefix = self.config.API_PREFIX.rstrip("/") + self.config.AUTH_ROUTER_PREFIX
             self._router = APIRouter(prefix=prefix, tags=self.config.ROUTER_TAGS)
             self._router.include_router(
-                create_auth_router(create_user_schema=self.create_user_schema)
+                create_auth_router(
+                    create_user_schema=self.create_user_schema,
+                    login_field=self.config.LOGIN_FIELD,
+                )
             )
         return self._router
 
     def init_app(self, app: FastAPI, *, auto_middleware: bool = True) -> None:
-        from fastapi_fullauth.dependencies.current_user import configure_oauth2_scheme
-
-        prefix = self.config.API_PREFIX.rstrip("/") + self.config.AUTH_ROUTER_PREFIX
-        configure_oauth2_scheme(f"{prefix}/login")
-
         app.state.fullauth = self
         app.include_router(self.router)
 

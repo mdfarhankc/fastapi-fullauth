@@ -40,7 +40,7 @@ async def test_login_persists_refresh_token():
         )
         r = await client.post(
             "/api/v1/auth/login",
-            data={"username": "t@t.com", "password": "securepass123"},
+            json={"email": "t@t.com", "password": "securepass123"},
         )
         refresh_token = r.json()["refresh_token"]
 
@@ -68,7 +68,7 @@ async def test_refresh_persists_new_token_and_revokes_old():
         )
         r = await client.post(
             "/api/v1/auth/login",
-            data={"username": "t@t.com", "password": "securepass123"},
+            json={"email": "t@t.com", "password": "securepass123"},
         )
         old_refresh = r.json()["refresh_token"]
 
@@ -111,7 +111,7 @@ async def test_refresh_reuse_blocked_by_blacklist():
         )
         r = await client.post(
             "/api/v1/auth/login",
-            data={"username": "t@t.com", "password": "securepass123"},
+            json={"email": "t@t.com", "password": "securepass123"},
         )
         old_refresh = r.json()["refresh_token"]
 
@@ -142,7 +142,7 @@ async def test_refresh_reuse_revokes_family_when_blacklist_lost():
         )
         r = await client.post(
             "/api/v1/auth/login",
-            data={"username": "t@t.com", "password": "securepass123"},
+            json={"email": "t@t.com", "password": "securepass123"},
         )
         old_refresh = r.json()["refresh_token"]
 
@@ -198,7 +198,7 @@ async def test_refresh_no_rotation():
         )
         r = await client.post(
             "/api/v1/auth/login",
-            data={"username": "t@t.com", "password": "securepass123"},
+            json={"email": "t@t.com", "password": "securepass123"},
         )
         original_refresh = r.json()["refresh_token"]
 
@@ -233,7 +233,7 @@ async def test_logout_revokes_refresh_family():
         )
         r = await client.post(
             "/api/v1/auth/login",
-            data={"username": "t@t.com", "password": "securepass123"},
+            json={"email": "t@t.com", "password": "securepass123"},
         )
         tokens = r.json()
 
@@ -261,7 +261,7 @@ async def test_logout_without_body_still_works():
         )
         r = await client.post(
             "/api/v1/auth/login",
-            data={"username": "t@t.com", "password": "securepass123"},
+            json={"email": "t@t.com", "password": "securepass123"},
         )
         token = r.json()["access_token"]
 

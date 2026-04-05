@@ -9,31 +9,32 @@ from fastapi_fullauth.types import RefreshToken, TokenPair
 async def login(
     adapter: AbstractUserAdapter,
     token_engine: TokenEngine,
-    email: str,
+    identifier: str,
     password: str,
+    login_field: str = "email",
     lockout: LockoutManager | None = None,
     extra_claims: dict | None = None,
 ) -> TokenPair:
-    if lockout and lockout.is_locked(email):
-        raise AccountLockedError(f"Account {email} is temporarily locked")
+    if lockout and lockout.is_locked(identifier):
+        raise AccountLockedError(f"Account {identifier} is temporarily locked")
 
-    user = await adapter.get_user_by_email(email)
+    user = await adapter.get_user_by_field(login_field, identifier)
     if user is None:
         if lockout:
-            lockout.record_failure(email)
-        raise AuthenticationError("Invalid email or password")
+            lockout.record_failure(identifier)
+        raise AuthenticationError("Invalid credentials")
 
     hashed = await adapter.get_hashed_password(str(user.id))
     if hashed is None or not verify_password(password, hashed):
         if lockout:
-            lockout.record_failure(email)
-        raise AuthenticationError("Invalid email or password")
+            lockout.record_failure(identifier)
+        raise AuthenticationError("Invalid credentials")
 
     if not user.is_active:
         raise AuthenticationError("User account is deactivated")
 
     if lockout:
-        lockout.clear(email)
+        lockout.clear(identifier)
 
     roles = await adapter.get_user_roles(str(user.id))
     access, refresh = token_engine.create_token_pair(
@@ -42,7 +43,6 @@ async def login(
         extra=extra_claims,
     )
 
-    # persist refresh token in DB for revocation / reuse detection
     refresh_payload = await token_engine.decode_token(refresh)
     await adapter.store_refresh_token(
         RefreshToken(

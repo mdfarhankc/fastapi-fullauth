@@ -1,7 +1,6 @@
 from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response
-from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel, EmailStr
 
 from fastapi_fullauth.core.crypto import hash_password, verify_password
@@ -56,6 +55,12 @@ class RefreshRequest(BaseModel):
     refresh_token: str
 
 
+def _build_login_model(login_field: str) -> type[BaseModel]:
+    from pydantic import create_model
+
+    return create_model("LoginRequest", **{login_field: (str, ...), "password": (str, ...)})
+
+
 class LogoutRequest(BaseModel):
     refresh_token: str | None = None
 
@@ -76,7 +81,9 @@ class MessageResponse(BaseModel):
 
 def create_auth_router(
     create_user_schema: type[CreateUserSchema] = CreateUserSchema,
+    login_field: str = "email",
 ) -> APIRouter:
+    LoginRequest = _build_login_model(login_field)  # noqa: N806
     router = APIRouter()
 
     @router.get("/me")
@@ -198,10 +205,10 @@ def create_auth_router(
 
     @router.post("/login")
     async def login_route(
+        data: LoginRequest,  # type: ignore[valid-type]
         request: Request,
         response: Response,
         fullauth: "FullAuth" = Depends(_get_fullauth),
-        form_data: OAuth2PasswordRequestForm = Depends(),
     ):
         if not fullauth.is_route_enabled(Route.LOGIN):
             return Response(status_code=404)
@@ -209,15 +216,17 @@ def create_auth_router(
         client_ip = request.client.host if request.client else "unknown"
         fullauth.check_auth_rate_limit("login", client_ip)
 
-        user = await fullauth.adapter.get_user_by_email(form_data.username)
+        identifier = getattr(data, login_field)
+        user = await fullauth.adapter.get_user_by_field(login_field, identifier)
         extra_claims = await _get_custom_claims(fullauth, user) if user else {}
 
         try:
             tokens = await login(
                 adapter=fullauth.adapter,
                 token_engine=fullauth.token_engine,
-                email=form_data.username,
-                password=form_data.password,
+                identifier=identifier,
+                password=data.password,
+                login_field=login_field,
                 lockout=fullauth.lockout,
                 extra_claims=extra_claims,
             )

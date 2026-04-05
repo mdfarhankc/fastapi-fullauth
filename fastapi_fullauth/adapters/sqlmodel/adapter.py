@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import selectinload
 
 from fastapi_fullauth.adapters.base import AbstractUserAdapter
-from fastapi_fullauth.adapters.sqlmodel.models import RefreshTokenRecord, Role, User, UserBase
+from fastapi_fullauth.adapters.sqlmodel.models import RefreshTokenRecord, Role, UserBase
 from fastapi_fullauth.types import CreateUserSchema, RefreshToken, UserSchema
 
 
@@ -13,8 +13,8 @@ class SQLModelAdapter(AbstractUserAdapter):
     def __init__(
         self,
         session_maker: async_sessionmaker[AsyncSession],
+        user_model: type[UserBase],
         user_schema: type[UserSchema] | None = None,
-        user_model: type[UserBase] = User,
     ) -> None:
         self._session_maker = session_maker
         self._user_model = user_model
@@ -43,7 +43,7 @@ class SQLModelAdapter(AbstractUserAdapter):
         # type: ignore[arg-type]
         return select(self._user_model).options(selectinload(self._user_model.roles))
 
-    def _to_schema(self, user: User) -> UserSchema:
+    def _to_schema(self, user) -> UserSchema:
         # convert Role objects to role name strings before validation
         data = {}
         for field_name in self._user_schema.model_fields:
@@ -62,10 +62,14 @@ class SQLModelAdapter(AbstractUserAdapter):
             return self._to_schema(user) if user else None
 
     async def get_user_by_email(self, email: str) -> UserSchema | None:
+        return await self.get_user_by_field("email", email)
+
+    async def get_user_by_field(self, field: str, value: str) -> UserSchema | None:
+        column = getattr(self._user_model, field, None)
+        if column is None:
+            raise ValueError(f"Model has no field '{field}'")
         async with self._session_maker() as session:
-            result = await session.execute(
-                self._user_query().where(self._user_model.email == email)
-            )
+            result = await session.execute(self._user_query().where(column == value))
             user = result.scalars().first()
             return self._to_schema(user) if user else None
 
@@ -80,7 +84,7 @@ class SQLModelAdapter(AbstractUserAdapter):
             session.add(user)
             await session.commit()
             # re-fetch with roles loaded
-            result = await session.execute(self._user_query().where(User.id == user.id))
+            result = await session.execute(self._user_query().where(self._user_model.id == user.id))
             user = result.scalars().first()  # type: ignore[assignment]
             return self._to_schema(user)  # type: ignore[arg-type]
 
@@ -98,7 +102,9 @@ class SQLModelAdapter(AbstractUserAdapter):
 
     async def delete_user(self, user_id: str) -> None:
         async with self._session_maker() as session:
-            result = await session.execute(select(User).where(self._user_model.id == user_id))
+            result = await session.execute(
+                select(self._user_model).where(self._user_model.id == user_id)
+            )
             user = result.scalars().first()
             if user:
                 await session.delete(user)

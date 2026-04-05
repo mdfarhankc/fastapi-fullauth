@@ -31,7 +31,7 @@ async def _register_and_login(client):
     )
     r = await client.post(
         "/api/v1/auth/login",
-        data={"username": "t@t.com", "password": "securepass123"},
+        json={"email": "t@t.com", "password": "securepass123"},
     )
     return r.json()
 
@@ -59,7 +59,7 @@ async def test_change_password():
         # can login with new password
         r = await client.post(
             "/api/v1/auth/login",
-            data={"username": "t@t.com", "password": "newpass456!!"},
+            json={"email": "t@t.com", "password": "newpass456!!"},
         )
         assert r.status_code == 200
 
@@ -132,7 +132,7 @@ async def test_update_profile():
         )
         r = await client.post(
             "/api/v1/auth/login",
-            data={"username": "t@t.com", "password": "securepass123"},
+            json={"email": "t@t.com", "password": "securepass123"},
         )
         headers = {"Authorization": f"Bearer {r.json()['access_token']}"}
 
@@ -243,13 +243,13 @@ async def test_login_rate_limited():
         for _ in range(2):
             await client.post(
                 "/api/v1/auth/login",
-                data={"username": "t@t.com", "password": "securepass123"},
+                json={"email": "t@t.com", "password": "securepass123"},
             )
 
         # 3rd should be rate limited
         r = await client.post(
             "/api/v1/auth/login",
-            data={"username": "t@t.com", "password": "securepass123"},
+            json={"email": "t@t.com", "password": "securepass123"},
         )
         assert r.status_code == 429
 

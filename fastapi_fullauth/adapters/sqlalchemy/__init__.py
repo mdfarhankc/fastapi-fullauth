@@ -3,7 +3,7 @@ from fastapi_fullauth.adapters.sqlalchemy.models import (
     FullAuthBase,
     RefreshTokenModel,
     RoleModel,
-    UserModel,
+    UserBase,
     UserRoleModel,
 )
 
@@ -12,6 +12,6 @@ __all__ = [
     "RefreshTokenModel",
     "RoleModel",
     "SQLAlchemyAdapter",
-    "UserModel",
+    "UserBase",
     "UserRoleModel",
 ]

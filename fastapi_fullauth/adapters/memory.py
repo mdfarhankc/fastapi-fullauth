@@ -21,8 +21,11 @@ class InMemoryAdapter(AbstractUserAdapter):
         return self._user_schema(**data)
 
     async def get_user_by_email(self, email: str) -> UserSchema | None:
+        return await self.get_user_by_field("email", email)
+
+    async def get_user_by_field(self, field: str, value: str) -> UserSchema | None:
         for data in self._users.values():
-            if data["email"] == email:
+            if data.get(field) == value:
                 return self._user_schema(**data)
         return None
 

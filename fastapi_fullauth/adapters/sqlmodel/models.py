@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 from sqlalchemy import Column, DateTime
-from sqlmodel import Field, Relationship, SQLModel
+from sqlmodel import Field, SQLModel
 from uuid_utils import uuid7
 
 
@@ -19,21 +19,16 @@ class Role(SQLModel, table=True):
     id: UUID = Field(default_factory=uuid7, primary_key=True)
     name: str = Field(unique=True, index=True, max_length=100)
 
-    users: list["User"] = Relationship(back_populates="roles", link_model=UserRoleLink)
-
 
 class UserBase(SQLModel):
-    """Non-table base with all auth fields.
+    """Mixin with all auth fields. Subclass this to create your user table:
 
-    Subclass this (NOT User) when adding custom fields:
+    class User(UserBase, table=True):
+        __tablename__ = "fullauth_users"
 
-        class MyUser(UserBase, table=True):
-            __tablename__ = "fullauth_users"
-            __table_args__ = {"extend_existing": True}
-
-            display_name: str = Field(default="", max_length=100)
-            roles: list[Role] = Relationship(back_populates="users", link_model=UserRoleLink)
-            refresh_tokens: list["RefreshTokenRecord"] = Relationship(back_populates="user")
+        full_name: str = Field(default="", max_length=100)
+        roles: list[Role] = Relationship(link_model=UserRoleLink)
+        refresh_tokens: list["RefreshTokenRecord"] = Relationship()
     """
 
     id: UUID = Field(default_factory=uuid7, primary_key=True)
@@ -46,15 +41,6 @@ class UserBase(SQLModel):
         default_factory=lambda: datetime.now(timezone.utc),
         sa_column=Column(DateTime(timezone=True), nullable=False),
     )
-
-
-class User(UserBase, table=True):
-    """Default user table. Do NOT subclass this — subclass UserBase instead."""
-
-    __tablename__ = "fullauth_users"
-
-    roles: list[Role] = Relationship(back_populates="users", link_model=UserRoleLink)
-    refresh_tokens: list["RefreshTokenRecord"] = Relationship(back_populates="user")
 
 
 class RefreshTokenRecord(SQLModel, table=True):
@@ -70,5 +56,3 @@ class RefreshTokenRecord(SQLModel, table=True):
         default_factory=lambda: datetime.now(timezone.utc),
         sa_column=Column(DateTime(timezone=True), nullable=False),
     )
-
-    user: User | None = Relationship(back_populates="refresh_tokens")

@@ -48,7 +48,7 @@ async def _register_and_login(client):
     )
     r = await client.post(
         "/api/v1/auth/login",
-        data={"username": "verify@test.com", "password": "securepass123"},
+        json={"email": "verify@test.com", "password": "securepass123"},
     )
     return r.json()
 

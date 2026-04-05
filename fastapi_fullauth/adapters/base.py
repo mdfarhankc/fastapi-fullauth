@@ -17,6 +17,14 @@ class AbstractUserAdapter(ABC):
     @abstractmethod
     async def get_user_by_email(self, email: str) -> UserSchema | None: ...
 
+    async def get_user_by_field(self, field: str, value: str) -> UserSchema | None:
+        """Look up a user by an arbitrary field. Override for non-email login."""
+        if field == "email":
+            return await self.get_user_by_email(value)
+        raise NotImplementedError(
+            f"Lookup by '{field}' not implemented — override get_user_by_field()"
+        )
+
     @abstractmethod
     async def create_user(self, data: CreateUserSchema, hashed_password: str) -> UserSchema: ...
 

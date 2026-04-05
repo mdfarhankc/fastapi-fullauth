@@ -37,7 +37,7 @@ async def _register_and_login(client, email="user@test.com"):
     )
     r = await client.post(
         "/api/v1/auth/login",
-        data={"username": email, "password": "securepass123"},
+        json={"email": email, "password": "securepass123"},
     )
     return r.json()
 
@@ -82,7 +82,7 @@ async def test_assign_role(role_client, role_app):
     # user already exists, just login
     r = await role_client.post(
         "/api/v1/auth/login",
-        data={"username": "normal@test.com", "password": "securepass123"},
+        json={"email": "normal@test.com", "password": "securepass123"},
     )
     tokens2 = r.json()
 

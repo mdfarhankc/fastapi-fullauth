@@ -8,7 +8,7 @@ from fastapi_fullauth.adapters.base import AbstractUserAdapter
 from fastapi_fullauth.adapters.sqlalchemy.models import (
     RefreshTokenModel,
     RoleModel,
-    UserModel,
+    UserBase,
 )
 from fastapi_fullauth.types import CreateUserSchema, RefreshToken, UserSchema
 
@@ -37,8 +37,8 @@ class SQLAlchemyAdapter(AbstractUserAdapter):
     def __init__(
         self,
         session_maker: async_sessionmaker[AsyncSession],
+        user_model: type[UserBase],
         user_schema: type[UserSchema] | None = None,
-        user_model: type[UserModel] = UserModel,
     ) -> None:
         self._session_maker = session_maker
         self._user_model = user_model
@@ -64,7 +64,7 @@ class SQLAlchemyAdapter(AbstractUserAdapter):
             return UserSchema
         return create_model("DerivedUserSchema", __base__=UserSchema, **extra)
 
-    def _to_schema(self, user: UserModel) -> UserSchema:
+    def _to_schema(self, user) -> UserSchema:
         data = {}
         for field_name in self._user_schema.model_fields:
             val = getattr(user, field_name, None)
@@ -83,10 +83,14 @@ class SQLAlchemyAdapter(AbstractUserAdapter):
             return self._to_schema(user) if user else None
 
     async def get_user_by_email(self, email: str) -> UserSchema | None:
+        return await self.get_user_by_field("email", email)
+
+    async def get_user_by_field(self, field: str, value: str) -> UserSchema | None:
+        column = getattr(self._user_model, field, None)
+        if column is None:
+            raise ValueError(f"Model has no field '{field}'")
         async with self._session_maker() as session:
-            result = await session.execute(
-                select(self._user_model).where(self._user_model.email == email)
-            )
+            result = await session.execute(select(self._user_model).where(column == value))
             user = result.scalars().first()
             return self._to_schema(user) if user else None
 
@@ -147,8 +151,8 @@ class SQLAlchemyAdapter(AbstractUserAdapter):
     async def set_password(self, user_id: str, hashed_password: str) -> None:
         async with self._session_maker() as session:
             await session.execute(
-                update(UserModel)
-                .where(UserModel.id == user_id)
+                update(self._user_model)
+                .where(self._user_model.id == user_id)
                 .values(hashed_password=hashed_password)
             )
             await session.commit()
@@ -202,7 +206,9 @@ class SQLAlchemyAdapter(AbstractUserAdapter):
     async def set_user_verified(self, user_id: str) -> None:
         async with self._session_maker() as session:
             await session.execute(
-                update(UserModel).where(UserModel.id == user_id).values(is_verified=True)
+                update(self._user_model)
+                .where(self._user_model.id == user_id)
+                .values(is_verified=True)
             )
             await session.commit()
 
@@ -218,9 +224,9 @@ class SQLAlchemyAdapter(AbstractUserAdapter):
 
             # load user with roles
             result = await session.execute(
-                select(UserModel)
-                .options(selectinload(UserModel.roles))
-                .where(UserModel.id == user_id)
+                select(self._user_model)
+                .options(selectinload(self._user_model.roles))
+                .where(self._user_model.id == user_id)
             )
             user = result.scalars().first()
             if user and role not in user.roles:
@@ -230,9 +236,9 @@ class SQLAlchemyAdapter(AbstractUserAdapter):
     async def remove_role(self, user_id: str, role_name: str) -> None:
         async with self._session_maker() as session:
             result = await session.execute(
-                select(UserModel)
-                .options(selectinload(UserModel.roles))
-                .where(UserModel.id == user_id)
+                select(self._user_model)
+                .options(selectinload(self._user_model.roles))
+                .where(self._user_model.id == user_id)
             )
             user = result.scalars().first()
             if user:

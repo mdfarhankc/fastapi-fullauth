@@ -1,38 +1,47 @@
 # Changelog
 
-## 0.1.0 (unreleased)
+## 0.2.0
+
+### Breaking changes
+
+- **JSON login** — `POST /login` now accepts `{"email": "...", "password": "..."}` instead of form data. Swagger auth uses bearer token input instead of username/password form.
+- **No default User model** — SQLModel and SQLAlchemy adapters no longer ship a concrete `User`/`UserModel` table class. Users must define their own model from `UserBase`. This eliminates relationship conflicts when subclassing.
+- **`user_model` is required** — `SQLModelAdapter(session_maker, user_model=MyUser)` — no default.
+- **Removed `min_length=8`** from `CreateUserSchema` — password length is now fully controlled by `PasswordValidator` and `PASSWORD_MIN_LENGTH` config.
+- **`SQLAlchemyAdapter` renamed `UserModel` to `UserBase`** — import `UserBase` instead.
 
 ### Added
 
-- **Core auth engine**: JWT access/refresh tokens with rotation and blacklisting
-- **Password hashing**: Argon2id by default via argon2-cffi
-- **Auth flows**: register, login, logout, password reset, email verification
-- **Brute-force protection**: progressive lockout after configurable failed attempts
-- **Auth backends**: Bearer token and HttpOnly cookie backends (pluggable)
-- **FastAPI dependencies**: `current_user`, `current_active_verified_user`, `require_role`, `require_permission`, `CurrentUser`, `VerifiedUser`
-- **Pre-built router**: `/auth/me` (GET/PATCH/DELETE), `/auth/me/verified`, `/auth/register`, `/auth/login`, `/auth/logout`, `/auth/refresh`, `/auth/change-password`, `/auth/password-reset/*`, `/auth/verify-email/*`, `/auth/admin/*`
-- **Change password**: `POST /auth/change-password` — verifies current password, validates new password strength
-- **Update profile**: `PATCH /auth/me` — update user fields with protected field filtering
-- **Delete account**: `DELETE /auth/me` — self-deletion for logged-in users
-- **Token expires_in**: login and refresh responses include `expires_in` (seconds) for frontend token refresh scheduling
-- **Auth route rate limiting**: per-IP rate limits on login, register, and password-reset routes (configurable via `AUTH_RATE_LIMIT_*`)
-- **Flat config**: `FullAuth(secret_key=..., adapter=...)` — no `FullAuthConfig` wrapper needed
-- **Auto SECRET_KEY**: omit `secret_key` in dev mode, auto-generates with a warning
-- **Route enum**: `Route.LOGIN`, `Route.ME`, etc. for type-safe `enabled_routes`
-- **Auto-derive schemas**: `UserSchema` and `CreateUserSchema` auto-generated from ORM model fields
-- **Auto-wire middleware**: SecurityHeaders, CSRF, and RateLimit auto-added by `init_app()` from config flags
-- **Email hooks**: `send_verification_email` and `send_password_reset_email` in the hooks system
-- **Event hooks**: `after_register`, `after_login`, `after_logout`, `after_password_reset`, `after_email_verify`
-- **Redis blacklist**: async `RedisBlacklist` backend via `redis.asyncio` — activate with `BLACKLIST_BACKEND="redis"`
-- **Refresh token persistence**: stored in DB with family tracking for theft detection
-- **Token reuse detection**: replaying a used refresh token revokes the entire token family
-- **Logout refresh revocation**: pass `refresh_token` in logout body to revoke the session family
-- **Configuration**: `FullAuthConfig` via pydantic-settings with `FULLAUTH_` env var prefix, or inline kwargs
-- **ORM adapters**: SQLAlchemy (async), SQLModel (async), and InMemory (for testing)
-- **Modular extras**: `[sqlalchemy]`, `[sqlmodel]`, `[redis]` — install only what you need
-- **Alembic migration helpers**: `include_fullauth_models()` and `get_fullauth_metadata()`
-- **Password validation**: configurable rules (length, uppercase, digit, special, blocked list)
-- **Custom token claims**: `on_create_token_claims` callback embedded in JWTs
-- **Utilities**: `create_superuser()`, `generate_secret_key()`
-- **Test suite**: 97 tests covering all auth flows, tokens, middleware, DX, refresh token security, and new endpoints
-- **Examples**: InMemory, SQLAlchemy, and SQLModel demo apps
+- `POST /auth/change-password` — verifies current password, validates new
+- `PATCH /auth/me` — update profile with protected field filtering
+- `DELETE /auth/me` — self-deletion
+- `expires_in` in login/refresh responses
+- Per-IP auth rate limiting on login, register, password-reset (`AUTH_RATE_LIMIT_*` config)
+- `LOGIN_FIELD` config — login by email, username, phone, or any model field
+- `get_user_by_field()` on all adapters for generic field lookups
+- Structured example apps (`examples/memory_app/`, `examples/sqlmodel_app/`)
+
+### Fixed
+
+- `InMemoryAdapter.update_user` returning base `UserSchema` instead of custom schema
+- Stale `User.id` / `UserModel` references in adapter queries after model removal
+- Parameter ordering in adapter constructors (required params before optional)
+
+## 0.1.0
+
+Initial release.
+
+- JWT access/refresh tokens with rotation and blacklisting
+- Argon2id password hashing
+- Auth flows: register, login, logout, password reset, email verification
+- Brute-force lockout, per-IP rate limiting, CSRF, security headers
+- Bearer and cookie backends
+- SQLAlchemy, SQLModel, and InMemory adapters
+- Redis blacklist backend
+- Refresh token persistence with family tracking and reuse detection
+- Flat config (`secret_key=...`) or full `FullAuthConfig` object
+- Auto-derive schemas from ORM model fields
+- Auto-wire middleware from config flags
+- Route enum, event hooks, email hooks
+- `current_user`, `current_active_verified_user`, `require_role` dependencies
+- 97 tests

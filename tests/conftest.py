@@ -57,7 +57,7 @@ async def registered_user(client):
 async def auth_headers(client, registered_user):
     r = await client.post(
         "/api/v1/auth/login",
-        data={"username": "user@test.com", "password": "securepass123"},
+        json={"email": "user@test.com", "password": "securepass123"},
     )
     tokens = r.json()
     return {"Authorization": f"Bearer {tokens['access_token']}"}
@@ -67,6 +67,6 @@ async def auth_headers(client, registered_user):
 async def login_tokens(client, registered_user):
     r = await client.post(
         "/api/v1/auth/login",
-        data={"username": "user@test.com", "password": "securepass123"},
+        json={"email": "user@test.com", "password": "securepass123"},
     )
     return r.json()

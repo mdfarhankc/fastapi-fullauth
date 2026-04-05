@@ -36,7 +36,7 @@ async def test_register_weak_password(client):
 async def test_login_success(client, registered_user):
     r = await client.post(
         "/api/v1/auth/login",
-        data={"username": "user@test.com", "password": "securepass123"},
+        json={"email": "user@test.com", "password": "securepass123"},
     )
     assert r.status_code == 200
     data = r.json()
@@ -49,7 +49,7 @@ async def test_login_success(client, registered_user):
 async def test_login_wrong_password(client, registered_user):
     r = await client.post(
         "/api/v1/auth/login",
-        data={"username": "user@test.com", "password": "wrongpassword"},
+        json={"email": "user@test.com", "password": "wrongpassword"},
     )
     assert r.status_code == 401
 
@@ -58,7 +58,7 @@ async def test_login_wrong_password(client, registered_user):
 async def test_login_nonexistent_user(client):
     r = await client.post(
         "/api/v1/auth/login",
-        data={"username": "nobody@test.com", "password": "whatever123"},
+        json={"email": "nobody@test.com", "password": "whatever123"},
     )
     assert r.status_code == 401
 
@@ -155,14 +155,14 @@ async def test_password_reset_flow(client, registered_user, fullauth):
     # login with new password
     r = await client.post(
         "/api/v1/auth/login",
-        data={"username": "user@test.com", "password": "newpassword123"},
+        json={"email": "user@test.com", "password": "newpassword123"},
     )
     assert r.status_code == 200
 
     # old password should fail
     r = await client.post(
         "/api/v1/auth/login",
-        data={"username": "user@test.com", "password": "securepass123"},
+        json={"email": "user@test.com", "password": "securepass123"},
     )
     assert r.status_code == 401
 
