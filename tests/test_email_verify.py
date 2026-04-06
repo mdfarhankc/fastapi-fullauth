@@ -19,11 +19,8 @@ def verify_app(sent_emails):
 
     adapter = InMemoryAdapter()
     config = FullAuthConfig(SECRET_KEY="test-secret-key-that-is-long-enough-32b")
-    fullauth = FullAuth(
-        config=config,
-        adapter=adapter,
-        on_send_verification_email=mock_send,
-    )
+    fullauth = FullAuth(config=config, adapter=adapter)
+    fullauth.hooks.on("send_verification_email", mock_send)
     app = FastAPI()
     fullauth.init_app(app)
 

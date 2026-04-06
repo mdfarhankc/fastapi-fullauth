@@ -190,11 +190,8 @@ async def test_password_reset_email_callback():
 
     adapter = InMemoryAdapter()
     config = FullAuthConfig(SECRET_KEY="test-secret-key-that-is-long-enough-32b")
-    fullauth = FullAuth(
-        config=config,
-        adapter=adapter,
-        on_send_password_reset_email=on_reset_email,
-    )
+    fullauth = FullAuth(config=config, adapter=adapter)
+    fullauth.hooks.on("send_password_reset_email", on_reset_email)
     app = FastAPI()
     fullauth.init_app(app)
 

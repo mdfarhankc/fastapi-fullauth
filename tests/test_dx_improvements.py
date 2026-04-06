@@ -6,31 +6,21 @@ import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
-from fastapi_fullauth import FullAuth, FullAuthConfig, Route
+from fastapi_fullauth import FullAuth, FullAuthConfig
 from fastapi_fullauth.adapters.memory import InMemoryAdapter
 from fastapi_fullauth.dependencies import current_user
 from fastapi_fullauth.types import CreateUserSchema, UserSchema
 
-# ---------------------------------------------------------------------------
-# 1. Route enum
-# ---------------------------------------------------------------------------
-
-
-def test_route_enum_equals_string():
-    assert Route.LOGIN == "login"
-    assert Route.VERIFY_EMAIL == "verify-email"
-
 
 @pytest.mark.asyncio
-async def test_enabled_routes_with_enum():
-    """Route enum works the same as bare strings for enabled_routes."""
+async def test_enabled_routes_with_literals():
     fullauth = FullAuth(
         config=FullAuthConfig(
             SECRET_KEY="test-key-32b-long-enough-here!!!",
             INJECT_SECURITY_HEADERS=False,
         ),
         adapter=InMemoryAdapter(),
-        enabled_routes=[Route.LOGIN, Route.LOGOUT],
+        enabled_routes=["login", "logout"],
     )
     app = FastAPI()
     fullauth.init_app(app, auto_middleware=False)
@@ -236,7 +226,7 @@ async def test_me_route_disabled():
     fullauth = FullAuth(
         secret_key="test-key-32b-long-enough-here!!!",
         adapter=InMemoryAdapter(),
-        enabled_routes=[Route.LOGIN, Route.REGISTER],
+        enabled_routes=["login", "register"],
     )
     app = FastAPI()
     fullauth.init_app(app, auto_middleware=False)
