@@ -6,7 +6,6 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi_fullauth.exceptions import CREDENTIALS_EXCEPTION
 from fastapi_fullauth.types import UserSchema
 
-
 if TYPE_CHECKING:
     from fastapi_fullauth.fullauth import FullAuth
 
