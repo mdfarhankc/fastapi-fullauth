@@ -65,16 +65,31 @@ No need to create separate schema classes or subclass the adapter. Registration 
 
 ## Protected routes
 
+Use the `Annotated` types for clean route signatures:
+
 ```python
-from fastapi import Depends
-from fastapi_fullauth.dependencies import current_user, require_role
+from fastapi_fullauth.dependencies import CurrentUser, VerifiedUser, SuperUser, require_role
 
 @app.get("/profile")
-async def profile(user=Depends(current_user)):
+async def profile(user: CurrentUser):
     return user
 
+@app.get("/dashboard")
+async def dashboard(user: VerifiedUser):
+    # only email-verified users
+    return {"email": user.email}
+
 @app.delete("/admin/users/{id}")
-async def delete_user(user=Depends(require_role("admin"))):
+async def delete_user(user: SuperUser):
+    # only superusers
+    ...
+
+# or use require_role for custom roles
+from fastapi import Depends
+from fastapi_fullauth.dependencies import require_role
+
+@app.get("/editor")
+async def editor_panel(user=Depends(require_role("editor"))):
     ...
 ```
 
@@ -124,15 +139,44 @@ fullauth.hooks.on("after_register", welcome)
 
 Events: `after_register`, `after_login`, `after_logout`, `after_password_change`, `after_password_reset`, `after_email_verify`, `send_verification_email`, `send_password_reset_email`
 
-## Route control
+## Custom token claims
+
+Embed app-specific data into JWTs (available in `payload.extra`):
 
 ```python
-from fastapi_fullauth import Route
+async def add_claims(user):
+    return {"tenant_id": "acme", "plan": "pro"}
 
 fullauth = FullAuth(
     secret_key="...",
     adapter=adapter,
-    enabled_routes=[Route.LOGIN, Route.LOGOUT, Route.REFRESH],
+    on_create_token_claims=add_claims,
+)
+```
+
+Reserved keys (`sub`, `exp`, `iat`, `jti`, `type`, `roles`, `extra`, `family_id`) are rejected to prevent accidental overwrites.
+
+## Password hashing
+
+Argon2id by default. Switch to bcrypt via config:
+
+```python
+fullauth = FullAuth(
+    secret_key="...",
+    adapter=adapter,
+    password_hash_algorithm="bcrypt",  # requires: pip install bcrypt
+)
+```
+
+When switching algorithms, existing users are transparently rehashed on their next login.
+
+## Route control
+
+```python
+fullauth = FullAuth(
+    secret_key="...",
+    adapter=adapter,
+    enabled_routes=["login", "logout", "refresh"],
 )
 ```
 

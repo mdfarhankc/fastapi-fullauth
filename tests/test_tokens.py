@@ -22,18 +22,20 @@ async def test_create_and_decode_access_token(engine):
 
 @pytest.mark.asyncio
 async def test_create_and_decode_refresh_token(engine):
-    token = engine.create_refresh_token("user-123")
-    payload = await engine.decode_token(token)
+    meta = engine.create_refresh_token("user-123")
+    assert meta.expires_at is not None
+    assert meta.family_id is not None
+    payload = await engine.decode_token(meta.token)
     assert payload.sub == "user-123"
     assert payload.type == "refresh"
-    assert payload.family_id is not None
+    assert payload.family_id == meta.family_id
 
 
 @pytest.mark.asyncio
 async def test_token_pair(engine):
-    access, refresh = engine.create_token_pair("user-123", roles=["editor"])
+    access, refresh_meta = engine.create_token_pair("user-123", roles=["editor"])
     a_payload = await engine.decode_token(access)
-    r_payload = await engine.decode_token(refresh)
+    r_payload = await engine.decode_token(refresh_meta.token)
     assert a_payload.type == "access"
     assert r_payload.type == "refresh"
     assert a_payload.sub == r_payload.sub == "user-123"

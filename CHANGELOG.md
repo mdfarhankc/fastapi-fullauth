@@ -1,5 +1,45 @@
 # Changelog
 
+## 0.3.0
+
+### Breaking changes
+
+- **`create_refresh_token` returns `RefreshTokenMeta`** — previously returned a plain `str`. Now returns a `NamedTuple` with `.token`, `.expires_at`, `.family_id`. Callers that used the raw string must access `.token`.
+- **`create_token_pair` returns `tuple[str, RefreshTokenMeta]`** — second element is now `RefreshTokenMeta` instead of `str`.
+- **`revoke_all_user_refresh_tokens` is now required** on custom adapters — new abstract method on `AbstractUserAdapter`.
+
+### Added
+
+- `current_superuser` dependency and `SuperUser` annotated type
+- `CurrentUser`, `VerifiedUser`, `SuperUser` annotated types in `dependencies.current_user` for cleaner route signatures
+- `RefreshTokenMeta` named tuple — avoids decoding freshly created tokens just to read `expires_at` and `family_id`
+- `FullAuth.get_custom_claims(user)` — moved custom claims logic from router into the class, with validation against reserved JWT keys (`sub`, `exp`, `type`, etc.)
+- `revoke_all_user_refresh_tokens(user_id)` on all adapters — bulk session revocation
+- Session revocation on password reset, password change, and account deletion
+- `configure_hasher()` — wires `PASSWORD_HASH_ALGORITHM` config to the actual hasher; supports `argon2id` and `bcrypt`
+- Automatic password rehash on login when hash algorithm or params have changed
+- Register now checks uniqueness on `login_field` (not just email) when `login_field != "email"`
+- `InMemoryBlacklist` now respects `ttl_seconds` — expired entries are evicted on lookup
+- `RateLimiter` evicts keys with empty timestamp lists to prevent unbounded dict growth
+- `description` parameter on all route decorators for Swagger docs
+
+### Fixed
+
+- `current_active_verified_user` was missing `payload.type != "access"` check — refresh tokens could pass through
+- Purpose tokens (password reset, email verify) could be used as regular access tokens — `current_user` now rejects tokens with `extra.purpose`
+- Duplicate token decode + user lookup across dependencies, router endpoints, and admin routes — consolidated into reusable `current_user` dependency chain
+- Duplicate `roles` + `extra_claims` fetch in refresh route — pulled above the if/else branch
+- Login flow fetched the user from DB twice (once in router, once in `login()`) — now accepts pre-fetched user
+- Unused `request: Request` parameters in dependencies and routes
+- Removed duplicate docstrings on routes (kept `description=` on decorators)
+- `require_permission` was a full copy of `require_role` — now delegates to it
+
+### Internal
+
+- Route order follows auth lifecycle: register → login → refresh → logout → user → email/password → admin
+- `require_role` / `require_permission` use `Depends(current_user)` instead of duplicating token logic
+- Removed `_get_custom_claims` module-level function from router
+
 ## 0.2.0
 
 ### Breaking changes

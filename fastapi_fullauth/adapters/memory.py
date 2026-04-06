@@ -82,6 +82,11 @@ class InMemoryAdapter(AbstractUserAdapter):
             if tok.family_id == family_id:
                 tok.revoked = True
 
+    async def revoke_all_user_refresh_tokens(self, user_id: str) -> None:
+        for tok in self._refresh_tokens.values():
+            if tok.user_id == user_id:
+                tok.revoked = True
+
     async def set_user_verified(self, user_id: str) -> None:
         if user_id in self._users:
             self._users[user_id]["is_verified"] = True

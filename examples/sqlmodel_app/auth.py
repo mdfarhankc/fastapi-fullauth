@@ -21,8 +21,8 @@ async def add_custom_claims(user: UserSchema) -> dict:
 fullauth = FullAuth(
     secret_key="change-me-use-a-32-byte-key-here",
     adapter=SQLModelAdapter(session_maker=session_maker, user_model=User),
-    on_send_verification_email=send_verification_email,
-    on_send_password_reset_email=send_password_reset_email,
     on_create_token_claims=add_custom_claims,
     include_user_in_login=True,
 )
+fullauth.hooks.on("send_verification_email", send_verification_email)
+fullauth.hooks.on("send_password_reset_email", send_password_reset_email)

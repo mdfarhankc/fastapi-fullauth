@@ -16,11 +16,14 @@ class RateLimiter:
         cutoff = now - self.window_seconds
         timestamps = self._hits[key]
         timestamps[:] = [t for t in timestamps if t > cutoff]
+        if not timestamps:
+            del self._hits[key]
         return timestamps
 
     def is_allowed(self, key: str) -> bool:
         now = time.monotonic()
-        timestamps = self._cleanup(key, now)
+        self._cleanup(key, now)
+        timestamps = self._hits[key]
 
         if len(timestamps) >= self.max_requests:
             return False
@@ -30,12 +33,13 @@ class RateLimiter:
 
     def remaining(self, key: str) -> int:
         now = time.monotonic()
-        timestamps = self._cleanup(key, now)
-        return max(0, self.max_requests - len(timestamps))
+        self._cleanup(key, now)
+        return max(0, self.max_requests - len(self._hits[key]))
 
     def reset_time(self, key: str) -> float:
         now = time.monotonic()
-        timestamps = self._cleanup(key, now)
+        self._cleanup(key, now)
+        timestamps = self._hits[key]
         if not timestamps:
             return 0.0
         oldest = timestamps[0]

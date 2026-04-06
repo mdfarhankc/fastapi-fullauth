@@ -43,4 +43,7 @@ async def reset_password(
     # Blacklist the reset token so it can't be reused
     await token_engine.blacklist_token(payload.jti)
 
+    # Revoke all existing sessions so stolen tokens can't be used
+    await adapter.revoke_all_user_refresh_tokens(str(user.id))
+
     return user

@@ -56,6 +56,9 @@ class AbstractUserAdapter(ABC):
     async def revoke_refresh_token_family(self, family_id: str) -> None: ...
 
     @abstractmethod
+    async def revoke_all_user_refresh_tokens(self, user_id: str) -> None: ...
+
+    @abstractmethod
     async def set_user_verified(self, user_id: str) -> None: ...
 
     @abstractmethod

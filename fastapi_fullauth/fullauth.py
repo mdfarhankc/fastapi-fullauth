@@ -12,10 +12,9 @@ from fastapi_fullauth.hooks import EventHooks
 from fastapi_fullauth.protection.lockout import LockoutManager
 from fastapi_fullauth.protection.ratelimit import RateLimiter
 from fastapi_fullauth.router.auth import create_auth_router
-from fastapi_fullauth.types import CreateUserSchema, Route, UserSchema
+from fastapi_fullauth.types import CreateUserSchema, RouteName, UserSchema
 from fastapi_fullauth.validators import PasswordValidator
 
-EmailSender = Callable[[str, str], Awaitable[Any]]
 TokenClaimsBuilder = Callable[[UserSchema], Awaitable[dict[str, Any]]]
 
 
@@ -27,10 +26,8 @@ class FullAuth:
         adapter: Database backend (InMemoryAdapter, SQLModelAdapter, etc.).
         secret_key: Shortcut for config. Omit to auto-generate in dev mode.
         backends: Token transport strategies. Defaults to [BearerBackend()].
-        on_send_verification_email: async def cb(email, token) — also registered as a hook.
-        on_send_password_reset_email: async def cb(email, token) — also registered as a hook.
         password_validator: Custom PasswordValidator. Defaults to min-length from config.
-        enabled_routes: Whitelist of routes (Route enum or strings). None = all.
+        enabled_routes: Whitelist of routes. None = all.
         include_user_in_login: Include user data in login response.
         create_user_schema: Pydantic model for registration. None = auto-derived from adapter model.
         on_create_token_claims: async def cb(user) -> dict — extra claims embedded in JWTs.
@@ -44,10 +41,8 @@ class FullAuth:
         adapter: AbstractUserAdapter,
         secret_key: str | None = None,
         backends: list[AbstractBackend] | None = None,
-        on_send_verification_email: EmailSender | None = None,
-        on_send_password_reset_email: EmailSender | None = None,
         password_validator: PasswordValidator | None = None,
-        enabled_routes: list[str | Route] | None = None,
+        enabled_routes: list[RouteName] | None = None,
         include_user_in_login: bool = False,
         create_user_schema: type[CreateUserSchema] | None = None,
         on_create_token_claims: TokenClaimsBuilder | None = None,
@@ -63,6 +58,10 @@ class FullAuth:
             # api_prefix -> API_PREFIX, etc.
             overrides.update({k.upper(): v for k, v in config_kwargs.items()})
             config = FullAuthConfig(**overrides)
+
+        from fastapi_fullauth.core.crypto import configure_hasher
+
+        configure_hasher(config.PASSWORD_HASH_ALGORITHM)
 
         self.config = config
         self.adapter = adapter
@@ -84,8 +83,6 @@ class FullAuth:
                 config.AUTH_RATE_LIMIT_PASSWORD_RESET, window
             )
 
-        self.on_send_verification_email = on_send_verification_email
-        self.on_send_password_reset_email = on_send_password_reset_email
         self.password_validator = password_validator or PasswordValidator(
             min_length=config.PASSWORD_MIN_LENGTH
         )
@@ -93,11 +90,6 @@ class FullAuth:
         self.create_user_schema = create_user_schema or self._resolve_create_schema(adapter)
         self.on_create_token_claims = on_create_token_claims
         self.hooks = EventHooks()
-
-        if on_send_verification_email:
-            self.hooks.on("send_verification_email", on_send_verification_email)
-        if on_send_password_reset_email:
-            self.hooks.on("send_password_reset_email", on_send_password_reset_email)
 
         self._enabled_routes = set(enabled_routes) if enabled_routes else None
         self._router: APIRouter | None = None
@@ -148,6 +140,36 @@ class FullAuth:
             return CreateUserSchema
         return create_model("DerivedCreateUserSchema", __base__=CreateUserSchema, **extra)
 
+    _RESERVED_CLAIM_KEYS = frozenset(
+        {
+            "sub",
+            "exp",
+            "iat",
+            "jti",
+            "type",
+            "roles",
+            "extra",
+            "family_id",
+        }
+    )
+
+    async def get_custom_claims(self, user: UserSchema) -> dict:
+        if not self.on_create_token_claims:
+            return {}
+
+        claims = await self.on_create_token_claims(user)
+
+        if not isinstance(claims, dict):
+            raise TypeError(
+                f"on_create_token_claims must return a dict, got {type(claims).__name__}"
+            )
+
+        reserved = self._RESERVED_CLAIM_KEYS & claims.keys()
+        if reserved:
+            raise ValueError(f"Custom claims contain reserved keys: {', '.join(sorted(reserved))}")
+
+        return claims
+
     def check_auth_rate_limit(self, route_name: str, client_ip: str) -> None:
         limiter = self.auth_rate_limiters.get(route_name)
         if limiter and not limiter.is_allowed(client_ip):
@@ -155,20 +177,18 @@ class FullAuth:
 
             raise HTTPException(status_code=429, detail="Too many requests. Try again later.")
 
-    def is_route_enabled(self, route_name: str) -> bool:
-        if self._enabled_routes is None:
-            return True
-        return route_name in self._enabled_routes
-
     @property
     def router(self) -> APIRouter:
         if self._router is None:
             prefix = self.config.API_PREFIX.rstrip("/") + self.config.AUTH_ROUTER_PREFIX
             self._router = APIRouter(prefix=prefix, tags=self.config.ROUTER_TAGS)
+            user_schema = getattr(self.adapter, "_user_schema", UserSchema)
             self._router.include_router(
                 create_auth_router(
                     create_user_schema=self.create_user_schema,
+                    user_schema=user_schema,
                     login_field=self.config.LOGIN_FIELD,
+                    enabled_routes=self._enabled_routes,
                 )
             )
         return self._router

@@ -1,23 +1,22 @@
 from datetime import datetime
-from enum import Enum
-from typing import Any
+from typing import Any, Literal, NamedTuple
 from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, Field
 
-
-class Route(str, Enum):
-    LOGIN = "login"
-    LOGOUT = "logout"
-    REGISTER = "register"
-    REFRESH = "refresh"
-    VERIFY_EMAIL = "verify-email"
-    PASSWORD_RESET = "password-reset"
-    ME = "me"
-    VERIFIED_ME = "verified-me"
-    CHANGE_PASSWORD = "change-password"
-    UPDATE_PROFILE = "update-profile"
-    DELETE_ACCOUNT = "delete-account"
+RouteName = Literal[
+    "login",
+    "logout",
+    "register",
+    "refresh",
+    "verify-email",
+    "password-reset",
+    "me",
+    "verified-me",
+    "change-password",
+    "update-profile",
+    "delete-account",
+]
 
 
 UserID = str | int | UUID
@@ -44,6 +43,12 @@ class TokenPair(BaseModel):
     refresh_token: str
     token_type: str = "bearer"
     expires_in: int | None = None
+
+
+class RefreshTokenMeta(NamedTuple):
+    token: str
+    expires_at: datetime
+    family_id: str
 
 
 class RefreshToken(BaseModel):

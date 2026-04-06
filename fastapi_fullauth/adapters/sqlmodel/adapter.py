@@ -180,6 +180,15 @@ class SQLModelAdapter(AbstractUserAdapter):
             )
             await session.commit()
 
+    async def revoke_all_user_refresh_tokens(self, user_id: str) -> None:
+        async with self._session_maker() as session:
+            await session.execute(
+                update(RefreshTokenRecord)
+                .where(RefreshTokenRecord.user_id == user_id)
+                .values(revoked=True)
+            )
+            await session.commit()
+
     async def set_user_verified(self, user_id: str) -> None:
         async with self._session_maker() as session:
             await session.execute(
