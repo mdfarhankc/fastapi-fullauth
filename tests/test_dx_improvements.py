@@ -1,5 +1,6 @@
 """Tests for the 6 DX improvements."""
 
+import sys
 import warnings
 
 import pytest
@@ -255,6 +256,10 @@ async def test_me_route_disabled():
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.skipif(
+    sys.version_info < (3, 14),
+    reason="annotationlib requires Python 3.14+",
+)
 def test_current_user_has_return_annotation():
     """current_user dependency has a UserSchema return type for IDE support."""
     import annotationlib
