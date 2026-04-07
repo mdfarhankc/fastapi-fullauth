@@ -10,7 +10,7 @@ from fastapi_fullauth.config import FullAuthConfig
 from fastapi_fullauth.core.tokens import InMemoryBlacklist, TokenBlacklist, TokenEngine
 from fastapi_fullauth.hooks import EventHooks
 from fastapi_fullauth.protection.lockout import LockoutManager
-from fastapi_fullauth.protection.ratelimit import RateLimiter
+from fastapi_fullauth.protection.ratelimit import RateLimiter, RedisRateLimiter
 from fastapi_fullauth.router.auth import create_auth_router
 from fastapi_fullauth.types import CreateUserSchema, RouteName, UserSchema
 from fastapi_fullauth.validators import PasswordValidator
@@ -72,15 +72,18 @@ class FullAuth:
             lockout_seconds=config.LOCKOUT_DURATION_MINUTES * 60,
         )
 
-        self.auth_rate_limiters: dict[str, RateLimiter] = {}
+        self.auth_rate_limiters: dict[str, RateLimiter | RedisRateLimiter] = {}
         if config.AUTH_RATE_LIMIT_ENABLED:
             window = config.AUTH_RATE_LIMIT_WINDOW_SECONDS
-            self.auth_rate_limiters["login"] = RateLimiter(config.AUTH_RATE_LIMIT_LOGIN, window)
-            self.auth_rate_limiters["register"] = RateLimiter(
-                config.AUTH_RATE_LIMIT_REGISTER, window
+            limiter_cls = self._create_rate_limiter
+            self.auth_rate_limiters["login"] = limiter_cls(
+                config, config.AUTH_RATE_LIMIT_LOGIN, window
             )
-            self.auth_rate_limiters["password-reset"] = RateLimiter(
-                config.AUTH_RATE_LIMIT_PASSWORD_RESET, window
+            self.auth_rate_limiters["register"] = limiter_cls(
+                config, config.AUTH_RATE_LIMIT_REGISTER, window
+            )
+            self.auth_rate_limiters["password-reset"] = limiter_cls(
+                config, config.AUTH_RATE_LIMIT_PASSWORD_RESET, window
             )
 
         self.password_validator = password_validator or PasswordValidator(
@@ -93,6 +96,20 @@ class FullAuth:
 
         self._enabled_routes = set(enabled_routes) if enabled_routes else None
         self._router: APIRouter | None = None
+
+    @staticmethod
+    def _create_rate_limiter(
+        config: FullAuthConfig, max_requests: int, window_seconds: int
+    ) -> RateLimiter | RedisRateLimiter:
+        if config.RATE_LIMIT_BACKEND == "redis":
+            if not config.REDIS_URL:
+                raise ValueError("REDIS_URL must be set when RATE_LIMIT_BACKEND='redis'")
+            return RedisRateLimiter(
+                redis_url=config.REDIS_URL,
+                max_requests=max_requests,
+                window_seconds=window_seconds,
+            )
+        return RateLimiter(max_requests=max_requests, window_seconds=window_seconds)
 
     @staticmethod
     def _create_blacklist(config: FullAuthConfig) -> TokenBlacklist:
@@ -170,9 +187,9 @@ class FullAuth:
 
         return claims
 
-    def check_auth_rate_limit(self, route_name: str, client_ip: str) -> None:
+    async def check_auth_rate_limit(self, route_name: str, client_ip: str) -> None:
         limiter = self.auth_rate_limiters.get(route_name)
-        if limiter and not limiter.is_allowed(client_ip):
+        if limiter and not await limiter.is_allowed(client_ip):
             from fastapi import HTTPException
 
             raise HTTPException(status_code=429, detail="Too many requests. Try again later.")
@@ -214,7 +231,8 @@ class FullAuth:
         if self.config.RATE_LIMIT_ENABLED:
             from fastapi_fullauth.protection.ratelimit import RateLimitMiddleware
 
-            app.add_middleware(RateLimitMiddleware)
+            middleware_limiter = self._create_rate_limiter(self.config, 60, 60)
+            app.add_middleware(RateLimitMiddleware, limiter=middleware_limiter)
 
         if self.config.INJECT_SECURITY_HEADERS:
             from fastapi_fullauth.middleware.security_headers import (

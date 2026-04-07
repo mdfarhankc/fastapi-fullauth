@@ -101,7 +101,7 @@ def create_auth_router(
             data: create_user_schema = Body(...),  # type: ignore[valid-type]
         ) -> UserSchema:
             client_ip = request.client.host if request.client else "unknown"
-            fullauth.check_auth_rate_limit("register", client_ip)
+            await fullauth.check_auth_rate_limit("register", client_ip)
 
             try:
                 fullauth.password_validator.validate(data.password)
@@ -130,7 +130,7 @@ def create_auth_router(
             fullauth: "FullAuth" = Depends(_get_fullauth),
         ):
             client_ip = request.client.host if request.client else "unknown"
-            fullauth.check_auth_rate_limit("login", client_ip)
+            await fullauth.check_auth_rate_limit("login", client_ip)
 
             identifier = getattr(data, login_field)
             user = await fullauth.adapter.get_user_by_field(login_field, identifier)
@@ -425,7 +425,7 @@ def create_auth_router(
             fullauth: "FullAuth" = Depends(_get_fullauth),
         ) -> MessageResponse:
             client_ip = request.client.host if request.client else "unknown"
-            fullauth.check_auth_rate_limit("password-reset", client_ip)
+            await fullauth.check_auth_rate_limit("password-reset", client_ip)
 
             token = await request_password_reset(
                 fullauth.adapter, fullauth.token_engine, data.email

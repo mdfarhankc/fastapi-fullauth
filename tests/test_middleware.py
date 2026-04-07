@@ -123,3 +123,86 @@ async def test_rate_limit_blocks_over_limit(ratelimit_app):
             await client.get("/test")
         r = await client.get("/test")
         assert r.status_code == 429
+
+
+# ── Redis rate limiter ───────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_redis_rate_limiter_allows_and_blocks():
+    import fakeredis.aioredis
+
+    from fastapi_fullauth.protection.ratelimit import RedisRateLimiter
+
+    limiter = RedisRateLimiter.__new__(RedisRateLimiter)
+    limiter.max_requests = 3
+    limiter.window_seconds = 60
+    limiter._redis = fakeredis.aioredis.FakeRedis(decode_responses=True)
+    limiter._prefix = "fullauth:ratelimit:"
+
+    for _ in range(3):
+        assert await limiter.is_allowed("test-ip") is True
+    assert await limiter.is_allowed("test-ip") is False
+
+
+@pytest.mark.asyncio
+async def test_redis_rate_limiter_remaining():
+    import fakeredis.aioredis
+
+    from fastapi_fullauth.protection.ratelimit import RedisRateLimiter
+
+    limiter = RedisRateLimiter.__new__(RedisRateLimiter)
+    limiter.max_requests = 5
+    limiter.window_seconds = 60
+    limiter._redis = fakeredis.aioredis.FakeRedis(decode_responses=True)
+    limiter._prefix = "fullauth:ratelimit:"
+
+    await limiter.is_allowed("test-ip")
+    await limiter.is_allowed("test-ip")
+    assert await limiter.remaining("test-ip") == 3
+
+
+@pytest.mark.asyncio
+async def test_redis_rate_limiter_reset_time():
+    import fakeredis.aioredis
+
+    from fastapi_fullauth.protection.ratelimit import RedisRateLimiter
+
+    limiter = RedisRateLimiter.__new__(RedisRateLimiter)
+    limiter.max_requests = 5
+    limiter.window_seconds = 60
+    limiter._redis = fakeredis.aioredis.FakeRedis(decode_responses=True)
+    limiter._prefix = "fullauth:ratelimit:"
+
+    assert await limiter.reset_time("new-ip") == 0.0
+    await limiter.is_allowed("new-ip")
+    reset = await limiter.reset_time("new-ip")
+    assert 0 < reset <= 60
+
+
+@pytest.mark.asyncio
+async def test_redis_rate_limiter_middleware():
+    import fakeredis.aioredis
+
+    from fastapi_fullauth.protection.ratelimit import RateLimitMiddleware, RedisRateLimiter
+
+    limiter = RedisRateLimiter.__new__(RedisRateLimiter)
+    limiter.max_requests = 2
+    limiter.window_seconds = 60
+    limiter._redis = fakeredis.aioredis.FakeRedis(decode_responses=True)
+    limiter._prefix = "fullauth:ratelimit:"
+
+    app = FastAPI()
+    app.add_middleware(RateLimitMiddleware, limiter=limiter)
+
+    @app.get("/test")
+    async def test_route():
+        return {"ok": True}
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        for _ in range(2):
+            r = await client.get("/test")
+            assert r.status_code == 200
+        r = await client.get("/test")
+        assert r.status_code == 429

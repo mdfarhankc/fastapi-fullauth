@@ -7,6 +7,8 @@ from starlette.responses import JSONResponse, Response
 
 
 class RateLimiter:
+    """In-memory sliding window rate limiter."""
+
     def __init__(self, max_requests: int = 60, window_seconds: int = 60) -> None:
         self.max_requests = max_requests
         self.window_seconds = window_seconds
@@ -20,7 +22,7 @@ class RateLimiter:
             del self._hits[key]
         return timestamps
 
-    def is_allowed(self, key: str) -> bool:
+    async def is_allowed(self, key: str) -> bool:
         now = time.monotonic()
         self._cleanup(key, now)
         timestamps = self._hits[key]
@@ -31,12 +33,12 @@ class RateLimiter:
         timestamps.append(now)
         return True
 
-    def remaining(self, key: str) -> int:
+    async def remaining(self, key: str) -> int:
         now = time.monotonic()
         self._cleanup(key, now)
         return max(0, self.max_requests - len(self._hits[key]))
 
-    def reset_time(self, key: str) -> float:
+    async def reset_time(self, key: str) -> float:
         now = time.monotonic()
         self._cleanup(key, now)
         timestamps = self._hits[key]
@@ -49,16 +51,92 @@ class RateLimiter:
         self._hits.pop(key, None)
 
 
+class RedisRateLimiter:
+    """Redis-backed sliding window rate limiter using sorted sets."""
+
+    def __init__(
+        self,
+        redis_url: str,
+        max_requests: int = 60,
+        window_seconds: int = 60,
+    ) -> None:
+        try:
+            import redis.asyncio as aioredis
+        except ImportError:
+            raise ImportError(
+                "redis package is required for the Redis rate limiter. "
+                "Install it with: pip install fastapi-fullauth[redis]"
+            ) from None
+
+        self.max_requests = max_requests
+        self.window_seconds = window_seconds
+        self._redis = aioredis.from_url(redis_url, decode_responses=True)
+        self._prefix = "fullauth:ratelimit:"
+
+    async def is_allowed(self, key: str) -> bool:
+        import time as _time
+
+        redis_key = f"{self._prefix}{key}"
+        now = _time.time()
+        cutoff = now - self.window_seconds
+
+        pipe = self._redis.pipeline()
+        pipe.zremrangebyscore(redis_key, "-inf", cutoff)
+        pipe.zcard(redis_key)
+        pipe.zadd(redis_key, {f"{now}": now})
+        pipe.expire(redis_key, self.window_seconds)
+        results = await pipe.execute()
+
+        count = results[1]
+        if count >= self.max_requests:
+            # undo the zadd
+            await self._redis.zrem(redis_key, f"{now}")
+            return False
+        return True
+
+    async def remaining(self, key: str) -> int:
+        import time as _time
+
+        redis_key = f"{self._prefix}{key}"
+        now = _time.time()
+        cutoff = now - self.window_seconds
+
+        pipe = self._redis.pipeline()
+        pipe.zremrangebyscore(redis_key, "-inf", cutoff)
+        pipe.zcard(redis_key)
+        results = await pipe.execute()
+
+        count = results[1]
+        return max(0, self.max_requests - count)
+
+    async def reset_time(self, key: str) -> float:
+        import time as _time
+
+        redis_key = f"{self._prefix}{key}"
+        now = _time.time()
+
+        oldest = await self._redis.zrange(redis_key, 0, 0, withscores=True)
+        if not oldest:
+            return 0.0
+        return max(0.0, self.window_seconds - (now - oldest[0][1]))
+
+    async def reset(self, key: str) -> None:
+        await self._redis.delete(f"{self._prefix}{key}")
+
+
 class RateLimitMiddleware(BaseHTTPMiddleware):
     def __init__(
         self,
         app,  # noqa: ANN001
+        limiter: RateLimiter | RedisRateLimiter | None = None,
         max_requests: int = 60,
         window_seconds: int = 60,
         exempt_paths: list[str] | None = None,
     ) -> None:
         super().__init__(app)
-        self.limiter = RateLimiter(max_requests=max_requests, window_seconds=window_seconds)
+        self.limiter = limiter or RateLimiter(
+            max_requests=max_requests, window_seconds=window_seconds
+        )
         self.exempt_paths: list[str] = exempt_paths or []
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
@@ -67,8 +145,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
         client_ip = request.client.host if request.client else "unknown"
 
-        if not self.limiter.is_allowed(client_ip):
-            reset_in = self.limiter.reset_time(client_ip)
+        if not await self.limiter.is_allowed(client_ip):
+            reset_in = await self.limiter.reset_time(client_ip)
             return JSONResponse(
                 status_code=429,
                 content={"detail": "Too Many Requests"},
@@ -81,8 +159,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
         response = await call_next(request)
 
-        remaining = self.limiter.remaining(client_ip)
-        reset_in = self.limiter.reset_time(client_ip)
+        remaining = await self.limiter.remaining(client_ip)
+        reset_in = await self.limiter.reset_time(client_ip)
         response.headers["X-RateLimit-Limit"] = str(self.limiter.max_requests)
         response.headers["X-RateLimit-Remaining"] = str(remaining)
         response.headers["X-RateLimit-Reset"] = str(int(reset_in))
