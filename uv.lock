@@ -306,7 +306,7 @@ wheels = [
 
 [[package]]
 name = "fastapi-fullauth"
-version = "0.3.0"
+version = "0.4.0"
 source = { editable = "." }
 dependencies = [
     { name = "argon2-cffi" },
@@ -320,9 +320,13 @@ dependencies = [
 [package.optional-dependencies]
 all = [
     { name = "alembic" },
+    { name = "httpx" },
     { name = "redis" },
     { name = "sqlalchemy", extra = ["asyncio"] },
     { name = "sqlmodel" },
+]
+oauth = [
+    { name = "httpx" },
 ]
 redis = [
     { name = "redis" },
@@ -354,6 +358,8 @@ requires-dist = [
     { name = "alembic", marker = "extra == 'sqlmodel'", specifier = ">=1.13" },
     { name = "argon2-cffi", specifier = ">=23.0" },
     { name = "fastapi", specifier = ">=0.110" },
+    { name = "httpx", marker = "extra == 'all'", specifier = ">=0.25" },
+    { name = "httpx", marker = "extra == 'oauth'", specifier = ">=0.25" },
     { name = "pydantic", extras = ["email"], specifier = ">=2.0" },
     { name = "pydantic-settings", specifier = ">=2.0" },
     { name = "pyjwt", specifier = ">=2.8" },
@@ -365,7 +371,7 @@ requires-dist = [
     { name = "sqlmodel", marker = "extra == 'sqlmodel'", specifier = ">=0.0.16" },
     { name = "uuid-utils", specifier = ">=0.14.1" },
 ]
-provides-extras = ["sqlalchemy", "sqlmodel", "redis", "all"]
+provides-extras = ["sqlalchemy", "sqlmodel", "redis", "oauth", "all"]
 
 [package.metadata.requires-dev]
 dev = [

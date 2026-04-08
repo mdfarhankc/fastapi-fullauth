@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import Any
 
-from fastapi_fullauth.types import CreateUserSchema, RefreshToken, UserSchema
+from fastapi_fullauth.types import CreateUserSchema, OAuthAccount, RefreshToken, UserSchema
 
 
 class AbstractUserAdapter(ABC):
@@ -66,3 +66,22 @@ class AbstractUserAdapter(ABC):
 
     @abstractmethod
     async def remove_role(self, user_id: str, role_name: str) -> None: ...
+
+    # ── OAuth (optional — override when using OAuth) ─────────────────
+
+    async def get_oauth_account(self, provider: str, provider_user_id: str) -> OAuthAccount | None:
+        raise NotImplementedError("Implement OAuth adapter methods to use OAuth")
+
+    async def get_user_oauth_accounts(self, user_id: str) -> list[OAuthAccount]:
+        raise NotImplementedError("Implement OAuth adapter methods to use OAuth")
+
+    async def create_oauth_account(self, data: OAuthAccount) -> OAuthAccount:
+        raise NotImplementedError("Implement OAuth adapter methods to use OAuth")
+
+    async def update_oauth_account(
+        self, provider: str, provider_user_id: str, data: dict[str, Any]
+    ) -> OAuthAccount | None:
+        raise NotImplementedError("Implement OAuth adapter methods to use OAuth")
+
+    async def delete_oauth_account(self, provider: str, provider_user_id: str) -> None:
+        raise NotImplementedError("Implement OAuth adapter methods to use OAuth")

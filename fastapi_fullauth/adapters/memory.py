@@ -3,7 +3,7 @@ from typing import Any
 from uuid_utils import uuid7
 
 from fastapi_fullauth.adapters.base import AbstractUserAdapter
-from fastapi_fullauth.types import CreateUserSchema, RefreshToken, UserSchema
+from fastapi_fullauth.types import CreateUserSchema, OAuthAccount, RefreshToken, UserSchema
 
 
 class InMemoryAdapter(AbstractUserAdapter):
@@ -13,6 +13,7 @@ class InMemoryAdapter(AbstractUserAdapter):
         self._passwords: dict[str, str] = {}
         self._refresh_tokens: dict[str, RefreshToken] = {}
         self._roles: dict[str, list[str]] = {}
+        self._oauth_accounts: dict[tuple[str, str], OAuthAccount] = {}
 
     async def get_user_by_id(self, user_id: str) -> UserSchema | None:
         data = self._users.get(user_id)
@@ -104,3 +105,29 @@ class InMemoryAdapter(AbstractUserAdapter):
             roles.remove(role_name)
         if user_id in self._users:
             self._users[user_id]["roles"] = roles
+
+    # ── OAuth ────────────────────────────────────────────────────────
+
+    async def get_oauth_account(self, provider: str, provider_user_id: str) -> OAuthAccount | None:
+        return self._oauth_accounts.get((provider, provider_user_id))
+
+    async def get_user_oauth_accounts(self, user_id: str) -> list[OAuthAccount]:
+        return [a for a in self._oauth_accounts.values() if a.user_id == user_id]
+
+    async def create_oauth_account(self, data: OAuthAccount) -> OAuthAccount:
+        self._oauth_accounts[(data.provider, data.provider_user_id)] = data
+        return data
+
+    async def update_oauth_account(
+        self, provider: str, provider_user_id: str, data: dict[str, Any]
+    ) -> OAuthAccount | None:
+        key = (provider, provider_user_id)
+        account = self._oauth_accounts.get(key)
+        if account is None:
+            return None
+        updated = account.model_copy(update=data)
+        self._oauth_accounts[key] = updated
+        return updated
+
+    async def delete_oauth_account(self, provider: str, provider_user_id: str) -> None:
+        self._oauth_accounts.pop((provider, provider_user_id), None)

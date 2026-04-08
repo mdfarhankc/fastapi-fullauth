@@ -43,6 +43,25 @@ class UserBase(SQLModel):
     )
 
 
+class OAuthAccountRecord(SQLModel, table=True):
+    __tablename__ = "fullauth_oauth_accounts"
+
+    id: UUID = Field(default_factory=uuid7, primary_key=True)
+    provider: str = Field(index=True, max_length=50)
+    provider_user_id: str = Field(index=True, max_length=320)
+    user_id: UUID = Field(foreign_key="fullauth_users.id")
+    provider_email: str | None = Field(default=None, max_length=320)
+    access_token: str | None = Field(default=None)
+    refresh_token: str | None = Field(default=None)
+    expires_at: datetime | None = Field(
+        default=None, sa_column=Column(DateTime(timezone=True), nullable=True)
+    )
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        sa_column=Column(DateTime(timezone=True), nullable=False),
+    )
+
+
 class RefreshTokenRecord(SQLModel, table=True):
     __tablename__ = "fullauth_refresh_tokens"
 

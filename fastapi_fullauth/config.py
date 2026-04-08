@@ -1,5 +1,5 @@
 import warnings
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -47,6 +47,10 @@ class FullAuthConfig(BaseSettings):
     COOKIE_HTTPONLY: bool = True
     COOKIE_SAMESITE: Literal["lax", "strict", "none"] = "lax"
     COOKIE_DOMAIN: str | None = None
+
+    OAUTH_PROVIDERS: dict[str, dict[str, Any]] = {}
+    OAUTH_STATE_EXPIRE_SECONDS: int = 300
+    OAUTH_AUTO_LINK_BY_EMAIL: bool = True
 
     API_PREFIX: str = "/api/v1"
     AUTH_ROUTER_PREFIX: str = "/auth"

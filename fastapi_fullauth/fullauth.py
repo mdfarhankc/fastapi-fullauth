@@ -93,9 +93,43 @@ class FullAuth:
         self.create_user_schema = create_user_schema or self._resolve_create_schema(adapter)
         self.on_create_token_claims = on_create_token_claims
         self.hooks = EventHooks()
+        self.oauth_providers = self._build_oauth_providers(config)
 
         self._enabled_routes = set(enabled_routes) if enabled_routes else None
         self._router: APIRouter | None = None
+
+    _OAUTH_PROVIDER_REGISTRY: dict[str, type] = {}
+
+    @classmethod
+    def _build_oauth_providers(cls, config: FullAuthConfig) -> dict:
+        if not config.OAUTH_PROVIDERS:
+            return {}
+
+        # lazy-load registry on first use
+        if not cls._OAUTH_PROVIDER_REGISTRY:
+            from fastapi_fullauth.oauth.github import GitHubOAuthProvider
+            from fastapi_fullauth.oauth.google import GoogleOAuthProvider
+
+            cls._OAUTH_PROVIDER_REGISTRY = {
+                "google": GoogleOAuthProvider,
+                "github": GitHubOAuthProvider,
+            }
+
+        providers = {}
+        for name, opts in config.OAUTH_PROVIDERS.items():
+            provider_cls = cls._OAUTH_PROVIDER_REGISTRY.get(name)
+            if provider_cls is None:
+                raise ValueError(
+                    f"Unknown OAuth provider '{name}'. "
+                    f"Available: {', '.join(cls._OAUTH_PROVIDER_REGISTRY)}"
+                )
+            providers[name] = provider_cls(
+                client_id=opts["client_id"],
+                client_secret=opts["client_secret"],
+                redirect_uri=opts["redirect_uri"],
+                scopes=opts.get("scopes"),
+            )
+        return providers
 
     @staticmethod
     def _create_rate_limiter(
@@ -208,6 +242,10 @@ class FullAuth:
                     enabled_routes=self._enabled_routes,
                 )
             )
+            if self.oauth_providers:
+                from fastapi_fullauth.router.oauth import create_oauth_router
+
+                self._router.include_router(create_oauth_router())
         return self._router
 
     def init_app(self, app: FastAPI, *, auto_middleware: bool = True) -> None:

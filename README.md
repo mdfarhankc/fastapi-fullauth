@@ -16,6 +16,8 @@ pip install fastapi-fullauth[sqlmodel]
 pip install fastapi-fullauth[sqlalchemy]
 # with redis for token blacklisting:
 pip install fastapi-fullauth[sqlmodel,redis]
+# with OAuth2 social login:
+pip install fastapi-fullauth[sqlmodel,oauth]
 ```
 
 ## Quick start
@@ -169,6 +171,41 @@ fullauth = FullAuth(
 ```
 
 When switching algorithms, existing users are transparently rehashed on their next login.
+
+## OAuth2 social login
+
+Add Google and/or GitHub login with a few config lines:
+
+```python
+fullauth = FullAuth(
+    secret_key="...",
+    adapter=adapter,
+    oauth_providers={
+        "google": {
+            "client_id": "your-google-client-id",
+            "client_secret": "your-google-secret",
+            "redirect_uri": "http://localhost:3000/auth/google/callback",
+        },
+        "github": {
+            "client_id": "your-github-client-id",
+            "client_secret": "your-github-secret",
+            "redirect_uri": "http://localhost:3000/auth/github/callback",
+        },
+    },
+)
+```
+
+This registers these routes automatically:
+
+- `GET /auth/oauth/providers` — list configured providers
+- `GET /auth/oauth/{provider}/authorize` — get the authorization URL
+- `POST /auth/oauth/{provider}/callback` — exchange code for JWT tokens
+- `GET /auth/oauth/accounts` — list linked OAuth accounts
+- `DELETE /auth/oauth/accounts/{provider}` — unlink a provider
+
+Users can link multiple providers and keep email/password login alongside OAuth. New users are auto-created on first OAuth login, and existing users are auto-linked by email.
+
+Requires `httpx`: `pip install fastapi-fullauth[oauth]`
 
 ## Route control
 

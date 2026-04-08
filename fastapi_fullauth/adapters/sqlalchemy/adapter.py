@@ -6,11 +6,12 @@ from sqlalchemy.orm import selectinload
 
 from fastapi_fullauth.adapters.base import AbstractUserAdapter
 from fastapi_fullauth.adapters.sqlalchemy.models import (
+    OAuthAccountModel,
     RefreshTokenModel,
     RoleModel,
     UserBase,
 )
-from fastapi_fullauth.types import CreateUserSchema, RefreshToken, UserSchema
+from fastapi_fullauth.types import CreateUserSchema, OAuthAccount, RefreshToken, UserSchema
 
 # Map SQLAlchemy column types to Python types for schema auto-derivation
 _SA_TYPE_MAP: dict[type, type] = {}
@@ -252,4 +253,78 @@ class SQLAlchemyAdapter(AbstractUserAdapter):
             user = result.scalars().first()
             if user:
                 user.roles = [r for r in user.roles if r.name != role_name]
+                await session.commit()
+
+    # ── OAuth ────────────────────────────────────────────────────────
+
+    def _to_oauth_account(self, row: OAuthAccountModel) -> OAuthAccount:
+        return OAuthAccount(
+            provider=row.provider,
+            provider_user_id=row.provider_user_id,
+            user_id=str(row.user_id),
+            provider_email=row.provider_email,
+            access_token=row.access_token,
+            refresh_token=row.refresh_token,
+            expires_at=row.expires_at,
+        )
+
+    async def get_oauth_account(self, provider: str, provider_user_id: str) -> OAuthAccount | None:
+        async with self._session_maker() as session:
+            result = await session.execute(
+                select(OAuthAccountModel).where(
+                    OAuthAccountModel.provider == provider,
+                    OAuthAccountModel.provider_user_id == provider_user_id,
+                )
+            )
+            row = result.scalars().first()
+            return self._to_oauth_account(row) if row else None
+
+    async def get_user_oauth_accounts(self, user_id: str) -> list[OAuthAccount]:
+        async with self._session_maker() as session:
+            result = await session.execute(
+                select(OAuthAccountModel).where(OAuthAccountModel.user_id == user_id)
+            )
+            return [self._to_oauth_account(row) for row in result.scalars().all()]
+
+    async def create_oauth_account(self, data: OAuthAccount) -> OAuthAccount:
+        async with self._session_maker() as session:
+            record = OAuthAccountModel(
+                provider=data.provider,
+                provider_user_id=data.provider_user_id,
+                user_id=data.user_id,
+                provider_email=data.provider_email,
+                access_token=data.access_token,
+                refresh_token=data.refresh_token,
+                expires_at=data.expires_at,
+            )
+            session.add(record)
+            await session.commit()
+            return data
+
+    async def update_oauth_account(
+        self, provider: str, provider_user_id: str, data: dict[str, Any]
+    ) -> OAuthAccount | None:
+        async with self._session_maker() as session:
+            await session.execute(
+                update(OAuthAccountModel)
+                .where(
+                    OAuthAccountModel.provider == provider,
+                    OAuthAccountModel.provider_user_id == provider_user_id,
+                )
+                .values(**data)
+            )
+            await session.commit()
+            return await self.get_oauth_account(provider, provider_user_id)
+
+    async def delete_oauth_account(self, provider: str, provider_user_id: str) -> None:
+        async with self._session_maker() as session:
+            result = await session.execute(
+                select(OAuthAccountModel).where(
+                    OAuthAccountModel.provider == provider,
+                    OAuthAccountModel.provider_user_id == provider_user_id,
+                )
+            )
+            row = result.scalars().first()
+            if row:
+                await session.delete(row)
                 await session.commit()

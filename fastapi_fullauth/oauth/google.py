@@ -1,0 +1,65 @@
+from urllib.parse import urlencode
+
+from fastapi_fullauth.exceptions import OAuthProviderError
+from fastapi_fullauth.oauth.base import OAuthProvider
+from fastapi_fullauth.types import OAuthUserInfo
+
+
+class GoogleOAuthProvider(OAuthProvider):
+    name = "google"
+    authorization_endpoint = "https://accounts.google.com/o/oauth2/v2/auth"
+    token_endpoint = "https://oauth2.googleapis.com/token"
+    userinfo_endpoint = "https://www.googleapis.com/oauth2/v3/userinfo"
+
+    @property
+    def default_scopes(self) -> list[str]:
+        return ["openid", "email", "profile"]
+
+    def get_authorization_url(self, state: str) -> str:
+        params = {
+            "client_id": self.client_id,
+            "redirect_uri": self.redirect_uri,
+            "response_type": "code",
+            "scope": " ".join(self.scopes),
+            "state": state,
+            "access_type": "offline",
+            "prompt": "consent",
+        }
+        return f"{self.authorization_endpoint}?{urlencode(params)}"
+
+    async def exchange_code(self, code: str) -> dict:
+        async with self._get_http_client() as client:
+            resp = await client.post(
+                self.token_endpoint,
+                data={
+                    "client_id": self.client_id,
+                    "client_secret": self.client_secret,
+                    "code": code,
+                    "grant_type": "authorization_code",
+                    "redirect_uri": self.redirect_uri,
+                },
+            )
+            if resp.status_code != 200:
+                raise OAuthProviderError(f"Google token exchange failed: {resp.text}")
+            return resp.json()
+
+    async def get_user_info(self, tokens: dict) -> OAuthUserInfo:
+        access_token = tokens["access_token"]
+        async with self._get_http_client() as client:
+            resp = await client.get(
+                self.userinfo_endpoint,
+                headers={"Authorization": f"Bearer {access_token}"},
+            )
+            if resp.status_code != 200:
+                raise OAuthProviderError(f"Google userinfo failed: {resp.text}")
+            data = resp.json()
+
+        return OAuthUserInfo(
+            provider="google",
+            provider_user_id=data["sub"],
+            email=data.get("email"),
+            email_verified=data.get("email_verified", False),
+            name=data.get("name"),
+            picture=data.get("picture"),
+            raw=data,
+        )

@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.4.0
+
+### Added
+
+- **OAuth2 social login** — Google and GitHub out of the box, extensible for custom providers
+  - `GET /oauth/{provider}/authorize` — get authorization URL
+  - `POST /oauth/{provider}/callback` — exchange code for JWT tokens
+  - `GET /oauth/providers` — list configured providers
+  - `GET /oauth/accounts` — list linked OAuth accounts
+  - `DELETE /oauth/accounts/{provider}` — unlink a provider (with lockout prevention)
+- `OAuthProvider` abstract base class for implementing custom providers
+- `OAuthAccount` and `OAuthUserInfo` types
+- `OAuthAccountRecord` / `OAuthAccountModel` for SQLModel and SQLAlchemy adapters
+- OAuth adapter methods on all adapters (memory, SQLModel, SQLAlchemy)
+- `OAUTH_PROVIDERS`, `OAUTH_STATE_EXPIRE_SECONDS`, `OAUTH_AUTO_LINK_BY_EMAIL` config fields
+- `after_oauth_login` hook event
+- `oauth` optional dependency group (`pip install fastapi-fullauth[oauth]`)
+- Auto-link OAuth to existing user by email (configurable)
+- Auto-verify email when provider confirms it
+- Lockout prevention — can't unlink last login method
+
 ## 0.3.0
 
 ### Breaking changes

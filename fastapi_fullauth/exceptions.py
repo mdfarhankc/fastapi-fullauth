@@ -45,6 +45,18 @@ class RefreshTokenReuseError(TokenError):
     pass
 
 
+class OAuthError(FullAuthError):
+    pass
+
+
+class OAuthProviderError(OAuthError):
+    pass
+
+
+class OAuthAccountAlreadyLinkedError(OAuthError):
+    pass
+
+
 CREDENTIALS_EXCEPTION = HTTPException(
     status_code=status.HTTP_401_UNAUTHORIZED,
     detail="Could not validate credentials",
@@ -64,4 +76,9 @@ USER_EXISTS_EXCEPTION = HTTPException(
 ACCOUNT_LOCKED_EXCEPTION = HTTPException(
     status_code=status.HTTP_423_LOCKED,
     detail="Account is temporarily locked due to too many failed login attempts",
+)
+
+OAUTH_ERROR_EXCEPTION = HTTPException(
+    status_code=status.HTTP_400_BAD_REQUEST,
+    detail="OAuth authentication failed",
 )

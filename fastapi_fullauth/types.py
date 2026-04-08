@@ -59,6 +59,28 @@ class RefreshToken(BaseModel):
     revoked: bool = False
 
 
+class OAuthAccount(BaseModel):
+    provider: str
+    provider_user_id: str
+    user_id: str
+    provider_email: str | None = None
+    access_token: str | None = None
+    refresh_token: str | None = None
+    expires_at: datetime | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class OAuthUserInfo(BaseModel):
+    provider: str
+    provider_user_id: str
+    email: str | None = None
+    email_verified: bool = False
+    name: str | None = None
+    picture: str | None = None
+    raw: dict[str, Any] = Field(default_factory=dict)
+
+
 class TokenPayload(BaseModel):
     sub: str
     exp: datetime
