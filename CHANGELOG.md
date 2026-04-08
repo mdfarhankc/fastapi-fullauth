@@ -20,6 +20,7 @@
 - Auto-link OAuth to existing user by email (configurable)
 - Auto-verify email when provider confirms it
 - Lockout prevention — can't unlink last login method
+- Multiple `redirect_uris` per OAuth provider — supports web, mobile, and production frontends from one config. Client passes `?redirect_uri=` on authorize, validated against allowed list.
 
 ## 0.3.0
 

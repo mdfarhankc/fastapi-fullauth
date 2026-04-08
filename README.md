@@ -184,12 +184,16 @@ fullauth = FullAuth(
         "google": {
             "client_id": "your-google-client-id",
             "client_secret": "your-google-secret",
-            "redirect_uri": "http://localhost:3000/auth/google/callback",
+            "redirect_uris": [
+                "http://localhost:3000/auth/callback",
+                "https://myapp.com/auth/callback",
+                "myapp://auth/callback",  # Flutter deep link
+            ],
         },
         "github": {
             "client_id": "your-github-client-id",
             "client_secret": "your-github-secret",
-            "redirect_uri": "http://localhost:3000/auth/github/callback",
+            "redirect_uri": "http://localhost:3000/auth/callback",  # single URI also works
         },
     },
 )
@@ -198,7 +202,7 @@ fullauth = FullAuth(
 This registers these routes automatically:
 
 - `GET /auth/oauth/providers` — list configured providers
-- `GET /auth/oauth/{provider}/authorize` — get the authorization URL
+- `GET /auth/oauth/{provider}/authorize?redirect_uri=...` — get the authorization URL (optional `redirect_uri` param, validated against allowed list, defaults to first)
 - `POST /auth/oauth/{provider}/callback` — exchange code for JWT tokens
 - `GET /auth/oauth/accounts` — list linked OAuth accounts
 - `DELETE /auth/oauth/accounts/{provider}` — unlink a provider

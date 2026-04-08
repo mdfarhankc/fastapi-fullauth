@@ -56,6 +56,7 @@ def create_oauth_router() -> APIRouter:
     )
     async def authorize(
         provider: str,
+        redirect_uri: str | None = None,
         fullauth: "FullAuth" = Depends(_get_fullauth),
     ) -> OAuthAuthorizeResponse:
         oauth_provider = fullauth.oauth_providers.get(provider)
@@ -64,11 +65,17 @@ def create_oauth_router() -> APIRouter:
                 status_code=404, detail=f"OAuth provider '{provider}' not configured"
             )
 
+        try:
+            resolved_uri = oauth_provider.get_redirect_uri(redirect_uri)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
         state = generate_oauth_state(
             fullauth.token_engine,
             ttl_seconds=fullauth.config.OAUTH_STATE_EXPIRE_SECONDS,
+            redirect_uri=resolved_uri,
         )
-        url = oauth_provider.get_authorization_url(state)
+        url = oauth_provider.get_authorization_url(state, resolved_uri)
         return OAuthAuthorizeResponse(authorization_url=url)
 
     @router.post(

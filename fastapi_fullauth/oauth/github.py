@@ -16,16 +16,16 @@ class GitHubOAuthProvider(OAuthProvider):
     def default_scopes(self) -> list[str]:
         return ["read:user", "user:email"]
 
-    def get_authorization_url(self, state: str) -> str:
+    def get_authorization_url(self, state: str, redirect_uri: str) -> str:
         params = {
             "client_id": self.client_id,
-            "redirect_uri": self.redirect_uri,
+            "redirect_uri": redirect_uri,
             "scope": " ".join(self.scopes),
             "state": state,
         }
         return f"{self.authorization_endpoint}?{urlencode(params)}"
 
-    async def exchange_code(self, code: str) -> dict:
+    async def exchange_code(self, code: str, redirect_uri: str) -> dict:
         async with self._get_http_client() as client:
             resp = await client.post(
                 self.token_endpoint,

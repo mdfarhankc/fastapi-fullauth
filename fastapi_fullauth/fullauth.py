@@ -126,7 +126,8 @@ class FullAuth:
             providers[name] = provider_cls(
                 client_id=opts["client_id"],
                 client_secret=opts["client_secret"],
-                redirect_uri=opts["redirect_uri"],
+                redirect_uri=opts.get("redirect_uri"),
+                redirect_uris=opts.get("redirect_uris"),
                 scopes=opts.get("scopes"),
             )
         return providers

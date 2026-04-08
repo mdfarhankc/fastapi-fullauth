@@ -15,10 +15,10 @@ class GoogleOAuthProvider(OAuthProvider):
     def default_scopes(self) -> list[str]:
         return ["openid", "email", "profile"]
 
-    def get_authorization_url(self, state: str) -> str:
+    def get_authorization_url(self, state: str, redirect_uri: str) -> str:
         params = {
             "client_id": self.client_id,
-            "redirect_uri": self.redirect_uri,
+            "redirect_uri": redirect_uri,
             "response_type": "code",
             "scope": " ".join(self.scopes),
             "state": state,
@@ -27,7 +27,7 @@ class GoogleOAuthProvider(OAuthProvider):
         }
         return f"{self.authorization_endpoint}?{urlencode(params)}"
 
-    async def exchange_code(self, code: str) -> dict:
+    async def exchange_code(self, code: str, redirect_uri: str) -> dict:
         async with self._get_http_client() as client:
             resp = await client.post(
                 self.token_endpoint,
@@ -36,7 +36,7 @@ class GoogleOAuthProvider(OAuthProvider):
                     "client_secret": self.client_secret,
                     "code": code,
                     "grant_type": "authorization_code",
-                    "redirect_uri": self.redirect_uri,
+                    "redirect_uri": redirect_uri,
                 },
             )
             if resp.status_code != 200:

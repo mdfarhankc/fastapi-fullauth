@@ -19,7 +19,7 @@ class MockOAuthProvider(OAuthProvider):
     def __init__(self, user_info: OAuthUserInfo | None = None):
         self.client_id = "test-id"
         self.client_secret = "test-secret"
-        self.redirect_uri = "http://localhost/callback"
+        self.redirect_uris = ["http://localhost/callback"]
         self.scopes = self.default_scopes
         self._user_info = user_info or OAuthUserInfo(
             provider="mock",
@@ -33,10 +33,10 @@ class MockOAuthProvider(OAuthProvider):
     def default_scopes(self) -> list[str]:
         return ["email", "profile"]
 
-    def get_authorization_url(self, state: str) -> str:
-        return f"https://mock.provider/auth?state={state}"
+    def get_authorization_url(self, state: str, redirect_uri: str) -> str:
+        return f"https://mock.provider/auth?state={state}&redirect_uri={redirect_uri}"
 
-    async def exchange_code(self, code: str) -> dict:
+    async def exchange_code(self, code: str, redirect_uri: str) -> dict:
         return {"access_token": "mock-access-token", "refresh_token": "mock-refresh-token"}
 
     async def get_user_info(self, tokens: dict) -> OAuthUserInfo:

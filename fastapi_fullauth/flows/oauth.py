@@ -8,17 +8,22 @@ from fastapi_fullauth.oauth.base import OAuthProvider
 from fastapi_fullauth.types import OAuthAccount, OAuthUserInfo, RefreshToken, TokenPair, UserSchema
 
 
-def generate_oauth_state(token_engine: TokenEngine, ttl_seconds: int = 300) -> str:
-    return token_engine.create_access_token(
-        user_id="oauth-state",
-        extra={"purpose": "oauth_state", "nonce": secrets.token_hex(16)},
-    )
+def generate_oauth_state(
+    token_engine: TokenEngine,
+    ttl_seconds: int = 300,
+    redirect_uri: str | None = None,
+) -> str:
+    extra: dict = {"purpose": "oauth_state", "nonce": secrets.token_hex(16)}
+    if redirect_uri:
+        extra["redirect_uri"] = redirect_uri
+    return token_engine.create_access_token(user_id="oauth-state", extra=extra)
 
 
-async def verify_oauth_state(token_engine: TokenEngine, state: str) -> None:
+async def verify_oauth_state(token_engine: TokenEngine, state: str) -> str | None:
     payload = await token_engine.decode_token(state)
     if payload.extra.get("purpose") != "oauth_state":
         raise OAuthProviderError("Invalid OAuth state token")
+    return payload.extra.get("redirect_uri")
 
 
 async def oauth_callback(
@@ -29,9 +34,10 @@ async def oauth_callback(
     state: str,
     auto_link_by_email: bool = True,
 ) -> tuple[TokenPair, UserSchema, bool]:
-    await verify_oauth_state(token_engine, state)
+    redirect_uri = await verify_oauth_state(token_engine, state)
+    resolved_uri = provider.get_redirect_uri(redirect_uri)
 
-    tokens = await provider.exchange_code(code)
+    tokens = await provider.exchange_code(code, resolved_uri)
     info: OAuthUserInfo = await provider.get_user_info(tokens)
 
     # check if this provider account is already linked
