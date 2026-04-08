@@ -74,7 +74,7 @@ async def oauth_callback(
 
             if info.email_verified:
                 await adapter.set_user_verified(str(user.id))
-                user = await adapter.get_user_by_id(str(user.id))
+                user = user.model_copy(update={"is_verified": True})
 
             is_new_user = True
         else:

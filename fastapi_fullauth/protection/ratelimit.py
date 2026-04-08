@@ -1,5 +1,5 @@
 import time
-from collections import defaultdict
+from collections import defaultdict, deque
 
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
@@ -12,12 +12,13 @@ class RateLimiter:
     def __init__(self, max_requests: int = 60, window_seconds: int = 60) -> None:
         self.max_requests = max_requests
         self.window_seconds = window_seconds
-        self._hits: dict[str, list[float]] = defaultdict(list)
+        self._hits: dict[str, deque[float]] = defaultdict(deque)
 
-    def _cleanup(self, key: str, now: float) -> list[float]:
+    def _cleanup(self, key: str, now: float) -> deque[float]:
         cutoff = now - self.window_seconds
         timestamps = self._hits[key]
-        timestamps[:] = [t for t in timestamps if t > cutoff]
+        while timestamps and timestamps[0] <= cutoff:
+            timestamps.popleft()
         if not timestamps:
             del self._hits[key]
         return timestamps
@@ -74,31 +75,30 @@ class RedisRateLimiter:
         self._prefix = "fullauth:ratelimit:"
 
     async def is_allowed(self, key: str) -> bool:
-        import time as _time
-
         redis_key = f"{self._prefix}{key}"
-        now = _time.time()
+        now = time.time()
         cutoff = now - self.window_seconds
 
+        # cleanup + count in one pipeline
         pipe = self._redis.pipeline()
         pipe.zremrangebyscore(redis_key, "-inf", cutoff)
         pipe.zcard(redis_key)
-        pipe.zadd(redis_key, {f"{now}": now})
-        pipe.expire(redis_key, self.window_seconds)
         results = await pipe.execute()
 
         count = results[1]
         if count >= self.max_requests:
-            # undo the zadd
-            await self._redis.zrem(redis_key, f"{now}")
             return False
+
+        # only add if allowed
+        pipe = self._redis.pipeline()
+        pipe.zadd(redis_key, {f"{now}": now})
+        pipe.expire(redis_key, self.window_seconds)
+        await pipe.execute()
         return True
 
     async def remaining(self, key: str) -> int:
-        import time as _time
-
         redis_key = f"{self._prefix}{key}"
-        now = _time.time()
+        now = time.time()
         cutoff = now - self.window_seconds
 
         pipe = self._redis.pipeline()
@@ -110,10 +110,8 @@ class RedisRateLimiter:
         return max(0, self.max_requests - count)
 
     async def reset_time(self, key: str) -> float:
-        import time as _time
-
         redis_key = f"{self._prefix}{key}"
-        now = _time.time()
+        now = time.time()
 
         oldest = await self._redis.zrange(redis_key, 0, 0, withscores=True)
         if not oldest:
