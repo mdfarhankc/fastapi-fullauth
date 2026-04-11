@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.5.0
+
+### Added
+
+- **Structured logging** across all auth flows, security middleware, and OAuth — failed logins, account lockouts, token reuse, CSRF violations, rate limit hits, role changes, and account deletions are all logged via `logging.getLogger("fastapi_fullauth.*")`
+- **Documentation site** — MkDocs with Material theme, auto-deployed to GitHub Pages via CI
+- **Proxy-aware rate limiting** — new `TRUSTED_PROXY_HEADERS` config to read real client IPs from `X-Forwarded-For` and similar headers
+- **SQLAlchemy example app** (`examples/sqlalchemy_app/`)
+- **`update_user` field validation** — rejects unknown fields with 422 instead of passing them to the DB
+- SQLModel adapter now accepts both SQLModel's and SQLAlchemy's `AsyncSession`
+- `OAuthAccountRecord` exported from `fastapi_fullauth.adapters.sqlmodel`
+
+### Fixed
+
+- **OAuth state token TTL was ignored** — `OAUTH_STATE_EXPIRE_SECONDS` config had no effect; state tokens used `ACCESS_TOKEN_EXPIRE_MINUTES` (30 min) instead of the configured 5 min
+- **Refresh token reuse detection race condition** — two concurrent `/refresh` requests could both succeed before either revoked the token; added explicit blacklist check before issuing new tokens
+- **OAuth error messages leaked provider internals** — raw API responses from Google/GitHub were exposed in HTTP error details; now logged internally and replaced with generic messages
+
+### Changed
+
+- README rewritten with centered hero layout, badges, and documentation links
+- Documentation URL updated in `pyproject.toml` to point to GitHub Pages
+
 ## 0.4.0
 
 ### Added
