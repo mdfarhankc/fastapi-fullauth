@@ -1,8 +1,11 @@
+import logging
 from urllib.parse import urlencode
 
 from fastapi_fullauth.exceptions import OAuthProviderError
 from fastapi_fullauth.oauth.base import OAuthProvider
 from fastapi_fullauth.types import OAuthUserInfo
+
+logger = logging.getLogger("fastapi_fullauth.oauth.google")
 
 
 class GoogleOAuthProvider(OAuthProvider):
@@ -40,7 +43,9 @@ class GoogleOAuthProvider(OAuthProvider):
                 },
             )
             if resp.status_code != 200:
-                raise OAuthProviderError(f"Google token exchange failed: {resp.text}")
+                logger.error("Google token exchange failed (HTTP %s): %s",
+                             resp.status_code, resp.text)
+                raise OAuthProviderError("Google token exchange failed")
             return resp.json()
 
     async def get_user_info(self, tokens: dict) -> OAuthUserInfo:
@@ -51,7 +56,9 @@ class GoogleOAuthProvider(OAuthProvider):
                 headers={"Authorization": f"Bearer {access_token}"},
             )
             if resp.status_code != 200:
-                raise OAuthProviderError(f"Google userinfo failed: {resp.text}")
+                logger.error("Google userinfo failed (HTTP %s): %s",
+                             resp.status_code, resp.text)
+                raise OAuthProviderError("Failed to fetch user info from Google")
             data = resp.json()
 
         return OAuthUserInfo(

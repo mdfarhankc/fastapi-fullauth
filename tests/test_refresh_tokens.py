@@ -172,6 +172,59 @@ async def test_refresh_reuse_revokes_family_when_blacklist_lost():
 
 
 # ---------------------------------------------------------------------------
+# Concurrent refresh — second request must fail even with cleared blacklist
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_refresh_reuse_caught_by_explicit_blacklist_check():
+    """Even if decode_token doesn't catch it (e.g. race window), the explicit
+    is_blacklisted guard before issuing new tokens rejects the second call."""
+    from unittest.mock import AsyncMock, patch
+
+    app, adapter, fullauth = _make_app()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        await client.post(
+            "/api/v1/auth/register",
+            json={"email": "t@t.com", "password": "securepass123"},
+        )
+        r = await client.post(
+            "/api/v1/auth/login",
+            json={"email": "t@t.com", "password": "securepass123"},
+        )
+        refresh_token = r.json()["refresh_token"]
+
+        # first refresh succeeds normally
+        r1 = await client.post(
+            "/api/v1/auth/refresh",
+            json={"refresh_token": refresh_token},
+        )
+        assert r1.status_code == 200
+
+        # simulate race: patch decode_token to skip the blacklist check
+        # (as if two requests decoded in parallel before either blacklisted)
+        original_decode = fullauth.token_engine.decode_token
+        blacklist = fullauth.token_engine.blacklist
+
+        async def decode_skipping_blacklist(token):
+            # temporarily disable blacklist during decode
+            fullauth.token_engine.blacklist = type(blacklist)()
+            try:
+                return await original_decode(token)
+            finally:
+                fullauth.token_engine.blacklist = blacklist
+
+        with patch.object(fullauth.token_engine, "decode_token", decode_skipping_blacklist):
+            r2 = await client.post(
+                "/api/v1/auth/refresh",
+                json={"refresh_token": refresh_token},
+            )
+        # the explicit is_blacklisted check in the route catches it
+        assert r2.status_code == 401
+
+
+# ---------------------------------------------------------------------------
 # Refresh with REFRESH_TOKEN_ROTATION=False — returns same refresh token
 # ---------------------------------------------------------------------------
 

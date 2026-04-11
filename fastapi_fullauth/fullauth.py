@@ -1,3 +1,4 @@
+import logging
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -14,6 +15,8 @@ from fastapi_fullauth.protection.ratelimit import RateLimiter, RedisRateLimiter
 from fastapi_fullauth.router.auth import create_auth_router
 from fastapi_fullauth.types import CreateUserSchema, RouteName, UserSchema
 from fastapi_fullauth.validators import PasswordValidator
+
+logger = logging.getLogger("fastapi_fullauth")
 
 TokenClaimsBuilder = Callable[[UserSchema], Awaitable[dict[str, Any]]]
 
@@ -227,6 +230,7 @@ class FullAuth:
         if limiter and not await limiter.is_allowed(client_ip):
             from fastapi import HTTPException
 
+            logger.warning("Auth rate limit exceeded: route=%s, ip=%s", route_name, client_ip)
             raise HTTPException(status_code=429, detail="Too many requests. Try again later.")
 
     @property
@@ -271,7 +275,11 @@ class FullAuth:
             from fastapi_fullauth.protection.ratelimit import RateLimitMiddleware
 
             middleware_limiter = self._create_rate_limiter(self.config, 60, 60)
-            app.add_middleware(RateLimitMiddleware, limiter=middleware_limiter)
+            app.add_middleware(
+                RateLimitMiddleware,
+                limiter=middleware_limiter,
+                trusted_proxy_headers=self.config.TRUSTED_PROXY_HEADERS,
+            )
 
         if self.config.INJECT_SECURITY_HEADERS:
             from fastapi_fullauth.middleware.security_headers import (

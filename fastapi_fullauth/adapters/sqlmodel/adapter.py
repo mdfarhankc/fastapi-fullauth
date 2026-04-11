@@ -1,8 +1,10 @@
 from typing import Any
 
 from sqlalchemy import select, update
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession as SAAsyncSession
+from sqlalchemy.ext.asyncio import async_sessionmaker
 from sqlalchemy.orm import selectinload
+from sqlmodel.ext.asyncio.session import AsyncSession as SMAsyncSession
 
 from fastapi_fullauth.adapters.base import AbstractUserAdapter
 from fastapi_fullauth.adapters.sqlmodel.models import (
@@ -17,7 +19,7 @@ from fastapi_fullauth.types import CreateUserSchema, OAuthAccount, RefreshToken,
 class SQLModelAdapter(AbstractUserAdapter):
     def __init__(
         self,
-        session_maker: async_sessionmaker[AsyncSession],
+        session_maker: async_sessionmaker[SMAsyncSession] | async_sessionmaker[SAAsyncSession],
         user_model: type[UserBase],
         user_schema: type[UserSchema] | None = None,
     ) -> None:

@@ -1,3 +1,4 @@
+import logging
 from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Depends, HTTPException, Response
@@ -10,6 +11,8 @@ from fastapi_fullauth.exceptions import (
     TokenError,
 )
 from fastapi_fullauth.flows.oauth import generate_oauth_state, oauth_callback
+
+logger = logging.getLogger("fastapi_fullauth.oauth")
 
 if TYPE_CHECKING:
     from fastapi_fullauth.fullauth import FullAuth
@@ -67,8 +70,8 @@ def create_oauth_router() -> APIRouter:
 
         try:
             resolved_uri = oauth_provider.get_redirect_uri(redirect_uri)
-        except ValueError as e:
-            raise HTTPException(status_code=400, detail=str(e))
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid redirect URI")
 
         state = generate_oauth_state(
             fullauth.token_engine,
@@ -168,6 +171,7 @@ def create_oauth_router() -> APIRouter:
             )
 
         await fullauth.adapter.delete_oauth_account(provider, str(user.id))
+        logger.info("OAuth account unlinked: user_id=%s, provider=%s", user.id, provider)
         return Response(status_code=204)
 
     return router

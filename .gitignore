@@ -28,7 +28,13 @@ Thumbs.db
 .coverage
 htmlcov/
 
+# Linting
+.ruff_cache/
+
 # Distribution
 *.tar.gz
 *.whl
 architecture.md
+
+# Docs build
+site/

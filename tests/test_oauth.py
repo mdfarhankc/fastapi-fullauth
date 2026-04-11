@@ -94,6 +94,24 @@ async def test_verify_invalid_state_raises(config):
         await verify_oauth_state(engine, token)
 
 
+@pytest.mark.asyncio
+async def test_oauth_state_ttl_is_applied(config):
+    """State token should expire based on ttl_seconds, not ACCESS_TOKEN_EXPIRE_MINUTES."""
+    from fastapi_fullauth.core.tokens import TokenEngine
+    from fastapi_fullauth.exceptions import TokenExpiredError
+
+    engine = TokenEngine(config=config)
+    # create state with 1-second TTL
+    state = generate_oauth_state(engine, ttl_seconds=1)
+
+    import asyncio
+
+    await asyncio.sleep(1.1)
+
+    with pytest.raises(TokenExpiredError):
+        await verify_oauth_state(engine, state)
+
+
 # ── OAuth callback flow tests ────────────────────────────────────────
 
 
