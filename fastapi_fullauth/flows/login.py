@@ -1,9 +1,13 @@
+import logging
+
 from fastapi_fullauth.adapters.base import AbstractUserAdapter
 from fastapi_fullauth.core.crypto import hash_password, password_needs_rehash, verify_password
 from fastapi_fullauth.core.tokens import TokenEngine
 from fastapi_fullauth.exceptions import AccountLockedError, AuthenticationError
 from fastapi_fullauth.protection.lockout import LockoutManager
 from fastapi_fullauth.types import RefreshToken, TokenPair, UserSchema
+
+logger = logging.getLogger("fastapi_fullauth.login")
 
 
 async def login(
@@ -17,6 +21,7 @@ async def login(
     user: UserSchema | None = None,
 ) -> TokenPair:
     if lockout and lockout.is_locked(identifier):
+        logger.warning("Login blocked — account locked: %s", identifier)
         raise AccountLockedError(f"Account {identifier} is temporarily locked")
 
     if user is None:
@@ -24,15 +29,18 @@ async def login(
     if user is None:
         if lockout:
             lockout.record_failure(identifier)
+        logger.warning("Login failed — user not found: %s", identifier)
         raise AuthenticationError("Invalid credentials")
 
     hashed = await adapter.get_hashed_password(str(user.id))
     if hashed is None or not verify_password(password, hashed):
         if lockout:
             lockout.record_failure(identifier)
+        logger.warning("Login failed — invalid password: %s", identifier)
         raise AuthenticationError("Invalid credentials")
 
     if not user.is_active:
+        logger.warning("Login failed — account deactivated: %s", identifier)
         raise AuthenticationError("User account is deactivated")
 
     if password_needs_rehash(hashed):
@@ -41,6 +49,7 @@ async def login(
     if lockout:
         lockout.clear(identifier)
 
+    logger.info("Login successful: user_id=%s", user.id)
     roles = await adapter.get_user_roles(str(user.id))
     access, refresh_meta = token_engine.create_token_pair(
         user_id=str(user.id),

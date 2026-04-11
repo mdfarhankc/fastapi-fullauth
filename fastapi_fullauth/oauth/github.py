@@ -1,8 +1,11 @@
+import logging
 from urllib.parse import urlencode
 
 from fastapi_fullauth.exceptions import OAuthProviderError
 from fastapi_fullauth.oauth.base import OAuthProvider
 from fastapi_fullauth.types import OAuthUserInfo
+
+logger = logging.getLogger("fastapi_fullauth.oauth.github")
 
 
 class GitHubOAuthProvider(OAuthProvider):
@@ -37,10 +40,13 @@ class GitHubOAuthProvider(OAuthProvider):
                 headers={"Accept": "application/json"},
             )
             if resp.status_code != 200:
-                raise OAuthProviderError(f"GitHub token exchange failed: {resp.text}")
+                logger.error("GitHub token exchange failed (HTTP %s): %s",
+                             resp.status_code, resp.text)
+                raise OAuthProviderError("GitHub token exchange failed")
             data = resp.json()
             if "error" in data:
-                raise OAuthProviderError(f"GitHub token error: {data['error_description']}")
+                logger.error("GitHub token error: %s", data.get("error_description", data["error"]))
+                raise OAuthProviderError("GitHub token exchange failed")
             return data
 
     async def get_user_info(self, tokens: dict) -> OAuthUserInfo:
@@ -53,7 +59,9 @@ class GitHubOAuthProvider(OAuthProvider):
         async with self._get_http_client() as client:
             resp = await client.get(self.userinfo_endpoint, headers=headers)
             if resp.status_code != 200:
-                raise OAuthProviderError(f"GitHub userinfo failed: {resp.text}")
+                logger.error("GitHub userinfo failed (HTTP %s): %s",
+                             resp.status_code, resp.text)
+                raise OAuthProviderError("Failed to fetch user info from GitHub")
             data = resp.json()
 
             # GitHub needs a separate call for verified primary email

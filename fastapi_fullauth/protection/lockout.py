@@ -1,4 +1,7 @@
+import logging
 import time
+
+logger = logging.getLogger("fastapi_fullauth.lockout")
 
 
 class LockoutManager:
@@ -27,6 +30,10 @@ class LockoutManager:
 
         if len(attempts) >= self.max_attempts:
             self._locked_until[key] = now + self.lockout_seconds
+            logger.warning(
+                "Account locked after %d failed attempts: %s",
+                self.max_attempts, key,
+            )
 
     def clear(self, key: str) -> None:
         self._attempts.pop(key, None)

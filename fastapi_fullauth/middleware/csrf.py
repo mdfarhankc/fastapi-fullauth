@@ -1,10 +1,13 @@
 import hashlib
 import hmac
+import logging
 import secrets
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
+
+logger = logging.getLogger("fastapi_fullauth.csrf")
 
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
 
@@ -97,18 +100,21 @@ class CSRFMiddleware(BaseHTTPMiddleware):
         header_value = request.headers.get(self.header_name)
 
         if not cookie_value or not header_value:
+            logger.warning("CSRF token missing: %s %s", method, path)
             return JSONResponse(
                 {"detail": "CSRF token missing."},
                 status_code=403,
             )
 
         if not _verify_csrf_value(cookie_value, self.secret):
+            logger.warning("CSRF cookie signature invalid: %s %s", method, path)
             return JSONResponse(
                 {"detail": "CSRF cookie signature invalid."},
                 status_code=403,
             )
 
         if not hmac.compare_digest(cookie_value, header_value):
+            logger.warning("CSRF token mismatch: %s %s", method, path)
             return JSONResponse(
                 {"detail": "CSRF token mismatch."},
                 status_code=403,
