@@ -4,8 +4,11 @@
 [![Python](https://img.shields.io/pypi/pyversions/fastapi-fullauth)](https://pypi.org/project/fastapi-fullauth/)
 [![CI](https://github.com/mdfarhankc/fastapi-fullauth/actions/workflows/ci.yml/badge.svg)](https://github.com/mdfarhankc/fastapi-fullauth/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![Docs](https://img.shields.io/badge/docs-mdfarhankc.github.io-009688)](https://mdfarhankc.github.io/fastapi-fullauth)
 
 Async auth library for FastAPI. Handles JWT tokens, refresh rotation, password hashing, email verification, and role-based access out of the box.
+
+**Documentation**: [https://mdfarhankc.github.io/fastapi-fullauth](https://mdfarhankc.github.io/fastapi-fullauth)
 
 ## Install
 

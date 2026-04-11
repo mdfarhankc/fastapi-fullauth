@@ -51,7 +51,7 @@ all = [
 
 [project.urls]
 Homepage = "https://github.com/mdfarhankc/fastapi-fullauth"
-Documentation = "https://github.com/mdfarhankc/fastapi-fullauth"
+Documentation = "https://mdfarhankc.github.io/fastapi-fullauth"
 Repository = "https://github.com/mdfarhankc/fastapi-fullauth"
 
 [build-system]
