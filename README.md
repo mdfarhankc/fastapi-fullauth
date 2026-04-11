@@ -1,18 +1,30 @@
-# FastAPI FullAuth
+<p align="center">
+  <img src="https://img.icons8.com/fluency/96/shield.png" alt="FastAPI FullAuth" width="96" height="96">
+</p>
 
-[![PyPI](https://img.shields.io/pypi/v/fastapi-fullauth)](https://pypi.org/project/fastapi-fullauth/)
-[![Python](https://img.shields.io/pypi/pyversions/fastapi-fullauth)](https://pypi.org/project/fastapi-fullauth/)
-[![CI](https://github.com/mdfarhankc/fastapi-fullauth/actions/workflows/ci.yml/badge.svg)](https://github.com/mdfarhankc/fastapi-fullauth/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://opensource.org/licenses/MIT)
-[![Docs](https://img.shields.io/badge/docs-mdfarhankc.github.io-009688)](https://mdfarhankc.github.io/fastapi-fullauth)
+<h1 align="center">FastAPI FullAuth</h1>
 
-Production-grade, async-native authentication and authorization library for FastAPI. High performance, easy to learn, fast to code, ready for production.
+<p align="center">
+  <em>Production-grade, async-native authentication and authorization for FastAPI.</em>
+</p>
 
-**Documentation**: [https://mdfarhankc.github.io/fastapi-fullauth](https://mdfarhankc.github.io/fastapi-fullauth)
+<p align="center">
+  <a href="https://pypi.org/project/fastapi-fullauth/"><img src="https://img.shields.io/pypi/v/fastapi-fullauth?color=009688&label=pypi" alt="PyPI"></a>
+  <a href="https://pypi.org/project/fastapi-fullauth/"><img src="https://img.shields.io/pypi/pyversions/fastapi-fullauth?color=009688" alt="Python"></a>
+  <a href="https://github.com/mdfarhankc/fastapi-fullauth/actions/workflows/ci.yml"><img src="https://github.com/mdfarhankc/fastapi-fullauth/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/license-MIT-009688" alt="License"></a>
+  <a href="https://mdfarhankc.github.io/fastapi-fullauth"><img src="https://img.shields.io/badge/docs-mdfarhankc.github.io-009688" alt="Docs"></a>
+</p>
 
-**Source Code**: [https://github.com/mdfarhankc/fastapi-fullauth](https://github.com/mdfarhankc/fastapi-fullauth)
+<p align="center">
+  <strong>Documentation</strong>: <a href="https://mdfarhankc.github.io/fastapi-fullauth">https://mdfarhankc.github.io/fastapi-fullauth</a>
+  <br>
+  <strong>Source Code</strong>: <a href="https://github.com/mdfarhankc/fastapi-fullauth">https://github.com/mdfarhankc/fastapi-fullauth</a>
+</p>
 
 ---
+
+Add a complete authentication and authorization system to your **FastAPI** project. FastAPI FullAuth is designed to be production-ready, async-native, and pluggable — handling JWT tokens, refresh rotation, password hashing, email verification, OAuth2 social login, and role-based access out of the box.
 
 ## Features
 
@@ -203,7 +215,7 @@ fullauth = FullAuth(
 )
 ```
 
-See [Configuration](https://mdfarhankc.github.io/fastapi-fullauth/configuration/) for all options.
+See [Configuration docs](https://mdfarhankc.github.io/fastapi-fullauth/configuration/) for all options.
 
 ## Development
 
