@@ -1,4 +1,4 @@
-# fastapi-fullauth
+# FastAPI FullAuth
 
 [![PyPI](https://img.shields.io/pypi/v/fastapi-fullauth)](https://pypi.org/project/fastapi-fullauth/)
 [![Python](https://img.shields.io/pypi/pyversions/fastapi-fullauth)](https://pypi.org/project/fastapi-fullauth/)
@@ -6,21 +6,49 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Docs](https://img.shields.io/badge/docs-mdfarhankc.github.io-009688)](https://mdfarhankc.github.io/fastapi-fullauth)
 
-Async auth library for FastAPI. Handles JWT tokens, refresh rotation, password hashing, email verification, and role-based access out of the box.
+Production-grade, async-native authentication and authorization library for FastAPI. High performance, easy to learn, fast to code, ready for production.
 
 **Documentation**: [https://mdfarhankc.github.io/fastapi-fullauth](https://mdfarhankc.github.io/fastapi-fullauth)
 
-## Install
+**Source Code**: [https://github.com/mdfarhankc/fastapi-fullauth](https://github.com/mdfarhankc/fastapi-fullauth)
+
+---
+
+## Features
+
+- **JWT access + refresh tokens** with configurable expiry
+- **Refresh token rotation** with reuse detection — revokes entire session family on replay
+- **Password hashing** via Argon2id (default) or bcrypt, with transparent rehashing
+- **Email verification** and **password reset** flows with event hooks
+- **OAuth2 social login** — Google and GitHub, with multi-redirect-URI support
+- **Role-based access control** — `CurrentUser`, `VerifiedUser`, `SuperUser`, `require_role()`
+- **Rate limiting** — per-route auth limits + global middleware (memory or Redis)
+- **CSRF protection** and **security headers** middleware, auto-wired
+- **Pluggable adapters** — SQLModel, SQLAlchemy, or in-memory
+- **Auto-derived schemas** — custom user fields picked up automatically
+- **Event hooks** — `after_register`, `after_login`, `send_verification_email`, etc.
+- **Custom JWT claims** — embed app-specific data in tokens
+- **Structured logging** — all auth events, security violations, and failures logged
+- **Redis support** — token blacklist and rate limiter backends
+- **Python 3.10 – 3.14** supported
+
+## Installation
 
 ```bash
 pip install fastapi-fullauth
-# with an ORM adapter:
+
+# with an ORM adapter
 pip install fastapi-fullauth[sqlmodel]
 pip install fastapi-fullauth[sqlalchemy]
-# with redis for token blacklisting:
+
+# with Redis for token blacklisting
 pip install fastapi-fullauth[sqlmodel,redis]
-# with OAuth2 social login:
+
+# with OAuth2 social login
 pip install fastapi-fullauth[sqlmodel,oauth]
+
+# everything
+pip install fastapi-fullauth[all]
 ```
 
 ## Quick start
@@ -39,19 +67,43 @@ fullauth = FullAuth(
 fullauth.init_app(app)
 ```
 
-This gives you `/auth/me`, `/auth/register`, `/auth/login`, `/auth/logout`, `/auth/refresh`, `/auth/change-password`, `/auth/password-reset/*`, `/auth/verify-email/*`, and admin role management endpoints — all under `/api/v1` by default.
+That's it — 15+ auth routes are registered under `/api/v1/auth/` automatically.
 
 Omit `secret_key` in dev and a random one is generated (tokens won't survive restarts).
 
+## Routes
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/auth/register` | Create a new user |
+| `POST` | `/auth/login` | Authenticate, get tokens |
+| `POST` | `/auth/logout` | Blacklist token |
+| `POST` | `/auth/refresh` | Rotate token pair |
+| `GET` | `/auth/me` | Get current user |
+| `GET` | `/auth/me/verified` | Verified users only |
+| `PATCH` | `/auth/me` | Update profile |
+| `DELETE` | `/auth/me` | Delete account |
+| `POST` | `/auth/change-password` | Change password |
+| `POST` | `/auth/verify-email/request` | Request verification email |
+| `POST` | `/auth/verify-email/confirm` | Confirm email |
+| `POST` | `/auth/password-reset/request` | Request password reset |
+| `POST` | `/auth/password-reset/confirm` | Reset password |
+| `POST` | `/auth/admin/assign-role` | Assign role (superuser) |
+| `POST` | `/auth/admin/remove-role` | Remove role (superuser) |
+
+With OAuth enabled, additional routes are registered under `/auth/oauth/`. All routes are prefixed with `/api/v1` by default.
+
 ## Custom user fields
 
-Just define your model — schemas are auto-derived:
+Define your model — schemas are auto-derived:
 
 ```python
-from fastapi_fullauth.adapters.sqlmodel import UserBase, Role, UserRoleLink, RefreshTokenRecord, SQLModelAdapter
 from sqlmodel import Field, Relationship
+from fastapi_fullauth.adapters.sqlmodel import (
+    UserBase, Role, UserRoleLink, RefreshTokenRecord, SQLModelAdapter,
+)
 
-class MyUser(UserBase, table=True):
+class User(UserBase, table=True):
     __tablename__ = "fullauth_users"
 
     display_name: str = Field(default="", max_length=100)
@@ -62,17 +114,16 @@ class MyUser(UserBase, table=True):
 
 fullauth = FullAuth(
     secret_key="...",
-    adapter=SQLModelAdapter(session_maker, user_model=MyUser),
+    adapter=SQLModelAdapter(session_maker, user_model=User),
 )
 ```
 
-No need to create separate schema classes or subclass the adapter. Registration and response schemas pick up `display_name` and `phone` automatically. You can still pass explicit `user_schema` / `create_user_schema` if you want full control.
+Registration and response schemas pick up `display_name` and `phone` automatically. No separate schema classes needed.
 
 ## Protected routes
 
-Use the `Annotated` types for clean route signatures:
-
 ```python
+from fastapi import Depends
 from fastapi_fullauth.dependencies import CurrentUser, VerifiedUser, SuperUser, require_role
 
 @app.get("/profile")
@@ -81,103 +132,18 @@ async def profile(user: CurrentUser):
 
 @app.get("/dashboard")
 async def dashboard(user: VerifiedUser):
-    # only email-verified users
     return {"email": user.email}
 
 @app.delete("/admin/users/{id}")
 async def delete_user(user: SuperUser):
-    # only superusers
     ...
-
-# or use require_role for custom roles
-from fastapi import Depends
-from fastapi_fullauth.dependencies import require_role
 
 @app.get("/editor")
 async def editor_panel(user=Depends(require_role("editor"))):
     ...
 ```
 
-## Configuration
-
-Pass inline kwargs or a full config object:
-
-```python
-# inline
-fullauth = FullAuth(
-    secret_key="...",
-    adapter=adapter,
-    api_prefix="/api/v2",
-    access_token_expire_minutes=60,
-)
-
-# or use FullAuthConfig for everything
-from fastapi_fullauth import FullAuthConfig
-fullauth = FullAuth(config=FullAuthConfig(SECRET_KEY="..."), adapter=adapter)
-```
-
-Config also reads env vars with `FULLAUTH_` prefix.
-
-## Redis blacklist
-
-```python
-fullauth = FullAuth(
-    secret_key="...",
-    adapter=adapter,
-    blacklist_backend="redis",
-    redis_url="redis://localhost:6379/0",
-)
-```
-
-## Refresh token security
-
-Refresh tokens are stored in DB with family tracking. If a revoked token is replayed (possible theft), the entire token family gets revoked. Disable rotation with `REFRESH_TOKEN_ROTATION=False`.
-
-## Event hooks
-
-```python
-async def welcome(user):
-    await send_email(user.email, "Welcome!")
-
-fullauth.hooks.on("after_register", welcome)
-```
-
-Events: `after_register`, `after_login`, `after_logout`, `after_password_change`, `after_password_reset`, `after_email_verify`, `send_verification_email`, `send_password_reset_email`
-
-## Custom token claims
-
-Embed app-specific data into JWTs (available in `payload.extra`):
-
-```python
-async def add_claims(user):
-    return {"tenant_id": "acme", "plan": "pro"}
-
-fullauth = FullAuth(
-    secret_key="...",
-    adapter=adapter,
-    on_create_token_claims=add_claims,
-)
-```
-
-Reserved keys (`sub`, `exp`, `iat`, `jti`, `type`, `roles`, `extra`, `family_id`) are rejected to prevent accidental overwrites.
-
-## Password hashing
-
-Argon2id by default. Switch to bcrypt via config:
-
-```python
-fullauth = FullAuth(
-    secret_key="...",
-    adapter=adapter,
-    password_hash_algorithm="bcrypt",  # requires: pip install bcrypt
-)
-```
-
-When switching algorithms, existing users are transparently rehashed on their next login.
-
 ## OAuth2 social login
-
-Add Google and/or GitHub login with a few config lines:
 
 ```python
 fullauth = FullAuth(
@@ -190,61 +156,54 @@ fullauth = FullAuth(
             "redirect_uris": [
                 "http://localhost:3000/auth/callback",
                 "https://myapp.com/auth/callback",
-                "myapp://auth/callback",  # Flutter deep link
             ],
         },
         "github": {
             "client_id": "your-github-client-id",
             "client_secret": "your-github-secret",
-            "redirect_uri": "http://localhost:3000/auth/callback",  # single URI also works
+            "redirect_uri": "http://localhost:3000/auth/callback",
         },
     },
 )
 ```
 
-This registers these routes automatically:
-
-- `GET /auth/oauth/providers` — list configured providers
-- `GET /auth/oauth/{provider}/authorize?redirect_uri=...` — get the authorization URL (optional `redirect_uri` param, validated against allowed list, defaults to first)
-- `POST /auth/oauth/{provider}/callback` — exchange code for JWT tokens
-- `GET /auth/oauth/accounts` — list linked OAuth accounts
-- `DELETE /auth/oauth/accounts/{provider}` — unlink a provider
-
-Users can link multiple providers and keep email/password login alongside OAuth. New users are auto-created on first OAuth login, and existing users are auto-linked by email.
-
 Requires `httpx`: `pip install fastapi-fullauth[oauth]`
 
-## Route control
+## Event hooks
+
+```python
+async def welcome(user):
+    await send_email(user.email, "Welcome!")
+
+async def send_verify(email, token):
+    await send_email(email, f"Verify: https://myapp.com/verify?token={token}")
+
+fullauth.hooks.on("after_register", welcome)
+fullauth.hooks.on("send_verification_email", send_verify)
+```
+
+Events: `after_register`, `after_login`, `after_logout`, `after_password_change`, `after_password_reset`, `after_email_verify`, `send_verification_email`, `send_password_reset_email`, `after_oauth_login`
+
+## Configuration
+
+Pass inline kwargs or a config object. All options read from env vars with `FULLAUTH_` prefix.
 
 ```python
 fullauth = FullAuth(
     secret_key="...",
     adapter=adapter,
-    enabled_routes=["login", "logout", "refresh"],
+    access_token_expire_minutes=60,
+    api_prefix="/api/v2",
+    login_field="username",
+    password_hash_algorithm="bcrypt",
+    blacklist_backend="redis",
+    redis_url="redis://localhost:6379/0",
+    rate_limit_enabled=True,
+    trusted_proxy_headers=["X-Forwarded-For"],
 )
 ```
 
-## Middleware
-
-SecurityHeaders, CSRF, and rate limiting are auto-wired from config flags. Pass `auto_middleware=False` to `init_app()` to handle it yourself.
-
-## Auth rate limiting
-
-Login, register, and password-reset have per-IP rate limits enabled by default (5/3/3 per minute). Configure via `AUTH_RATE_LIMIT_*` settings.
-
-## Login field
-
-By default, login uses `email`. Change it to any field on your user model:
-
-```python
-# username login: POST /login {"username": "john", "password": "..."}
-fullauth = FullAuth(secret_key="...", adapter=adapter, login_field="username")
-
-# phone login: POST /login {"phone": "+1234567890", "password": "..."}
-fullauth = FullAuth(secret_key="...", adapter=adapter, login_field="phone")
-```
-
-The Swagger UI and request body update automatically. The adapter looks up users by that field.
+See [Configuration](https://mdfarhankc.github.io/fastapi-fullauth/configuration/) for all options.
 
 ## Development
 
