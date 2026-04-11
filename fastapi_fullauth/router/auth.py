@@ -1,3 +1,4 @@
+import logging
 from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response
@@ -27,6 +28,9 @@ from fastapi_fullauth.flows.logout import logout
 from fastapi_fullauth.flows.password_reset import request_password_reset, reset_password
 from fastapi_fullauth.flows.register import register
 from fastapi_fullauth.types import CreateUserSchema, RefreshToken, TokenPair, UserSchema
+from fastapi_fullauth.utils import get_client_ip
+
+logger = logging.getLogger("fastapi_fullauth.router")
 
 if TYPE_CHECKING:
     from fastapi_fullauth.fullauth import FullAuth
@@ -100,7 +104,7 @@ def create_auth_router(
             fullauth: "FullAuth" = Depends(_get_fullauth),
             data: create_user_schema = Body(...),  # type: ignore[valid-type]
         ) -> UserSchema:
-            client_ip = request.client.host if request.client else "unknown"
+            client_ip = get_client_ip(request, fullauth.config.TRUSTED_PROXY_HEADERS)
             await fullauth.check_auth_rate_limit("register", client_ip)
 
             try:
@@ -129,7 +133,7 @@ def create_auth_router(
             response: Response,
             fullauth: "FullAuth" = Depends(_get_fullauth),
         ):
-            client_ip = request.client.host if request.client else "unknown"
+            client_ip = get_client_ip(request, fullauth.config.TRUSTED_PROXY_HEADERS)
             await fullauth.check_auth_rate_limit("login", client_ip)
 
             identifier = getattr(data, login_field)
@@ -195,6 +199,10 @@ def create_auth_router(
             # reuse detection: if this token was already rotated, someone stole it
             stored = await fullauth.adapter.get_refresh_token(data.refresh_token)
             if stored is not None and stored.revoked:
+                logger.error(
+                    "Refresh token reuse detected — revoking family: %s",
+                    stored.family_id,
+                )
                 await fullauth.adapter.revoke_refresh_token_family(stored.family_id)
                 raise CREDENTIALS_EXCEPTION
 
@@ -202,6 +210,21 @@ def create_auth_router(
             extra_claims = await fullauth.get_custom_claims(user)
 
             if fullauth.config.REFRESH_TOKEN_ROTATION:
+                # blacklist the JTI *before* issuing new tokens — if a concurrent
+                # request already blacklisted it, decode_token will reject it on the
+                # next attempt, closing the race window.
+                already_blacklisted = await fullauth.token_engine.blacklist.is_blacklisted(
+                    payload.jti
+                )
+                if already_blacklisted:
+                    # another request already consumed this token
+                    logger.warning(
+                        "Concurrent refresh token use detected: jti=%s",
+                        payload.jti,
+                    )
+                    if stored is not None:
+                        await fullauth.adapter.revoke_refresh_token_family(stored.family_id)
+                    raise CREDENTIALS_EXCEPTION
                 await fullauth.token_engine.blacklist_token(
                     payload.jti,
                     ttl_seconds=fullauth.config.REFRESH_TOKEN_EXPIRE_DAYS * 86400,
@@ -338,6 +361,7 @@ def create_auth_router(
         ) -> None:
             await fullauth.adapter.revoke_all_user_refresh_tokens(str(user.id))
             await fullauth.adapter.delete_user(str(user.id))
+            logger.warning("Account deleted: user_id=%s, email=%s", user.id, user.email)
             return Response(status_code=204)
 
     if _on("change-password"):
@@ -355,6 +379,8 @@ def create_auth_router(
         ) -> MessageResponse:
             hashed = await fullauth.adapter.get_hashed_password(str(user.id))
             if hashed is None or not verify_password(data.current_password, hashed):
+                logger.warning("Password change failed — wrong current password: user_id=%s",
+                               user.id)
                 raise HTTPException(status_code=400, detail="Current password is incorrect")
 
             try:
@@ -364,6 +390,7 @@ def create_auth_router(
 
             await fullauth.adapter.set_password(str(user.id), hash_password(data.new_password))
             await fullauth.adapter.revoke_all_user_refresh_tokens(str(user.id))
+            logger.info("Password changed: user_id=%s", user.id)
             await fullauth.hooks.emit("after_password_change", user=user)
             return MessageResponse(detail="Password changed successfully.")
 
@@ -424,7 +451,7 @@ def create_auth_router(
             request: Request,
             fullauth: "FullAuth" = Depends(_get_fullauth),
         ) -> MessageResponse:
-            client_ip = request.client.host if request.client else "unknown"
+            client_ip = get_client_ip(request, fullauth.config.TRUSTED_PROXY_HEADERS)
             await fullauth.check_auth_rate_limit("password-reset", client_ip)
 
             token = await request_password_reset(
@@ -486,6 +513,7 @@ def create_auth_router(
             raise HTTPException(status_code=404, detail="User not found")
 
         await fullauth.adapter.assign_role(data.user_id, data.role)
+        logger.info("Role assigned: target=%s, role=%s, by=%s", data.user_id, data.role, caller.id)
         return MessageResponse(detail=f"Role '{data.role}' assigned to user {data.user_id}.")
 
     @router.post(
@@ -500,6 +528,7 @@ def create_auth_router(
         fullauth: "FullAuth" = Depends(_get_fullauth),
     ) -> MessageResponse:
         await fullauth.adapter.remove_role(data.user_id, data.role)
+        logger.info("Role removed: target=%s, role=%s, by=%s", data.user_id, data.role, caller.id)
         return MessageResponse(detail=f"Role '{data.role}' removed from user {data.user_id}.")
 
     return router

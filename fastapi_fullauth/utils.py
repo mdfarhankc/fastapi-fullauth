@@ -1,5 +1,7 @@
 import secrets
 
+from starlette.requests import Request
+
 from fastapi_fullauth.adapters.base import AbstractUserAdapter
 from fastapi_fullauth.core.crypto import hash_password
 from fastapi_fullauth.exceptions import UserAlreadyExistsError
@@ -21,3 +23,18 @@ async def create_superuser(
 
 def generate_secret_key(length: int = 64) -> str:
     return secrets.token_urlsafe(length)
+
+
+def get_client_ip(request: Request, trusted_headers: list[str] | None = None) -> str:
+    """Extract the real client IP, checking trusted proxy headers first.
+
+    Only headers explicitly listed in ``trusted_headers`` are consulted.
+    When a header contains a comma-separated chain (e.g. ``X-Forwarded-For``),
+    the first (left-most, i.e. original client) address is returned.
+    """
+    for header in trusted_headers or []:
+        value = request.headers.get(header)
+        if value:
+            # take the first IP in the chain (original client)
+            return value.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"

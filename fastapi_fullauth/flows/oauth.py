@@ -1,3 +1,4 @@
+import logging
 import secrets
 
 from fastapi_fullauth.adapters.base import AbstractUserAdapter
@@ -6,6 +7,8 @@ from fastapi_fullauth.core.tokens import TokenEngine
 from fastapi_fullauth.exceptions import OAuthProviderError
 from fastapi_fullauth.oauth.base import OAuthProvider
 from fastapi_fullauth.types import OAuthAccount, OAuthUserInfo, RefreshToken, TokenPair, UserSchema
+
+logger = logging.getLogger("fastapi_fullauth.oauth")
 
 
 def generate_oauth_state(
@@ -16,12 +19,15 @@ def generate_oauth_state(
     extra: dict = {"purpose": "oauth_state", "nonce": secrets.token_hex(16)}
     if redirect_uri:
         extra["redirect_uri"] = redirect_uri
-    return token_engine.create_access_token(user_id="oauth-state", extra=extra)
+    return token_engine.create_access_token(
+        user_id="oauth-state", extra=extra, expire_seconds=ttl_seconds
+    )
 
 
 async def verify_oauth_state(token_engine: TokenEngine, state: str) -> str | None:
     payload = await token_engine.decode_token(state)
     if payload.extra.get("purpose") != "oauth_state":
+        logger.warning("Invalid OAuth state token (wrong purpose)")
         raise OAuthProviderError("Invalid OAuth state token")
     return payload.extra.get("redirect_uri")
 
@@ -47,6 +53,10 @@ async def oauth_callback(
         # returning user — update stored tokens
         user = await adapter.get_user_by_id(existing_account.user_id)
         if user is None:
+            logger.error(
+                "OAuth linked user missing: provider=%s, provider_user_id=%s",
+                info.provider, info.provider_user_id,
+            )
             raise OAuthProviderError("Linked user no longer exists")
 
         await adapter.update_oauth_account(
@@ -70,6 +80,7 @@ async def oauth_callback(
             from fastapi_fullauth.types import CreateUserSchema
 
             if not info.email:
+                logger.error("OAuth provider returned no email: %s", info.provider)
                 raise OAuthProviderError(
                     f"No email returned from {info.provider}. Cannot create account."
                 )
@@ -97,6 +108,11 @@ async def oauth_callback(
                 refresh_token=tokens.get("refresh_token"),
             )
         )
+
+    if is_new_user:
+        logger.info("OAuth user created: provider=%s, email=%s", info.provider, info.email)
+    else:
+        logger.info("OAuth login: provider=%s, user_id=%s", info.provider, user.id)
 
     # issue our JWT tokens
     roles = await adapter.get_user_roles(str(user.id))

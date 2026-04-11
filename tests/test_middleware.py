@@ -125,6 +125,86 @@ async def test_rate_limit_blocks_over_limit(ratelimit_app):
         assert r.status_code == 429
 
 
+# ── Proxy header IP extraction ──────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_rate_limit_uses_x_forwarded_for_when_trusted():
+    """When TRUSTED_PROXY_HEADERS includes X-Forwarded-For, the middleware
+    should rate-limit by the forwarded IP, not the direct client IP."""
+    app = FastAPI()
+    app.add_middleware(
+        RateLimitMiddleware,
+        max_requests=2,
+        window_seconds=60,
+        trusted_proxy_headers=["X-Forwarded-For"],
+    )
+
+    @app.get("/test")
+    async def test_route():
+        return {"ok": True}
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        # 2 requests from "1.2.3.4" via header — should exhaust the limit
+        for _ in range(2):
+            r = await client.get("/test", headers={"X-Forwarded-For": "1.2.3.4"})
+            assert r.status_code == 200
+
+        # 3rd from same forwarded IP — blocked
+        r = await client.get("/test", headers={"X-Forwarded-For": "1.2.3.4"})
+        assert r.status_code == 429
+
+        # different forwarded IP — still allowed
+        r = await client.get("/test", headers={"X-Forwarded-For": "5.6.7.8"})
+        assert r.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_rate_limit_ignores_proxy_header_when_not_trusted():
+    """Without trusted headers configured, X-Forwarded-For is ignored."""
+    app = FastAPI()
+    app.add_middleware(RateLimitMiddleware, max_requests=2, window_seconds=60)
+
+    @app.get("/test")
+    async def test_route():
+        return {"ok": True}
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        # all requests come from the same direct client IP regardless of header
+        for _ in range(2):
+            r = await client.get("/test", headers={"X-Forwarded-For": "1.2.3.4"})
+            assert r.status_code == 200
+        r = await client.get("/test", headers={"X-Forwarded-For": "5.6.7.8"})
+        assert r.status_code == 429  # still blocked — header ignored
+
+
+def test_get_client_ip_chain():
+    """When X-Forwarded-For contains a chain, the first IP is returned."""
+    from unittest.mock import MagicMock
+
+    from fastapi_fullauth.utils import get_client_ip
+
+    request = MagicMock()
+    request.headers = {"X-Forwarded-For": "1.1.1.1, 10.0.0.1, 10.0.0.2"}
+    request.client.host = "127.0.0.1"
+    assert get_client_ip(request, ["X-Forwarded-For"]) == "1.1.1.1"
+
+
+def test_get_client_ip_falls_back_to_client_host():
+    """Without trusted headers, falls back to request.client.host."""
+    from unittest.mock import MagicMock
+
+    from fastapi_fullauth.utils import get_client_ip
+
+    request = MagicMock()
+    request.headers = {"X-Forwarded-For": "1.1.1.1"}
+    request.client.host = "127.0.0.1"
+    assert get_client_ip(request, []) == "127.0.0.1"
+    assert get_client_ip(request, None) == "127.0.0.1"
+
+
 # ── Redis rate limiter ───────────────────────────────────────────────
 
 

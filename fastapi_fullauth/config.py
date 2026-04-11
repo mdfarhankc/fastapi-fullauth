@@ -25,6 +25,7 @@ class FullAuthConfig(BaseSettings):
 
     RATE_LIMIT_ENABLED: bool = False
     RATE_LIMIT_BACKEND: Literal["memory", "redis"] = "memory"
+    TRUSTED_PROXY_HEADERS: list[str] = []
 
     AUTH_RATE_LIMIT_ENABLED: bool = True
     AUTH_RATE_LIMIT_LOGIN: int = 5

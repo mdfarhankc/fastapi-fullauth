@@ -1,3 +1,4 @@
+import logging
 import time
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -7,6 +8,8 @@ import jwt
 from fastapi_fullauth.config import FullAuthConfig
 from fastapi_fullauth.exceptions import TokenBlacklistedError, TokenError, TokenExpiredError
 from fastapi_fullauth.types import RefreshTokenMeta, TokenPayload
+
+logger = logging.getLogger("fastapi_fullauth.tokens")
 
 
 class TokenBlacklist:
@@ -45,11 +48,16 @@ class TokenEngine:
         user_id: str,
         roles: list[str] | None = None,
         extra: dict | None = None,
+        expire_seconds: int | None = None,
     ) -> str:
         now = datetime.now(timezone.utc)
+        if expire_seconds is not None:
+            expires = now + timedelta(seconds=expire_seconds)
+        else:
+            expires = now + timedelta(minutes=self.config.ACCESS_TOKEN_EXPIRE_MINUTES)
         payload = {
             "sub": user_id,
-            "exp": now + timedelta(minutes=self.config.ACCESS_TOKEN_EXPIRE_MINUTES),
+            "exp": expires,
             "iat": now,
             "jti": uuid.uuid4().hex,
             "type": "access",
@@ -81,12 +89,15 @@ class TokenEngine:
         try:
             data = jwt.decode(token, self.config.SECRET_KEY, algorithms=[self.config.ALGORITHM])
         except jwt.ExpiredSignatureError:
+            logger.debug("Token decode failed — expired")
             raise TokenExpiredError("Token has expired")
         except jwt.InvalidTokenError as e:
+            logger.debug("Token decode failed — invalid: %s", e)
             raise TokenError(f"Invalid token: {e}")
 
         jti = data.get("jti", "")
         if self.config.BLACKLIST_ENABLED and await self.blacklist.is_blacklisted(jti):
+            logger.warning("Blacklisted token used: jti=%s, sub=%s", jti, data.get("sub"))
             raise TokenBlacklistedError("Token has been revoked")
 
         return TokenPayload(
