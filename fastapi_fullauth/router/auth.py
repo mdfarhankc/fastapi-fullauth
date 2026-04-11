@@ -350,6 +350,15 @@ def create_auth_router(
             if not updates:
                 raise HTTPException(status_code=400, detail="No valid fields to update")
 
+            # validate keys exist on the user schema
+            allowed = set(user_schema.model_fields.keys()) - protected
+            unknown = set(updates.keys()) - allowed
+            if unknown:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Unknown fields: {', '.join(sorted(unknown))}",
+                )
+
             return await fullauth.adapter.update_user(str(user.id), updates)
 
     if _on("delete-account"):
