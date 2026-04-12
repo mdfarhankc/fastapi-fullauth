@@ -1,23 +1,34 @@
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, Generic
 
-from fastapi_fullauth.types import CreateUserSchema, OAuthAccount, RefreshToken, UserID, UserSchema
+from fastapi_fullauth.types import (
+    CreateUserSchema,
+    CreateUserSchemaType,
+    OAuthAccount,
+    RefreshToken,
+    UserID,
+    UserSchema,
+    UserSchemaType,
+)
 
 
-class AbstractUserAdapter(ABC):
+class AbstractUserAdapter(ABC, Generic[UserSchemaType, CreateUserSchemaType]):
     """Interface that every database adapter must implement.
 
 
     Implement this for your ORM/database to plug into fastapi-fullauth.
     """
 
-    @abstractmethod
-    async def get_user_by_id(self, user_id: UserID) -> UserSchema | None: ...
+    _user_schema: type[UserSchemaType]
+    _create_user_schema: type[CreateUserSchemaType]
 
     @abstractmethod
-    async def get_user_by_email(self, email: str) -> UserSchema | None: ...
+    async def get_user_by_id(self, user_id: UserID) -> UserSchemaType | None: ...
 
-    async def get_user_by_field(self, field: str, value: str) -> UserSchema | None:
+    @abstractmethod
+    async def get_user_by_email(self, email: str) -> UserSchemaType | None: ...
+
+    async def get_user_by_field(self, field: str, value: str) -> UserSchemaType | None:
         """Look up a user by an arbitrary field. Override for non-email login."""
         if field == "email":
             return await self.get_user_by_email(value)
@@ -26,10 +37,10 @@ class AbstractUserAdapter(ABC):
         )
 
     @abstractmethod
-    async def create_user(self, data: CreateUserSchema, hashed_password: str) -> UserSchema: ...
+    async def create_user(self, data: CreateUserSchemaType, hashed_password: str) -> UserSchemaType: ...
 
     @abstractmethod
-    async def update_user(self, user_id: UserID, data: dict[str, Any]) -> UserSchema: ...
+    async def update_user(self, user_id: UserID, data: dict[str, Any]) -> UserSchemaType: ...
 
     @abstractmethod
     async def delete_user(self, user_id: UserID) -> None: ...

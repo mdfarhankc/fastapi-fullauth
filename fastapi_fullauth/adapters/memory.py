@@ -3,12 +3,24 @@ from typing import Any
 from uuid_utils import uuid7
 
 from fastapi_fullauth.adapters.base import AbstractUserAdapter
-from fastapi_fullauth.types import CreateUserSchema, OAuthAccount, RefreshToken, UserSchema
+from fastapi_fullauth.types import (
+    CreateUserSchema,
+    CreateUserSchemaType,
+    OAuthAccount,
+    RefreshToken,
+    UserSchema,
+    UserSchemaType,
+)
 
 
-class InMemoryAdapter(AbstractUserAdapter):
-    def __init__(self, user_schema: type[UserSchema] = UserSchema) -> None:
+class InMemoryAdapter(AbstractUserAdapter[UserSchemaType, CreateUserSchemaType]):
+    def __init__(
+        self,
+        user_schema: type[UserSchemaType] = UserSchema,  # type: ignore[assignment]
+        create_user_schema: type[CreateUserSchemaType] = CreateUserSchema,  # type: ignore[assignment]
+    ) -> None:
         self._user_schema = user_schema
+        self._create_user_schema = create_user_schema
         self._users: dict[str, dict[str, Any]] = {}
         self._passwords: dict[str, str] = {}
         self._refresh_tokens: dict[str, RefreshToken] = {}
@@ -16,22 +28,22 @@ class InMemoryAdapter(AbstractUserAdapter):
         self._oauth_accounts: dict[tuple[str, str], OAuthAccount] = {}
         self._role_permissions: dict[str, list[str]] = {}
 
-    async def get_user_by_id(self, user_id: str) -> UserSchema | None:
+    async def get_user_by_id(self, user_id: str) -> UserSchemaType | None:
         data = self._users.get(user_id)
         if data is None:
             return None
         return self._user_schema(**data)
 
-    async def get_user_by_email(self, email: str) -> UserSchema | None:
+    async def get_user_by_email(self, email: str) -> UserSchemaType | None:
         return await self.get_user_by_field("email", email)
 
-    async def get_user_by_field(self, field: str, value: str) -> UserSchema | None:
+    async def get_user_by_field(self, field: str, value: str) -> UserSchemaType | None:
         for data in self._users.values():
             if data.get(field) == value:
                 return self._user_schema(**data)
         return None
 
-    async def create_user(self, data: CreateUserSchema, hashed_password: str) -> UserSchema:
+    async def create_user(self, data: CreateUserSchemaType, hashed_password: str) -> UserSchemaType:
         user_id = str(uuid7())
         user_data = {
             "id": user_id,
@@ -50,7 +62,7 @@ class InMemoryAdapter(AbstractUserAdapter):
         self._roles[user_id] = []
         return self._user_schema(**user_data)
 
-    async def update_user(self, user_id: str, data: dict[str, Any]) -> UserSchema:
+    async def update_user(self, user_id: str, data: dict[str, Any]) -> UserSchemaType:
         self._users[user_id].update(data)
         return self._user_schema(**self._users[user_id])
 

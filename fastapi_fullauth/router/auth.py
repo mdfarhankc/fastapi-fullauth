@@ -27,7 +27,14 @@ from fastapi_fullauth.flows.login import login
 from fastapi_fullauth.flows.logout import logout
 from fastapi_fullauth.flows.password_reset import request_password_reset, reset_password
 from fastapi_fullauth.flows.register import register
-from fastapi_fullauth.types import CreateUserSchema, RefreshToken, TokenPair, UserSchema
+from fastapi_fullauth.types import (
+    CreateUserSchema,
+    CreateUserSchemaType,
+    RefreshToken,
+    TokenPair,
+    UserSchema,
+    UserSchemaType,
+)
 from fastapi_fullauth.utils import get_client_ip
 
 logger = logging.getLogger("fastapi_fullauth.router")
@@ -83,8 +90,8 @@ class MessageResponse(BaseModel):
 
 
 def create_auth_router(
-    create_user_schema: type[CreateUserSchema] = CreateUserSchema,
-    user_schema: type[UserSchema] = UserSchema,
+    create_user_schema: type[CreateUserSchemaType] = CreateUserSchema,  # type: ignore[assignment]
+    user_schema: type[UserSchemaType] = UserSchema,  # type: ignore[assignment]
     login_field: str = "email",
     enabled_routes: set[str] | None = None,
 ) -> APIRouter:

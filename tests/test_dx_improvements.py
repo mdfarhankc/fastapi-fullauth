@@ -269,24 +269,20 @@ def test_current_user_has_return_annotation():
 
 
 # ---------------------------------------------------------------------------
-# 6. Auto-derive schemas from ORM model (InMemory + schema test)
+# 6. Adapter-level schema configuration
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_auto_derive_create_schema_from_memory_adapter():
-    """When no create_user_schema is given, InMemoryAdapter has no _user_model,
-    so it should fall back to the default CreateUserSchema."""
-    fullauth = FullAuth(
-        secret_key="test-key-32b-long-enough-here!!!",
-        adapter=InMemoryAdapter(),
-    )
-    assert fullauth.create_user_schema is CreateUserSchema
+async def test_default_create_schema_on_adapter():
+    """When no create_user_schema is given, adapter defaults to CreateUserSchema."""
+    adapter = InMemoryAdapter()
+    assert adapter._create_user_schema is CreateUserSchema
 
 
 @pytest.mark.asyncio
-async def test_explicit_schemas_still_work():
-    """Explicit create_user_schema overrides auto-derive."""
+async def test_explicit_schemas_on_adapter():
+    """Schemas are passed to the adapter, FullAuth reads them from there."""
 
     class MyCreate(CreateUserSchema):
         nickname: str
@@ -294,11 +290,10 @@ async def test_explicit_schemas_still_work():
     class MyUser(UserSchema):
         nickname: str | None = None
 
-    adapter = InMemoryAdapter(user_schema=MyUser)
+    adapter = InMemoryAdapter(user_schema=MyUser, create_user_schema=MyCreate)
     fullauth = FullAuth(
         secret_key="test-key-32b-long-enough-here!!!",
         adapter=adapter,
-        create_user_schema=MyCreate,
     )
     app = FastAPI()
     fullauth.init_app(app, auto_middleware=False)
