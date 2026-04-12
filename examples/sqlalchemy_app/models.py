@@ -15,7 +15,5 @@ class User(UserBase, FullAuthBase):
     display_name: Mapped[str] = mapped_column(String(100), default="")
     phone: Mapped[str] = mapped_column(String(20), default="")
 
-    roles: Mapped[list[RoleModel]] = relationship(
-        secondary="fullauth_user_roles", lazy="selectin"
-    )
+    roles: Mapped[list[RoleModel]] = relationship(secondary="fullauth_user_roles", lazy="selectin")
     refresh_tokens: Mapped[list[RefreshTokenModel]] = relationship(lazy="noload")

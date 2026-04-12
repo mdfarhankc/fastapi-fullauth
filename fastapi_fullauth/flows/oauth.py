@@ -55,7 +55,8 @@ async def oauth_callback(
         if user is None:
             logger.error(
                 "OAuth linked user missing: provider=%s, provider_user_id=%s",
-                info.provider, info.provider_user_id,
+                info.provider,
+                info.provider_user_id,
             )
             raise OAuthProviderError("Linked user no longer exists")
 

@@ -40,8 +40,9 @@ class GitHubOAuthProvider(OAuthProvider):
                 headers={"Accept": "application/json"},
             )
             if resp.status_code != 200:
-                logger.error("GitHub token exchange failed (HTTP %s): %s",
-                             resp.status_code, resp.text)
+                logger.error(
+                    "GitHub token exchange failed (HTTP %s): %s", resp.status_code, resp.text
+                )
                 raise OAuthProviderError("GitHub token exchange failed")
             data = resp.json()
             if "error" in data:
@@ -59,8 +60,7 @@ class GitHubOAuthProvider(OAuthProvider):
         async with self._get_http_client() as client:
             resp = await client.get(self.userinfo_endpoint, headers=headers)
             if resp.status_code != 200:
-                logger.error("GitHub userinfo failed (HTTP %s): %s",
-                             resp.status_code, resp.text)
+                logger.error("GitHub userinfo failed (HTTP %s): %s", resp.status_code, resp.text)
                 raise OAuthProviderError("Failed to fetch user info from GitHub")
             data = resp.json()
 

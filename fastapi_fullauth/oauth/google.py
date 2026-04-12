@@ -43,8 +43,9 @@ class GoogleOAuthProvider(OAuthProvider):
                 },
             )
             if resp.status_code != 200:
-                logger.error("Google token exchange failed (HTTP %s): %s",
-                             resp.status_code, resp.text)
+                logger.error(
+                    "Google token exchange failed (HTTP %s): %s", resp.status_code, resp.text
+                )
                 raise OAuthProviderError("Google token exchange failed")
             return resp.json()
 
@@ -56,8 +57,7 @@ class GoogleOAuthProvider(OAuthProvider):
                 headers={"Authorization": f"Bearer {access_token}"},
             )
             if resp.status_code != 200:
-                logger.error("Google userinfo failed (HTTP %s): %s",
-                             resp.status_code, resp.text)
+                logger.error("Google userinfo failed (HTTP %s): %s", resp.status_code, resp.text)
                 raise OAuthProviderError("Failed to fetch user info from Google")
             data = resp.json()
 

@@ -32,7 +32,8 @@ class LockoutManager:
             self._locked_until[key] = now + self.lockout_seconds
             logger.warning(
                 "Account locked after %d failed attempts: %s",
-                self.max_attempts, key,
+                self.max_attempts,
+                key,
             )
 
     def clear(self, key: str) -> None:
