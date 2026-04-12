@@ -64,15 +64,66 @@ async def content(user=Depends(require_role("editor", "author"))):
 
 ### require_permission
 
-Currently an alias for `require_role`. Provided for semantic clarity when your access model uses permission strings like `"posts:delete"`.
+Check that the user has at least one of the specified permissions. Permissions are resolved through roles — a user with role `"editor"` gets all permissions assigned to that role.
 
 ```python
+from fastapi import Depends
 from fastapi_fullauth.dependencies import require_permission
 
 @app.delete("/posts/{id}")
 async def delete_post(id: str, user=Depends(require_permission("posts:delete"))):
     ...
+
+# multiple permissions — user needs at least one
+@app.put("/posts/{id}")
+async def edit_post(id: str, user=Depends(require_permission("posts:edit", "posts:admin"))):
+    ...
 ```
+
+Superusers bypass all permission checks.
+
+#### Setting up permissions
+
+Permissions are assigned to roles, not directly to users:
+
+```bash
+# Assign permissions to a role (superuser only)
+curl -X POST http://localhost:8000/api/v1/auth/admin/assign-permission \
+  -H "Authorization: Bearer <superuser-token>" \
+  -H "Content-Type: application/json" \
+  -d '{"role": "editor", "permission": "posts:create"}'
+
+curl -X POST http://localhost:8000/api/v1/auth/admin/assign-permission \
+  -H "Authorization: Bearer <superuser-token>" \
+  -H "Content-Type: application/json" \
+  -d '{"role": "editor", "permission": "posts:edit"}'
+
+# List permissions for a role
+curl http://localhost:8000/api/v1/auth/admin/role-permissions/editor \
+  -H "Authorization: Bearer <superuser-token>"
+# → ["posts:create", "posts:edit"]
+```
+
+Or programmatically:
+
+```python
+await adapter.assign_permission_to_role("editor", "posts:create")
+await adapter.assign_permission_to_role("editor", "posts:edit")
+await adapter.remove_permission_from_role("editor", "posts:create")
+
+# resolve all permissions for a user (through their roles)
+perms = await adapter.get_user_permissions(user.id)
+# → ["posts:edit"]
+```
+
+#### require_role vs require_permission
+
+| | `require_role` | `require_permission` |
+|---|---|---|
+| Checks | Role names on the user | Permissions resolved through roles |
+| Setup | Just assign roles | Assign roles + map permissions to roles |
+| Use case | Simple apps ("admin vs user") | Fine-grained access ("can edit posts?") |
+| Change access | Modify code | Update DB mappings |
 
 ## How it works
 

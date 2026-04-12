@@ -117,7 +117,7 @@ from fastapi_fullauth.dependencies import (
     SuperUser,          # Annotated type — superuser required
     current_user,       # function form of CurrentUser
     require_role,       # require_role("admin", "editor")
-    require_permission, # alias for require_role
+    require_permission, # require_permission("posts:edit", "posts:delete")
 )
 ```
 
