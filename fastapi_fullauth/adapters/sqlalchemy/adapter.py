@@ -67,6 +67,15 @@ class SQLAlchemyAdapter(AbstractUserAdapter):
             return UserSchema
         return create_model("DerivedUserSchema", __base__=UserSchema, **extra)
 
+    @staticmethod
+    def _cast_id(user_id: str):
+        from uuid import UUID
+
+        try:
+            return UUID(user_id)
+        except (ValueError, AttributeError):
+            return user_id
+
     def _to_schema(self, user) -> UserSchema:
         data = {}
         for field_name in self._user_schema.model_fields:
@@ -80,7 +89,7 @@ class SQLAlchemyAdapter(AbstractUserAdapter):
     async def get_user_by_id(self, user_id: str) -> UserSchema | None:
         async with self._session_maker() as session:
             result = await session.execute(
-                select(self._user_model).where(self._user_model.id == user_id)
+                select(self._user_model).where(self._user_model.id == self._cast_id(user_id))
             )
             user = result.scalars().first()
             return self._to_schema(user) if user else None
@@ -113,11 +122,13 @@ class SQLAlchemyAdapter(AbstractUserAdapter):
     async def update_user(self, user_id: str, data: dict[str, Any]) -> UserSchema:
         async with self._session_maker() as session:
             await session.execute(
-                update(self._user_model).where(self._user_model.id == user_id).values(**data)
+                update(self._user_model)
+                .where(self._user_model.id == self._cast_id(user_id))
+                .values(**data)
             )
             await session.commit()
             result = await session.execute(
-                select(self._user_model).where(self._user_model.id == user_id)
+                select(self._user_model).where(self._user_model.id == self._cast_id(user_id))
             )
             user = result.scalars().first()
             if user is None:
@@ -127,7 +138,7 @@ class SQLAlchemyAdapter(AbstractUserAdapter):
     async def delete_user(self, user_id: str) -> None:
         async with self._session_maker() as session:
             result = await session.execute(
-                select(self._user_model).where(self._user_model.id == user_id)
+                select(self._user_model).where(self._user_model.id == self._cast_id(user_id))
             )
             user = result.scalars().first()
             if user:
@@ -137,7 +148,7 @@ class SQLAlchemyAdapter(AbstractUserAdapter):
     async def get_user_roles(self, user_id: str) -> list[str]:
         async with self._session_maker() as session:
             result = await session.execute(
-                select(self._user_model).where(self._user_model.id == user_id)
+                select(self._user_model).where(self._user_model.id == self._cast_id(user_id))
             )
             user = result.scalars().first()
             if user is None:
@@ -147,7 +158,9 @@ class SQLAlchemyAdapter(AbstractUserAdapter):
     async def get_hashed_password(self, user_id: str) -> str | None:
         async with self._session_maker() as session:
             result = await session.execute(
-                select(self._user_model.hashed_password).where(self._user_model.id == user_id)
+                select(self._user_model.hashed_password).where(
+                    self._user_model.id == self._cast_id(user_id)
+                )
             )
             return result.scalars().first()
 
@@ -155,7 +168,7 @@ class SQLAlchemyAdapter(AbstractUserAdapter):
         async with self._session_maker() as session:
             await session.execute(
                 update(self._user_model)
-                .where(self._user_model.id == user_id)
+                .where(self._user_model.id == self._cast_id(user_id))
                 .values(hashed_password=hashed_password)
             )
             await session.commit()
@@ -164,7 +177,7 @@ class SQLAlchemyAdapter(AbstractUserAdapter):
         async with self._session_maker() as session:
             db_token = RefreshTokenModel(
                 token=token.token,
-                user_id=token.user_id,
+                user_id=self._cast_id(token.user_id),
                 family_id=token.family_id,
                 expires_at=token.expires_at,
                 revoked=token.revoked,
@@ -182,7 +195,7 @@ class SQLAlchemyAdapter(AbstractUserAdapter):
                 return None
             return RefreshToken(
                 token=row.token,
-                user_id=row.user_id,
+                user_id=str(row.user_id),
                 expires_at=row.expires_at,
                 family_id=row.family_id,
                 revoked=row.revoked,
@@ -210,7 +223,7 @@ class SQLAlchemyAdapter(AbstractUserAdapter):
         async with self._session_maker() as session:
             await session.execute(
                 update(RefreshTokenModel)
-                .where(RefreshTokenModel.user_id == user_id)
+                .where(RefreshTokenModel.user_id == self._cast_id(user_id))
                 .values(revoked=True)
             )
             await session.commit()
@@ -219,7 +232,7 @@ class SQLAlchemyAdapter(AbstractUserAdapter):
         async with self._session_maker() as session:
             await session.execute(
                 update(self._user_model)
-                .where(self._user_model.id == user_id)
+                .where(self._user_model.id == self._cast_id(user_id))
                 .values(is_verified=True)
             )
             await session.commit()
@@ -238,7 +251,7 @@ class SQLAlchemyAdapter(AbstractUserAdapter):
             result = await session.execute(
                 select(self._user_model)
                 .options(selectinload(self._user_model.roles))
-                .where(self._user_model.id == user_id)
+                .where(self._user_model.id == self._cast_id(user_id))
             )
             user = result.scalars().first()
             if user and role not in user.roles:
@@ -250,7 +263,7 @@ class SQLAlchemyAdapter(AbstractUserAdapter):
             result = await session.execute(
                 select(self._user_model)
                 .options(selectinload(self._user_model.roles))
-                .where(self._user_model.id == user_id)
+                .where(self._user_model.id == self._cast_id(user_id))
             )
             user = result.scalars().first()
             if user:
@@ -352,7 +365,7 @@ class SQLAlchemyAdapter(AbstractUserAdapter):
     async def get_user_oauth_accounts(self, user_id: str) -> list[OAuthAccount]:
         async with self._session_maker() as session:
             result = await session.execute(
-                select(OAuthAccountModel).where(OAuthAccountModel.user_id == user_id)
+                select(OAuthAccountModel).where(OAuthAccountModel.user_id == self._cast_id(user_id))
             )
             return [self._to_oauth_account(row) for row in result.scalars().all()]
 
@@ -361,7 +374,7 @@ class SQLAlchemyAdapter(AbstractUserAdapter):
             record = OAuthAccountModel(
                 provider=data.provider,
                 provider_user_id=data.provider_user_id,
-                user_id=data.user_id,
+                user_id=self._cast_id(data.user_id),
                 provider_email=data.provider_email,
                 access_token=data.access_token,
                 refresh_token=data.refresh_token,
