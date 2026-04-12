@@ -180,7 +180,7 @@ async def test_refresh_reuse_revokes_family_when_blacklist_lost():
 async def test_refresh_reuse_caught_by_explicit_blacklist_check():
     """Even if decode_token doesn't catch it (e.g. race window), the explicit
     is_blacklisted guard before issuing new tokens rejects the second call."""
-    from unittest.mock import AsyncMock, patch
+    from unittest.mock import patch
 
     app, adapter, fullauth = _make_app()
     transport = ASGITransport(app=app)
