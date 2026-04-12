@@ -111,7 +111,7 @@ async def test_update_profile():
     class MyUser(UserSchema):
         display_name: str = ""
 
-    adapter = InMemoryAdapter(user_schema=MyUser)
+    adapter = InMemoryAdapter(user_schema=MyUser, create_user_schema=MyCreate)
     fullauth = FullAuth(
         config=FullAuthConfig(
             SECRET_KEY="test-secret-key-that-is-long-enough-32b",
@@ -119,7 +119,6 @@ async def test_update_profile():
             AUTH_RATE_LIMIT_ENABLED=False,
         ),
         adapter=adapter,
-        create_user_schema=MyCreate,
     )
     app = FastAPI()
     fullauth.init_app(app, auto_middleware=False)

@@ -14,61 +14,31 @@ from fastapi_fullauth.adapters.sqlalchemy.models import (
     RolePermissionModel,
     UserBase,
 )
-from fastapi_fullauth.types import CreateUserSchema, OAuthAccount, RefreshToken, UserID, UserSchema
-
-# Map SQLAlchemy column types to Python types for schema auto-derivation
-_SA_TYPE_MAP: dict[type, type] = {}
-
-
-def _get_sa_type_map() -> dict[type, type]:
-    if not _SA_TYPE_MAP:
-        from sqlalchemy import Boolean, Float, Integer, Numeric, String, Text
-
-        _SA_TYPE_MAP.update(
-            {
-                String: str,
-                Text: str,
-                Integer: int,
-                Float: float,
-                Numeric: float,
-                Boolean: bool,
-            }
-        )
-    return _SA_TYPE_MAP
+from fastapi_fullauth.types import (
+    CreateUserSchema,
+    CreateUserSchemaType,
+    OAuthAccount,
+    RefreshToken,
+    UserID,
+    UserSchema,
+    UserSchemaType,
+)
 
 
-class SQLAlchemyAdapter(AbstractUserAdapter):
+class SQLAlchemyAdapter(AbstractUserAdapter[UserSchemaType, CreateUserSchemaType]):
     def __init__(
         self,
         session_maker: async_sessionmaker[AsyncSession],
         user_model: type[UserBase],
-        user_schema: type[UserSchema] | None = None,
+        user_schema: type[UserSchemaType] = UserSchema,  # type: ignore[assignment]
+        create_user_schema: type[CreateUserSchemaType] = CreateUserSchema,  # type: ignore[assignment]
     ) -> None:
         self._session_maker = session_maker
         self._user_model = user_model
-        self._user_schema = (
-            user_schema if user_schema is not None else self._derive_user_schema(user_model)
-        )
+        self._user_schema = user_schema
+        self._create_user_schema = create_user_schema
 
-    @staticmethod
-    def _derive_user_schema(model_class: type) -> type[UserSchema]:
-        from pydantic import create_model
-
-        skip = {"hashed_password", "created_at"}
-        base_fields = set(UserSchema.model_fields.keys())
-        type_map = _get_sa_type_map()
-        extra: dict[str, Any] = {}
-        for col in model_class.__table__.columns:
-            if col.name in base_fields or col.name in skip:
-                continue
-            py_type = type_map.get(type(col.type), str)
-            default = col.default.arg if col.default is not None else None
-            extra[col.name] = (py_type | None, default)
-        if not extra:
-            return UserSchema
-        return create_model("DerivedUserSchema", __base__=UserSchema, **extra)
-
-    def _to_schema(self, user) -> UserSchema:
+    def _to_schema(self, user) -> UserSchemaType:
         data = {}
         for field_name in self._user_schema.model_fields:
             val = getattr(user, field_name, None)
@@ -78,7 +48,7 @@ class SQLAlchemyAdapter(AbstractUserAdapter):
             data["roles"] = [r.name for r in user.roles]
         return self._user_schema.model_validate(data)
 
-    async def get_user_by_id(self, user_id: UserID) -> UserSchema | None:
+    async def get_user_by_id(self, user_id: UserID) -> UserSchemaType | None:
         if isinstance(user_id, str):
             user_id = UUID(user_id)
         async with self._session_maker() as session:
@@ -88,10 +58,10 @@ class SQLAlchemyAdapter(AbstractUserAdapter):
             user = result.scalars().first()
             return self._to_schema(user) if user else None
 
-    async def get_user_by_email(self, email: str) -> UserSchema | None:
+    async def get_user_by_email(self, email: str) -> UserSchemaType | None:
         return await self.get_user_by_field("email", email)
 
-    async def get_user_by_field(self, field: str, value: str) -> UserSchema | None:
+    async def get_user_by_field(self, field: str, value: str) -> UserSchemaType | None:
         column = getattr(self._user_model, field, None)
         if column is None:
             raise ValueError(f"Model has no field '{field}'")
@@ -100,7 +70,7 @@ class SQLAlchemyAdapter(AbstractUserAdapter):
             user = result.scalars().first()
             return self._to_schema(user) if user else None
 
-    async def create_user(self, data: CreateUserSchema, hashed_password: str) -> UserSchema:
+    async def create_user(self, data: CreateUserSchemaType, hashed_password: str) -> UserSchemaType:
         async with self._session_maker() as session:
             extra = data.model_dump(exclude={"email", "password"})
             user = self._user_model(
@@ -113,7 +83,7 @@ class SQLAlchemyAdapter(AbstractUserAdapter):
             await session.refresh(user)
             return self._to_schema(user)
 
-    async def update_user(self, user_id: UserID, data: dict[str, Any]) -> UserSchema:
+    async def update_user(self, user_id: UserID, data: dict[str, Any]) -> UserSchemaType:
         async with self._session_maker() as session:
             await session.execute(
                 update(self._user_model).where(self._user_model.id == user_id).values(**data)

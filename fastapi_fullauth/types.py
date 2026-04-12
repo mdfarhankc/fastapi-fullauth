@@ -3,6 +3,7 @@ from typing import Any, Literal, NamedTuple
 from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, Field
+from typing_extensions import TypeVar
 
 RouteName = Literal[
     "login",
@@ -36,6 +37,10 @@ class UserSchema(BaseModel):
 class CreateUserSchema(BaseModel):
     email: EmailStr
     password: str
+
+
+UserSchemaType = TypeVar("UserSchemaType", bound=UserSchema, default=UserSchema)
+CreateUserSchemaType = TypeVar("CreateUserSchemaType", bound=CreateUserSchema, default=CreateUserSchema)
 
 
 class TokenPair(BaseModel):

@@ -1,6 +1,6 @@
 import logging
 from collections.abc import Awaitable, Callable
-from typing import Any
+from typing import Any, Generic
 
 from fastapi import APIRouter, FastAPI
 
@@ -13,7 +13,7 @@ from fastapi_fullauth.hooks import EventHooks
 from fastapi_fullauth.protection.lockout import LockoutManager
 from fastapi_fullauth.protection.ratelimit import RateLimiter, RedisRateLimiter
 from fastapi_fullauth.router.auth import create_auth_router
-from fastapi_fullauth.types import CreateUserSchema, RouteName, UserSchema
+from fastapi_fullauth.types import CreateUserSchemaType, RouteName, UserSchema, UserSchemaType
 from fastapi_fullauth.validators import PasswordValidator
 
 logger = logging.getLogger("fastapi_fullauth")
@@ -21,7 +21,7 @@ logger = logging.getLogger("fastapi_fullauth")
 TokenClaimsBuilder = Callable[[UserSchema], Awaitable[dict[str, Any]]]
 
 
-class FullAuth:
+class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
     """Main auth manager. Pass a config object or inline kwargs (not both).
 
     Args:
@@ -32,7 +32,6 @@ class FullAuth:
         password_validator: Custom PasswordValidator. Defaults to min-length from config.
         enabled_routes: Whitelist of routes. None = all.
         include_user_in_login: Include user data in login response.
-        create_user_schema: Pydantic model for registration. None = auto-derived from adapter model.
         on_create_token_claims: async def cb(user) -> dict — extra claims embedded in JWTs.
         **config_kwargs: Any FullAuthConfig field as lowercase, e.g. api_prefix="/v2" -> API_PREFIX.
     """
@@ -41,13 +40,12 @@ class FullAuth:
         self,
         config: FullAuthConfig | None = None,
         *,
-        adapter: AbstractUserAdapter,
+        adapter: AbstractUserAdapter[UserSchemaType, CreateUserSchemaType],
         secret_key: str | None = None,
         backends: list[AbstractBackend] | None = None,
         password_validator: PasswordValidator | None = None,
         enabled_routes: list[RouteName] | None = None,
         include_user_in_login: bool = False,
-        create_user_schema: type[CreateUserSchema] | None = None,
         on_create_token_claims: TokenClaimsBuilder | None = None,
         **config_kwargs: Any,
     ) -> None:
@@ -93,7 +91,6 @@ class FullAuth:
             min_length=config.PASSWORD_MIN_LENGTH
         )
         self.include_user_in_login = include_user_in_login
-        self.create_user_schema = create_user_schema or self._resolve_create_schema(adapter)
         self.on_create_token_claims = on_create_token_claims
         self.hooks = EventHooks()
         self.oauth_providers = self._build_oauth_providers(config)
@@ -162,39 +159,6 @@ class FullAuth:
             )
         return InMemoryBlacklist()
 
-    @staticmethod
-    def _resolve_create_schema(adapter: AbstractUserAdapter) -> type[CreateUserSchema]:
-        user_model = getattr(adapter, "_user_model", None)
-        if user_model is None:
-            return CreateUserSchema
-
-        model_fields = getattr(user_model, "model_fields", None)
-        if model_fields is None:
-            return CreateUserSchema
-
-        from pydantic import create_model
-
-        skip = {
-            "id",
-            "hashed_password",
-            "created_at",
-            "is_active",
-            "is_verified",
-            "is_superuser",
-            "roles",
-            "refresh_tokens",
-        }
-        base_fields = set(CreateUserSchema.model_fields.keys())
-        extra: dict[str, Any] = {}
-        for name, field in model_fields.items():
-            if name in base_fields or name in skip:
-                continue
-            default = field.default if field.default is not None else None
-            extra[name] = (field.annotation | None, default)
-        if not extra:
-            return CreateUserSchema
-        return create_model("DerivedCreateUserSchema", __base__=CreateUserSchema, **extra)
-
     _RESERVED_CLAIM_KEYS = frozenset(
         {
             "sub",
@@ -238,11 +202,10 @@ class FullAuth:
         if self._router is None:
             prefix = self.config.API_PREFIX.rstrip("/") + self.config.AUTH_ROUTER_PREFIX
             self._router = APIRouter(prefix=prefix, tags=self.config.ROUTER_TAGS)
-            user_schema = getattr(self.adapter, "_user_schema", UserSchema)
             self._router.include_router(
                 create_auth_router(
-                    create_user_schema=self.create_user_schema,
-                    user_schema=user_schema,
+                    create_user_schema=self.adapter._create_user_schema,
+                    user_schema=self.adapter._user_schema,
                     login_field=self.config.LOGIN_FIELD,
                     enabled_routes=self._enabled_routes,
                 )

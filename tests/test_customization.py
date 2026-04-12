@@ -269,13 +269,9 @@ async def test_custom_create_user_schema():
     class MyUserSchema(UserSchema):
         display_name: str | None = None
 
-    adapter = InMemoryAdapter(user_schema=MyUserSchema)
+    adapter = InMemoryAdapter(user_schema=MyUserSchema, create_user_schema=MyCreateSchema)
     config = FullAuthConfig(SECRET_KEY="test-secret-key-that-is-long-enough-32b")
-    fullauth = FullAuth(
-        config=config,
-        adapter=adapter,
-        create_user_schema=MyCreateSchema,
-    )
+    fullauth = FullAuth(config=config, adapter=adapter)
     app = FastAPI()
     fullauth.init_app(app)
 
@@ -300,13 +296,9 @@ async def test_custom_schema_rejects_missing_field():
     class MyCreateSchema(CreateUserSchema):
         display_name: str
 
-    adapter = InMemoryAdapter()
+    adapter = InMemoryAdapter(create_user_schema=MyCreateSchema)
     config = FullAuthConfig(SECRET_KEY="test-secret-key-that-is-long-enough-32b")
-    fullauth = FullAuth(
-        config=config,
-        adapter=adapter,
-        create_user_schema=MyCreateSchema,
-    )
+    fullauth = FullAuth(config=config, adapter=adapter)
     app = FastAPI()
     fullauth.init_app(app)
 
