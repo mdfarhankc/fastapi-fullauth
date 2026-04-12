@@ -14,6 +14,7 @@ class InMemoryAdapter(AbstractUserAdapter):
         self._refresh_tokens: dict[str, RefreshToken] = {}
         self._roles: dict[str, list[str]] = {}
         self._oauth_accounts: dict[tuple[str, str], OAuthAccount] = {}
+        self._role_permissions: dict[str, list[str]] = {}
 
     async def get_user_by_id(self, user_id: str) -> UserSchema | None:
         data = self._users.get(user_id)
@@ -105,6 +106,21 @@ class InMemoryAdapter(AbstractUserAdapter):
             roles.remove(role_name)
         if user_id in self._users:
             self._users[user_id]["roles"] = roles
+
+    # ── Permissions ──────────────────────────────────────────────────
+
+    async def get_role_permissions(self, role_name: str) -> list[str]:
+        return list(self._role_permissions.get(role_name, []))
+
+    async def assign_permission_to_role(self, role_name: str, permission: str) -> None:
+        perms = self._role_permissions.setdefault(role_name, [])
+        if permission not in perms:
+            perms.append(permission)
+
+    async def remove_permission_from_role(self, role_name: str, permission: str) -> None:
+        perms = self._role_permissions.get(role_name, [])
+        if permission in perms:
+            perms.remove(permission)
 
     # ── OAuth ────────────────────────────────────────────────────────
 
