@@ -67,6 +67,25 @@ class AbstractUserAdapter(ABC):
     @abstractmethod
     async def remove_role(self, user_id: str, role_name: str) -> None: ...
 
+    # ── Permissions (optional — override when using RBAC permissions) ──
+
+    async def get_role_permissions(self, role_name: str) -> list[str]:
+        return []
+
+    async def get_user_permissions(self, user_id: str) -> list[str]:
+        """Resolve permissions through the user's roles. Deduplicated."""
+        roles = await self.get_user_roles(user_id)
+        perms: set[str] = set()
+        for role in roles:
+            perms.update(await self.get_role_permissions(role))
+        return list(perms)
+
+    async def assign_permission_to_role(self, role_name: str, permission: str) -> None:
+        raise NotImplementedError("Implement permission methods to use RBAC permissions")
+
+    async def remove_permission_from_role(self, role_name: str, permission: str) -> None:
+        raise NotImplementedError("Implement permission methods to use RBAC permissions")
+
     # ── OAuth (optional — override when using OAuth) ─────────────────
 
     async def get_oauth_account(self, provider: str, provider_user_id: str) -> OAuthAccount | None:

@@ -9,8 +9,10 @@ from sqlmodel.ext.asyncio.session import AsyncSession as SMAsyncSession
 from fastapi_fullauth.adapters.base import AbstractUserAdapter
 from fastapi_fullauth.adapters.sqlmodel.models import (
     OAuthAccountRecord,
+    Permission,
     RefreshTokenRecord,
     Role,
+    RolePermissionLink,
     UserBase,
 )
 from fastapi_fullauth.types import CreateUserSchema, OAuthAccount, RefreshToken, UserSchema
@@ -228,6 +230,70 @@ class SQLModelAdapter(AbstractUserAdapter):
             if user:
                 user.roles = [r for r in user.roles if r.name != role_name]
                 session.add(user)
+                await session.commit()
+
+    # ── Permissions ──────────────────────────────────────────────────
+
+    async def get_role_permissions(self, role_name: str) -> list[str]:
+        async with self._session_maker() as session:
+            result = await session.execute(
+                select(Permission.name)
+                .join(RolePermissionLink, Permission.id == RolePermissionLink.permission_id)
+                .join(Role, Role.id == RolePermissionLink.role_id)
+                .where(Role.name == role_name)
+            )
+            return list(result.scalars().all())
+
+    async def assign_permission_to_role(self, role_name: str, permission: str) -> None:
+        async with self._session_maker() as session:
+            # get or create role
+            result = await session.execute(select(Role).where(Role.name == role_name))
+            role = result.scalars().first()
+            if role is None:
+                role = Role(name=role_name)
+                session.add(role)
+                await session.flush()
+
+            # get or create permission
+            result = await session.execute(select(Permission).where(Permission.name == permission))
+            perm = result.scalars().first()
+            if perm is None:
+                perm = Permission(name=permission)
+                session.add(perm)
+                await session.flush()
+
+            # check if link already exists
+            result = await session.execute(
+                select(RolePermissionLink).where(
+                    RolePermissionLink.role_id == role.id,
+                    RolePermissionLink.permission_id == perm.id,
+                )
+            )
+            if result.scalars().first() is None:
+                session.add(RolePermissionLink(role_id=role.id, permission_id=perm.id))
+                await session.commit()
+
+    async def remove_permission_from_role(self, role_name: str, permission: str) -> None:
+        async with self._session_maker() as session:
+            result = await session.execute(select(Role).where(Role.name == role_name))
+            role = result.scalars().first()
+            if role is None:
+                return
+
+            result = await session.execute(select(Permission).where(Permission.name == permission))
+            perm = result.scalars().first()
+            if perm is None:
+                return
+
+            result = await session.execute(
+                select(RolePermissionLink).where(
+                    RolePermissionLink.role_id == role.id,
+                    RolePermissionLink.permission_id == perm.id,
+                )
+            )
+            link = result.scalars().first()
+            if link:
+                await session.delete(link)
                 await session.commit()
 
     # ── OAuth ────────────────────────────────────────────────────────

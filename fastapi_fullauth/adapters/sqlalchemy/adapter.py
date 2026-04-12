@@ -7,8 +7,10 @@ from sqlalchemy.orm import selectinload
 from fastapi_fullauth.adapters.base import AbstractUserAdapter
 from fastapi_fullauth.adapters.sqlalchemy.models import (
     OAuthAccountModel,
+    PermissionModel,
     RefreshTokenModel,
     RoleModel,
+    RolePermissionModel,
     UserBase,
 )
 from fastapi_fullauth.types import CreateUserSchema, OAuthAccount, RefreshToken, UserSchema
@@ -253,6 +255,74 @@ class SQLAlchemyAdapter(AbstractUserAdapter):
             user = result.scalars().first()
             if user:
                 user.roles = [r for r in user.roles if r.name != role_name]
+                await session.commit()
+
+    # ── Permissions ──────────────────────────────────────────────────
+
+    async def get_role_permissions(self, role_name: str) -> list[str]:
+        async with self._session_maker() as session:
+            result = await session.execute(
+                select(PermissionModel.name)
+                .join(
+                    RolePermissionModel,
+                    PermissionModel.id == RolePermissionModel.permission_id,
+                )
+                .join(RoleModel, RoleModel.id == RolePermissionModel.role_id)
+                .where(RoleModel.name == role_name)
+            )
+            return list(result.scalars().all())
+
+    async def assign_permission_to_role(self, role_name: str, permission: str) -> None:
+        async with self._session_maker() as session:
+            result = await session.execute(select(RoleModel).where(RoleModel.name == role_name))
+            role = result.scalars().first()
+            if role is None:
+                role = RoleModel(name=role_name)
+                session.add(role)
+                await session.flush()
+
+            result = await session.execute(
+                select(PermissionModel).where(PermissionModel.name == permission)
+            )
+            perm = result.scalars().first()
+            if perm is None:
+                perm = PermissionModel(name=permission)
+                session.add(perm)
+                await session.flush()
+
+            result = await session.execute(
+                select(RolePermissionModel).where(
+                    RolePermissionModel.role_id == role.id,
+                    RolePermissionModel.permission_id == perm.id,
+                )
+            )
+            if result.scalars().first() is None:
+                session.add(RolePermissionModel(role_id=role.id, permission_id=perm.id))
+                await session.commit()
+
+    async def remove_permission_from_role(self, role_name: str, permission: str) -> None:
+        async with self._session_maker() as session:
+            result = await session.execute(select(RoleModel).where(RoleModel.name == role_name))
+            role = result.scalars().first()
+            if role is None:
+                return
+
+            result = await session.execute(
+                select(PermissionModel).where(PermissionModel.name == permission)
+            )
+            perm = result.scalars().first()
+            if perm is None:
+                return
+
+            result = await session.execute(
+                select(RolePermissionModel).where(
+                    RolePermissionModel.role_id == role.id,
+                    RolePermissionModel.permission_id == perm.id,
+                )
+            )
+            link = result.scalars().first()
+            if link:
+                await session.delete(link)
                 await session.commit()
 
     # ── OAuth ────────────────────────────────────────────────────────
