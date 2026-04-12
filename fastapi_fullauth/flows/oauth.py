@@ -91,7 +91,7 @@ async def oauth_callback(
             user = await adapter.create_user(data, hashed_password=hash_password(random_password))
 
             if info.email_verified:
-                await adapter.set_user_verified(str(user.id))
+                await adapter.set_user_verified(user.id)
                 user = user.model_copy(update={"is_verified": True})
 
             is_new_user = True
@@ -116,16 +116,17 @@ async def oauth_callback(
         logger.info("OAuth login: provider=%s, user_id=%s", info.provider, user.id)
 
     # issue our JWT tokens
-    roles = await adapter.get_user_roles(str(user.id))
+    uid = str(user.id)
+    roles = await adapter.get_user_roles(user.id)
     access, refresh_meta = token_engine.create_token_pair(
-        user_id=str(user.id),
+        user_id=uid,
         roles=roles,
     )
 
     await adapter.store_refresh_token(
         RefreshToken(
             token=refresh_meta.token,
-            user_id=str(user.id),
+            user_id=uid,
             expires_at=refresh_meta.expires_at,
             family_id=refresh_meta.family_id,
         )

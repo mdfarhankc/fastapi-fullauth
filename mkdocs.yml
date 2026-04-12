@@ -72,3 +72,4 @@ nav:
       - Middleware: security/middleware.md
   - Database Migrations: migrations.md
   - API Reference: api-reference.md
+  - Contributing: contributing.md

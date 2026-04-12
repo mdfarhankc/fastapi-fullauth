@@ -46,13 +46,13 @@ async def reset_password(
         raise UserNotFoundError("User not found")
 
     hashed = hash_password(new_password)
-    await adapter.set_password(str(user.id), hashed)
+    await adapter.set_password(user.id, hashed)
 
     # Blacklist the reset token so it can't be reused
     await token_engine.blacklist_token(payload.jti)
 
     # Revoke all existing sessions so stolen tokens can't be used
-    await adapter.revoke_all_user_refresh_tokens(str(user.id))
+    await adapter.revoke_all_user_refresh_tokens(user.id)
 
     logger.info("Password reset completed: user_id=%s", user.id)
     return user

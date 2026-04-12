@@ -32,7 +32,7 @@ async def login(
         logger.warning("Login failed — user not found: %s", identifier)
         raise AuthenticationError("Invalid credentials")
 
-    hashed = await adapter.get_hashed_password(str(user.id))
+    hashed = await adapter.get_hashed_password(user.id)
     if hashed is None or not verify_password(password, hashed):
         if lockout:
             lockout.record_failure(identifier)
@@ -44,15 +44,16 @@ async def login(
         raise AuthenticationError("User account is deactivated")
 
     if password_needs_rehash(hashed):
-        await adapter.set_password(str(user.id), hash_password(password))
+        await adapter.set_password(user.id, hash_password(password))
 
     if lockout:
         lockout.clear(identifier)
 
     logger.info("Login successful: user_id=%s", user.id)
-    roles = await adapter.get_user_roles(str(user.id))
+    uid = str(user.id)
+    roles = await adapter.get_user_roles(user.id)
     access, refresh_meta = token_engine.create_token_pair(
-        user_id=str(user.id),
+        user_id=uid,
         roles=roles,
         extra=extra_claims,
     )
@@ -60,7 +61,7 @@ async def login(
     await adapter.store_refresh_token(
         RefreshToken(
             token=refresh_meta.token,
-            user_id=str(user.id),
+            user_id=uid,
             expires_at=refresh_meta.expires_at,
             family_id=refresh_meta.family_id,
         )

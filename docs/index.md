@@ -105,6 +105,9 @@ Omit `secret_key` in dev and a random one is generated (tokens won't survive res
 | `POST` | `/auth/password-reset/confirm` | Reset password |
 | `POST` | `/auth/admin/assign-role` | Assign role (superuser) |
 | `POST` | `/auth/admin/remove-role` | Remove role (superuser) |
+| `POST` | `/auth/admin/assign-permission` | Assign permission to role (superuser) |
+| `POST` | `/auth/admin/remove-permission` | Remove permission from role (superuser) |
+| `GET` | `/auth/admin/role-permissions/{role}` | List role's permissions (superuser) |
 
 </div>
 

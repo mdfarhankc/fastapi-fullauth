@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import Any
 
-from fastapi_fullauth.types import CreateUserSchema, OAuthAccount, RefreshToken, UserSchema
+from fastapi_fullauth.types import CreateUserSchema, OAuthAccount, RefreshToken, UserID, UserSchema
 
 
 class AbstractUserAdapter(ABC):
@@ -12,7 +12,7 @@ class AbstractUserAdapter(ABC):
     """
 
     @abstractmethod
-    async def get_user_by_id(self, user_id: str) -> UserSchema | None: ...
+    async def get_user_by_id(self, user_id: UserID) -> UserSchema | None: ...
 
     @abstractmethod
     async def get_user_by_email(self, email: str) -> UserSchema | None: ...
@@ -29,19 +29,19 @@ class AbstractUserAdapter(ABC):
     async def create_user(self, data: CreateUserSchema, hashed_password: str) -> UserSchema: ...
 
     @abstractmethod
-    async def update_user(self, user_id: str, data: dict[str, Any]) -> UserSchema: ...
+    async def update_user(self, user_id: UserID, data: dict[str, Any]) -> UserSchema: ...
 
     @abstractmethod
-    async def delete_user(self, user_id: str) -> None: ...
+    async def delete_user(self, user_id: UserID) -> None: ...
 
     @abstractmethod
-    async def get_user_roles(self, user_id: str) -> list[str]: ...
+    async def get_user_roles(self, user_id: UserID) -> list[str]: ...
 
     @abstractmethod
-    async def get_hashed_password(self, user_id: str) -> str | None: ...
+    async def get_hashed_password(self, user_id: UserID) -> str | None: ...
 
     @abstractmethod
-    async def set_password(self, user_id: str, hashed_password: str) -> None: ...
+    async def set_password(self, user_id: UserID, hashed_password: str) -> None: ...
 
     @abstractmethod
     async def store_refresh_token(self, token: RefreshToken) -> None: ...
@@ -56,23 +56,23 @@ class AbstractUserAdapter(ABC):
     async def revoke_refresh_token_family(self, family_id: str) -> None: ...
 
     @abstractmethod
-    async def revoke_all_user_refresh_tokens(self, user_id: str) -> None: ...
+    async def revoke_all_user_refresh_tokens(self, user_id: UserID) -> None: ...
 
     @abstractmethod
-    async def set_user_verified(self, user_id: str) -> None: ...
+    async def set_user_verified(self, user_id: UserID) -> None: ...
 
     @abstractmethod
-    async def assign_role(self, user_id: str, role_name: str) -> None: ...
+    async def assign_role(self, user_id: UserID, role_name: str) -> None: ...
 
     @abstractmethod
-    async def remove_role(self, user_id: str, role_name: str) -> None: ...
+    async def remove_role(self, user_id: UserID, role_name: str) -> None: ...
 
     # ── Permissions (optional — override when using RBAC permissions) ──
 
     async def get_role_permissions(self, role_name: str) -> list[str]:
         return []
 
-    async def get_user_permissions(self, user_id: str) -> list[str]:
+    async def get_user_permissions(self, user_id: UserID) -> list[str]:
         """Resolve permissions through the user's roles. Deduplicated."""
         roles = await self.get_user_roles(user_id)
         perms: set[str] = set()
@@ -91,7 +91,7 @@ class AbstractUserAdapter(ABC):
     async def get_oauth_account(self, provider: str, provider_user_id: str) -> OAuthAccount | None:
         raise NotImplementedError("Implement OAuth adapter methods to use OAuth")
 
-    async def get_user_oauth_accounts(self, user_id: str) -> list[OAuthAccount]:
+    async def get_user_oauth_accounts(self, user_id: UserID) -> list[OAuthAccount]:
         raise NotImplementedError("Implement OAuth adapter methods to use OAuth")
 
     async def create_oauth_account(self, data: OAuthAccount) -> OAuthAccount:
