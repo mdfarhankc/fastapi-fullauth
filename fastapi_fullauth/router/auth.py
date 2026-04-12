@@ -211,8 +211,9 @@ def create_auth_router(
                 await fullauth.adapter.revoke_refresh_token_family(stored.family_id)
                 raise CREDENTIALS_EXCEPTION
 
-            roles = await fullauth.adapter.get_user_roles(str(user.id))
+            roles = await fullauth.adapter.get_user_roles(user.id)
             extra_claims = await fullauth.get_custom_claims(user)
+            uid = str(user.id)
 
             if fullauth.config.REFRESH_TOKEN_ROTATION:
                 # blacklist the JTI *before* issuing new tokens — if a concurrent
@@ -238,7 +239,7 @@ def create_auth_router(
                     await fullauth.adapter.revoke_refresh_token(data.refresh_token)
 
                 access, refresh_meta = fullauth.token_engine.create_token_pair(
-                    user_id=str(user.id),
+                    user_id=uid,
                     roles=roles,
                     extra=extra_claims,
                     family_id=payload.family_id,
@@ -247,7 +248,7 @@ def create_auth_router(
                 await fullauth.adapter.store_refresh_token(
                     RefreshToken(
                         token=refresh_meta.token,
-                        user_id=str(user.id),
+                        user_id=uid,
                         expires_at=refresh_meta.expires_at,
                         family_id=refresh_meta.family_id,
                     )
@@ -255,7 +256,7 @@ def create_auth_router(
                 refresh_token = refresh_meta.token
             else:
                 access = fullauth.token_engine.create_access_token(
-                    user_id=str(user.id),
+                    user_id=uid,
                     roles=roles,
                     extra=extra_claims,
                 )
@@ -364,7 +365,7 @@ def create_auth_router(
                     detail=f"Unknown fields: {', '.join(sorted(unknown))}",
                 )
 
-            return await fullauth.adapter.update_user(str(user.id), updates)
+            return await fullauth.adapter.update_user(user.id, updates)
 
     if _on("delete-account"):
 
@@ -373,8 +374,8 @@ def create_auth_router(
             user: CurrentUser,
             fullauth: "FullAuth" = Depends(_get_fullauth),
         ) -> None:
-            await fullauth.adapter.revoke_all_user_refresh_tokens(str(user.id))
-            await fullauth.adapter.delete_user(str(user.id))
+            await fullauth.adapter.revoke_all_user_refresh_tokens(user.id)
+            await fullauth.adapter.delete_user(user.id)
             logger.warning("Account deleted: user_id=%s, email=%s", user.id, user.email)
             return Response(status_code=204)
 
@@ -391,7 +392,7 @@ def create_auth_router(
             user: CurrentUser,
             fullauth: "FullAuth" = Depends(_get_fullauth),
         ) -> MessageResponse:
-            hashed = await fullauth.adapter.get_hashed_password(str(user.id))
+            hashed = await fullauth.adapter.get_hashed_password(user.id)
             if hashed is None or not verify_password(data.current_password, hashed):
                 logger.warning(
                     "Password change failed — wrong current password: user_id=%s", user.id
@@ -403,8 +404,8 @@ def create_auth_router(
             except InvalidPasswordError as e:
                 raise HTTPException(status_code=422, detail=str(e))
 
-            await fullauth.adapter.set_password(str(user.id), hash_password(data.new_password))
-            await fullauth.adapter.revoke_all_user_refresh_tokens(str(user.id))
+            await fullauth.adapter.set_password(user.id, hash_password(data.new_password))
+            await fullauth.adapter.revoke_all_user_refresh_tokens(user.id)
             logger.info("Password changed: user_id=%s", user.id)
             await fullauth.hooks.emit("after_password_change", user=user)
             return MessageResponse(detail="Password changed successfully.")
@@ -424,7 +425,7 @@ def create_auth_router(
             fullauth: "FullAuth" = Depends(_get_fullauth),
         ) -> MessageResponse:
             verify_token = await create_email_verification_token(
-                fullauth.adapter, fullauth.token_engine, str(user.id)
+                fullauth.adapter, fullauth.token_engine, user.id
             )
             if verify_token:
                 await fullauth.hooks.emit(

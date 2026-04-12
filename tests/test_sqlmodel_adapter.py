@@ -96,7 +96,7 @@ async def test_create_and_get_user(adapter):
     assert user.is_active is True
     assert user.roles == []
 
-    fetched = await adapter.get_user_by_id(str(user.id))
+    fetched = await adapter.get_user_by_id(user.id)
     assert fetched is not None
     assert fetched.email == "test@test.com"
 
@@ -127,7 +127,7 @@ async def test_update_user(adapter):
     data = CreateUserSchema(email="upd@test.com", password="pass123")
     user = await adapter.create_user(data, hashed_password=hash_password("pass123"))
 
-    updated = await adapter.update_user(str(user.id), {"display_name": "Updated Name"})
+    updated = await adapter.update_user(user.id, {"display_name": "Updated Name"})
     assert updated.email == "upd@test.com"
 
 
@@ -136,8 +136,8 @@ async def test_delete_user(adapter):
     data = CreateUserSchema(email="del@test.com", password="pass123")
     user = await adapter.create_user(data, hashed_password=hash_password("pass123"))
 
-    await adapter.delete_user(str(user.id))
-    assert await adapter.get_user_by_id(str(user.id)) is None
+    await adapter.delete_user(user.id)
+    assert await adapter.get_user_by_id(user.id) is None
 
 
 @pytest.mark.asyncio
@@ -145,11 +145,11 @@ async def test_password_operations(adapter):
     data = CreateUserSchema(email="pw@test.com", password="pass123")
     user = await adapter.create_user(data, hashed_password=hash_password("pass123"))
 
-    hashed = await adapter.get_hashed_password(str(user.id))
+    hashed = await adapter.get_hashed_password(user.id)
     assert hashed is not None
 
-    await adapter.set_password(str(user.id), hash_password("newpass"))
-    new_hashed = await adapter.get_hashed_password(str(user.id))
+    await adapter.set_password(user.id, hash_password("newpass"))
+    new_hashed = await adapter.get_hashed_password(user.id)
     assert new_hashed != hashed
 
 
@@ -159,8 +159,8 @@ async def test_set_user_verified(adapter):
     user = await adapter.create_user(data, hashed_password=hash_password("pass123"))
     assert user.is_verified is False
 
-    await adapter.set_user_verified(str(user.id))
-    user = await adapter.get_user_by_id(str(user.id))
+    await adapter.set_user_verified(user.id)
+    user = await adapter.get_user_by_id(user.id)
     assert user.is_verified is True
 
 
@@ -172,10 +172,10 @@ async def test_assign_and_get_roles(adapter):
     data = CreateUserSchema(email="role@test.com", password="pass123")
     user = await adapter.create_user(data, hashed_password=hash_password("pass123"))
 
-    await adapter.assign_role(str(user.id), "editor")
-    await adapter.assign_role(str(user.id), "viewer")
+    await adapter.assign_role(user.id, "editor")
+    await adapter.assign_role(user.id, "viewer")
 
-    roles = await adapter.get_user_roles(str(user.id))
+    roles = await adapter.get_user_roles(user.id)
     assert sorted(roles) == ["editor", "viewer"]
 
 
@@ -184,11 +184,11 @@ async def test_remove_role(adapter):
     data = CreateUserSchema(email="rmrole@test.com", password="pass123")
     user = await adapter.create_user(data, hashed_password=hash_password("pass123"))
 
-    await adapter.assign_role(str(user.id), "editor")
-    await adapter.assign_role(str(user.id), "viewer")
-    await adapter.remove_role(str(user.id), "editor")
+    await adapter.assign_role(user.id, "editor")
+    await adapter.assign_role(user.id, "viewer")
+    await adapter.remove_role(user.id, "editor")
 
-    roles = await adapter.get_user_roles(str(user.id))
+    roles = await adapter.get_user_roles(user.id)
     assert roles == ["viewer"]
 
 
@@ -271,13 +271,13 @@ async def test_user_permissions_through_roles(adapter):
     data = CreateUserSchema(email="perms@test.com", password="pass123")
     user = await adapter.create_user(data, hashed_password=hash_password("pass123"))
 
-    await adapter.assign_role(str(user.id), "editor")
-    await adapter.assign_role(str(user.id), "viewer")
+    await adapter.assign_role(user.id, "editor")
+    await adapter.assign_role(user.id, "viewer")
     await adapter.assign_permission_to_role("editor", "posts:create")
     await adapter.assign_permission_to_role("editor", "posts:edit")
     await adapter.assign_permission_to_role("viewer", "posts:read")
 
-    perms = await adapter.get_user_permissions(str(user.id))
+    perms = await adapter.get_user_permissions(user.id)
     assert sorted(perms) == ["posts:create", "posts:edit", "posts:read"]
 
 
@@ -303,7 +303,7 @@ async def test_oauth_account_crud(adapter):
     assert fetched is not None
     assert fetched.provider_email == "oauth@test.com"
 
-    accounts = await adapter.get_user_oauth_accounts(str(user.id))
+    accounts = await adapter.get_user_oauth_accounts(user.id)
     assert len(accounts) == 1
 
     updated = await adapter.update_oauth_account("google", "g-123", {"access_token": "new-token"})
@@ -384,7 +384,7 @@ async def test_role_and_permission_flow(client, adapter):
     assert r.status_code == 403
 
     # assign role → allowed
-    await adapter.assign_role(str(user.id), "editor")
+    await adapter.assign_role(user.id, "editor")
     r = await client.get("/role-check", headers=headers)
     assert r.status_code == 200
 

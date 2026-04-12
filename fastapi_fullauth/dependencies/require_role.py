@@ -42,7 +42,7 @@ def require_permission(*permissions: str):
         if user.is_superuser:
             return user
 
-        user_perms = await fullauth.adapter.get_user_permissions(str(user.id))
+        user_perms = await fullauth.adapter.get_user_permissions(user.id)
         if not set(permissions).intersection(user_perms):
             raise FORBIDDEN_EXCEPTION
 

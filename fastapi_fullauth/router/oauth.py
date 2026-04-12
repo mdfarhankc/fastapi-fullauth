@@ -140,7 +140,7 @@ def create_oauth_router() -> APIRouter:
         user: CurrentUser,
         fullauth: "FullAuth" = Depends(_get_fullauth),
     ) -> list[OAuthAccountResponse]:
-        accounts = await fullauth.adapter.get_user_oauth_accounts(str(user.id))
+        accounts = await fullauth.adapter.get_user_oauth_accounts(user.id)
         return [
             OAuthAccountResponse(
                 provider=a.provider,
@@ -160,8 +160,8 @@ def create_oauth_router() -> APIRouter:
         user: CurrentUser,
         fullauth: "FullAuth" = Depends(_get_fullauth),
     ) -> None:
-        accounts = await fullauth.adapter.get_user_oauth_accounts(str(user.id))
-        has_password = await fullauth.adapter.get_hashed_password(str(user.id)) is not None
+        accounts = await fullauth.adapter.get_user_oauth_accounts(user.id)
+        has_password = await fullauth.adapter.get_hashed_password(user.id) is not None
         other_oauth = [a for a in accounts if a.provider != provider]
 
         if not has_password and not other_oauth:
@@ -170,7 +170,7 @@ def create_oauth_router() -> APIRouter:
                 detail="Cannot unlink the only login method. Set a password first.",
             )
 
-        await fullauth.adapter.delete_oauth_account(provider, str(user.id))
+        await fullauth.adapter.delete_oauth_account(provider, user.id)
         logger.info("OAuth account unlinked: user_id=%s, provider=%s", user.id, provider)
         return Response(status_code=204)
 
