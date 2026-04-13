@@ -1,4 +1,5 @@
 import logging
+from uuid import UUID
 
 from fastapi_fullauth.adapters.base import AbstractUserAdapter
 from fastapi_fullauth.core.crypto import hash_password
@@ -41,7 +42,7 @@ async def reset_password(
         logger.warning("Invalid password reset token (wrong purpose)")
         raise TokenError("Invalid password reset token")
 
-    user = await adapter.get_user_by_id(payload.sub)
+    user = await adapter.get_user_by_id(UUID(payload.sub))
     if user is None:
         logger.error("Password reset failed — user not found: %s", payload.sub)
         raise UserNotFoundError("User not found")

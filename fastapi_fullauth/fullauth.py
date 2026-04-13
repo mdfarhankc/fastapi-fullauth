@@ -24,7 +24,7 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
     """Main auth manager.
 
     Args:
-        adapter: Database backend (InMemoryAdapter, SQLModelAdapter, etc.).
+        adapter: Database backend (SQLModelAdapter, SQLAlchemyAdapter, etc.).
         config: FullAuthConfig object. Reads from env (FULLAUTH_ prefix) if omitted.
         providers: OAuth providers (GoogleOAuthProvider, GitHubOAuthProvider, etc.).
         backends: Token transport strategies. Defaults to [BearerBackend()].

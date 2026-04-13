@@ -60,7 +60,6 @@ nav:
       - Overview: adapters/index.md
       - SQLModel: adapters/sqlmodel.md
       - SQLAlchemy: adapters/sqlalchemy.md
-      - In-Memory: adapters/memory.md
   - Authentication:
       - Protected Routes: auth/dependencies.md
       - Event Hooks: auth/hooks.md

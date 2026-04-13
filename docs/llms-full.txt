@@ -48,7 +48,7 @@ Add a complete authentication and authorization system to your **FastAPI** proje
 - **Role-based access control** — `CurrentUser`, `VerifiedUser`, `SuperUser`, `require_role()`
 - **Rate limiting** — per-route auth limits + global middleware (memory or Redis)
 - **CSRF protection** and **security headers** middleware, auto-wired
-- **Pluggable adapters** — SQLModel, SQLAlchemy, or in-memory
+- **Pluggable adapters** — SQLModel or SQLAlchemy
 - **Generic type parameters** — define your own schemas with full IDE support and type safety
 - **Composable routers** — include only the route groups you need
 - **Event hooks** — `after_register`, `after_login`, `send_verification_email`, etc.
@@ -81,12 +81,12 @@ pip install fastapi-fullauth[all]
 ```python
 from fastapi import FastAPI
 from fastapi_fullauth import FullAuth, FullAuthConfig
-from fastapi_fullauth.adapters.memory import InMemoryAdapter
+from fastapi_fullauth.adapters.sqlmodel import SQLModelAdapter
 
 app = FastAPI()
 
 fullauth = FullAuth(
-    adapter=InMemoryAdapter(),
+    adapter=SQLModelAdapter(session_maker=session_maker, user_model=User),
     config=FullAuthConfig(SECRET_KEY="your-secret-key"),
 )
 fullauth.init_app(app)
@@ -306,7 +306,6 @@ uv sync --dev --extra sqlalchemy --extra sqlmodel
 uv run pytest tests/ -v
 
 # run examples
-uv run uvicorn examples.memory_app.main:app --reload
 uv run uvicorn examples.sqlmodel_app.main:app --reload
 ```
 
@@ -916,45 +915,6 @@ adapter = SQLAlchemyAdapter(
 ```
 
 If you don't pass custom schemas, the base `UserSchema` and `CreateUserSchema` are used.
-
----
-
-# In-Memory Adapter
-
-# In-Memory Adapter
-
-A simple adapter that stores everything in Python dictionaries. Useful for testing and quick prototyping.
-
-!!! warning
-    All data is lost when the process restarts. Do not use in production.
-
-## Usage
-
-```python
-from fastapi_fullauth import FullAuth, FullAuthConfig
-from fastapi_fullauth.adapters.memory import InMemoryAdapter
-
-fullauth = FullAuth(
-    adapter=InMemoryAdapter(),
-    config=FullAuthConfig(
-        SECRET_KEY="dev-secret",
-    ),
-)
-```
-
-No database, no migrations, no setup. Just works.
-
-## When to use
-
-- **Unit tests** — all fastapi-fullauth tests use this adapter
-- **Prototyping** — try out the library without setting up a database
-- **Demos** — run the `examples/memory_app` example
-
-## Limitations
-
-- No persistence across restarts
-- No concurrent access safety (single-process only)
-- OAuth account methods are supported but also in-memory
 
 ---
 
@@ -1986,7 +1946,7 @@ from fastapi_fullauth.types import (
 
 ```python
 class UserSchema(BaseModel):
-    id: str | int | UUID
+    id: UUID
     email: EmailStr
     is_active: bool = True
     is_verified: bool = False

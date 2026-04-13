@@ -4,30 +4,14 @@ import pytest
 from fastapi import Depends, FastAPI
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
-from sqlmodel import Field, Relationship, SQLModel
+from sqlmodel import SQLModel
 
 from fastapi_fullauth import FullAuth, FullAuthConfig
-from fastapi_fullauth.adapters.sqlmodel import (
-    RefreshTokenRecord,
-    Role,
-    SQLModelAdapter,
-    UserBase,
-    UserRoleLink,
-)
+from fastapi_fullauth.adapters.sqlmodel import SQLModelAdapter
 from fastapi_fullauth.core.crypto import hash_password
 from fastapi_fullauth.dependencies import current_user, require_permission, require_role
 from fastapi_fullauth.types import CreateUserSchema
-
-# ── Models ──────────────────────────────────────────────────────────
-
-
-class User(UserBase, table=True):
-    __tablename__ = "fullauth_users"
-
-    display_name: str = Field(default="", max_length=100)
-    roles: list[Role] = Relationship(link_model=UserRoleLink)
-    refresh_tokens: list[RefreshTokenRecord] = Relationship()
-
+from tests.conftest import User
 
 # ── Fixtures ────────────────────────────────────────────────────────
 
@@ -206,7 +190,7 @@ async def test_refresh_token_crud(adapter):
 
     token = RefreshToken(
         token="test-token-123",
-        user_id=str(user.id),
+        user_id=user.id,
         expires_at=datetime.now(timezone.utc),
         family_id="family-1",
         revoked=False,
@@ -231,13 +215,11 @@ async def test_revoke_refresh_token_family(adapter):
 
     data = CreateUserSchema(email="rtf@test.com", password="pass123")
     user = await adapter.create_user(data, hashed_password=hash_password("pass123"))
-    uid = str(user.id)
-
     for i in range(3):
         await adapter.store_refresh_token(
             RefreshToken(
                 token=f"family-token-{i}",
-                user_id=uid,
+                user_id=user.id,
                 expires_at=datetime.now(timezone.utc),
                 family_id="same-family",
             )
@@ -294,7 +276,7 @@ async def test_oauth_account_crud(adapter):
     account = OAuthAccount(
         provider="google",
         provider_user_id="g-123",
-        user_id=str(user.id),
+        user_id=user.id,
         provider_email="oauth@test.com",
     )
     await adapter.create_oauth_account(account)

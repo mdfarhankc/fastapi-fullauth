@@ -5,7 +5,7 @@ from uuid import UUID
 from pydantic import BaseModel, EmailStr, Field
 from typing_extensions import TypeVar
 
-UserID = str | int | UUID
+UserID = UUID
 
 
 class UserSchema(BaseModel):
@@ -24,8 +24,7 @@ class CreateUserSchema(BaseModel):
     password: str
 
 
-UserSchemaType = TypeVar(
-    "UserSchemaType", bound=UserSchema, default=UserSchema)
+UserSchemaType = TypeVar("UserSchemaType", bound=UserSchema, default=UserSchema)
 CreateUserSchemaType = TypeVar(
     "CreateUserSchemaType", bound=CreateUserSchema, default=CreateUserSchema
 )
@@ -46,7 +45,7 @@ class RefreshTokenMeta(NamedTuple):
 
 class RefreshToken(BaseModel):
     token: str
-    user_id: str
+    user_id: UUID
     expires_at: datetime
     family_id: str
     revoked: bool = False
@@ -55,7 +54,7 @@ class RefreshToken(BaseModel):
 class OAuthAccount(BaseModel):
     provider: str
     provider_user_id: str
-    user_id: str
+    user_id: UUID
     provider_email: str | None = None
     access_token: str | None = None
     refresh_token: str | None = None
