@@ -154,20 +154,20 @@ async def test_register_rejects_weak_password_via_validator():
         assert r.status_code == 201
 
 
-# --- Disable Routes ---
+# --- Composable Routers ---
 
 
 @pytest.mark.asyncio
-async def test_disabled_register_route():
+async def test_composable_router_excludes_register():
+    """Including only auth_router still works; skipping it means no register route."""
     adapter = InMemoryAdapter()
     config = FullAuthConfig(SECRET_KEY="test-secret-key-that-is-long-enough-32b")
-    fullauth = FullAuth(
-        config=config,
-        adapter=adapter,
-        enabled_routes=["login", "logout", "refresh"],
-    )
+    fullauth = FullAuth(config=config, adapter=adapter)
+
     app = FastAPI()
-    fullauth.init_app(app)
+    app.state.fullauth = fullauth
+    # only include profile router, not auth router
+    app.include_router(fullauth.profile_router, prefix="/api/v1/auth")
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:

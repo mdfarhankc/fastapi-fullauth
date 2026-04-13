@@ -19,6 +19,7 @@ async def login(
     lockout: LockoutManager | None = None,
     extra_claims: dict | None = None,
     user: UserSchema | None = None,
+    hash_algorithm: str = "argon2id",
 ) -> TokenPair:
     if lockout and lockout.is_locked(identifier):
         logger.warning("Login blocked — account locked: %s", identifier)
@@ -43,8 +44,8 @@ async def login(
         logger.warning("Login failed — account deactivated: %s", identifier)
         raise AuthenticationError("User account is deactivated")
 
-    if password_needs_rehash(hashed):
-        await adapter.set_password(user.id, hash_password(password))
+    if password_needs_rehash(hashed, algorithm=hash_algorithm):
+        await adapter.set_password(user.id, hash_password(password, algorithm=hash_algorithm))
 
     if lockout:
         lockout.clear(identifier)

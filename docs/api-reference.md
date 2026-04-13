@@ -7,19 +7,16 @@ Quick reference for the main classes, types, and functions.
 The main auth manager. Central entry point for the library.
 
 ```python
-from fastapi_fullauth import FullAuth
+from fastapi_fullauth import FullAuth, FullAuthConfig
 
 fullauth = FullAuth(
-    config=None,                    # FullAuthConfig object (mutually exclusive with kwargs)
     adapter=adapter,                # required — database adapter
-    secret_key=None,                # shortcut for config.SECRET_KEY
+    config=FullAuthConfig(...),     # FullAuthConfig object (see Configuration)
     backends=None,                  # [BearerBackend()] by default
     password_validator=None,        # PasswordValidator instance
-    enabled_routes=None,            # whitelist of route names, None = all
     include_user_in_login=False,    # include user data in login response
     create_user_schema=None,        # custom registration schema
     on_create_token_claims=None,    # async callback for custom JWT claims
-    **config_kwargs,                # any FullAuthConfig field as lowercase
 )
 ```
 
@@ -37,7 +34,11 @@ fullauth = FullAuth(
 | `config` | `FullAuthConfig` | Active configuration |
 | `adapter` | `AbstractUserAdapter` | Database adapter |
 | `token_engine` | `TokenEngine` | JWT creation/validation engine |
-| `router` | `APIRouter` | The auth router (lazy-created) |
+| `auth_router` | `APIRouter` | Login, logout, register, refresh routes |
+| `profile_router` | `APIRouter` | Me, update profile, change password, delete account routes |
+| `verify_router` | `APIRouter` | Email verification and password reset routes |
+| `admin_router` | `APIRouter` | Role/permission management routes (superuser) |
+| `oauth_router` | `APIRouter` | OAuth provider routes |
 
 ## FullAuthConfig
 
@@ -58,7 +59,6 @@ from fastapi_fullauth.types import (
     RefreshToken,       # stored refresh token record
     OAuthAccount,       # linked OAuth provider account
     OAuthUserInfo,      # user info from OAuth provider
-    RouteName,          # Literal type of all route names
 )
 ```
 
@@ -96,16 +96,6 @@ class TokenPayload(BaseModel):
     roles: list[str]      # user roles
     extra: dict[str, Any] # custom claims
     family_id: str | None # refresh token family
-```
-
-### RouteName
-
-```python
-RouteName = Literal[
-    "login", "logout", "register", "refresh",
-    "verify-email", "password-reset", "me", "verified-me",
-    "change-password", "update-profile", "delete-account",
-]
 ```
 
 ## Dependencies

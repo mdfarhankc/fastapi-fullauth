@@ -7,6 +7,7 @@ Embed app-specific data into JWT tokens. Custom claims are available in the `ext
 Pass an async callback to `on_create_token_claims`:
 
 ```python
+from fastapi_fullauth import FullAuthConfig
 from fastapi_fullauth.types import UserSchema
 
 async def add_claims(user: UserSchema) -> dict:
@@ -16,8 +17,10 @@ async def add_claims(user: UserSchema) -> dict:
     }
 
 fullauth = FullAuth(
-    secret_key="...",
     adapter=adapter,
+    config=FullAuthConfig(
+        SECRET_KEY="...",
+    ),
     on_create_token_claims=add_claims,
 )
 ```

@@ -2,12 +2,10 @@ from abc import ABC, abstractmethod
 from typing import Any, Generic
 
 from fastapi_fullauth.types import (
-    CreateUserSchema,
     CreateUserSchemaType,
     OAuthAccount,
     RefreshToken,
     UserID,
-    UserSchema,
     UserSchemaType,
 )
 
@@ -37,7 +35,9 @@ class AbstractUserAdapter(ABC, Generic[UserSchemaType, CreateUserSchemaType]):
         )
 
     @abstractmethod
-    async def create_user(self, data: CreateUserSchemaType, hashed_password: str) -> UserSchemaType: ...
+    async def create_user(
+        self, data: CreateUserSchemaType, hashed_password: str
+    ) -> UserSchemaType: ...
 
     @abstractmethod
     async def update_user(self, user_id: UserID, data: dict[str, Any]) -> UserSchemaType: ...

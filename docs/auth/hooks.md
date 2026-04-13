@@ -5,7 +5,7 @@ Hooks let you run custom logic when auth events happen - send emails, log analyt
 ## Registering hooks
 
 ```python
-fullauth = FullAuth(secret_key="...", adapter=adapter)
+fullauth = FullAuth(adapter=adapter, config=FullAuthConfig(SECRET_KEY="..."))
 
 async def on_register(user):
     print(f"New user: {user.email}")

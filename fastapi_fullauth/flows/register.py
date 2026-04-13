@@ -12,6 +12,7 @@ async def register(
     adapter: AbstractUserAdapter,
     data: CreateUserSchema,
     login_field: str = "email",
+    hash_algorithm: str = "argon2id",
 ) -> UserSchema:
     existing = await adapter.get_user_by_email(data.email)
     if existing is not None:
@@ -26,7 +27,7 @@ async def register(
                 logger.warning("Registration rejected — %s exists", login_field)
                 raise UserAlreadyExistsError(f"User with {login_field} already exists")
 
-    hashed = hash_password(data.password)
+    hashed = hash_password(data.password, algorithm=hash_algorithm)
     user = await adapter.create_user(data, hashed_password=hashed)
     logger.info("User registered: user_id=%s, email=%s", user.id, user.email)
     return user

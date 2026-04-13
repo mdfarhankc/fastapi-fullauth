@@ -9,7 +9,7 @@ By default, only minimum length is enforced (8 characters, configurable via `PAS
 ## Custom rules
 
 ```python
-from fastapi_fullauth import FullAuth
+from fastapi_fullauth import FullAuth, FullAuthConfig
 from fastapi_fullauth.validators import PasswordValidator
 
 validator = PasswordValidator(
@@ -22,8 +22,10 @@ validator = PasswordValidator(
 )
 
 fullauth = FullAuth(
-    secret_key="...",
     adapter=adapter,
+    config=FullAuthConfig(
+        SECRET_KEY="...",
+    ),
     password_validator=validator,
 )
 ```
@@ -53,9 +55,11 @@ Passwords are hashed with **Argon2id** by default. Switch to bcrypt via config:
 
 ```python
 fullauth = FullAuth(
-    secret_key="...",
     adapter=adapter,
-    password_hash_algorithm="bcrypt",  # requires: pip install bcrypt
+    config=FullAuthConfig(
+        SECRET_KEY="...",
+        PASSWORD_HASH_ALGORITHM="bcrypt",  # requires: pip install bcrypt
+    ),
 )
 ```
 

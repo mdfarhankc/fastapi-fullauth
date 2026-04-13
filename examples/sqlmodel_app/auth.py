@@ -1,4 +1,4 @@
-from fastapi_fullauth import FullAuth
+from fastapi_fullauth import FullAuth, FullAuthConfig
 from fastapi_fullauth.adapters.sqlmodel import SQLModelAdapter
 from fastapi_fullauth.types import UserSchema
 
@@ -19,8 +19,8 @@ async def add_custom_claims(user: UserSchema) -> dict:
 
 
 fullauth = FullAuth(
-    secret_key="change-me-use-a-32-byte-key-here",
     adapter=SQLModelAdapter(session_maker=session_maker, user_model=User),
+    config=FullAuthConfig(SECRET_KEY="change-me-use-a-32-byte-key-here"),
     on_create_token_claims=add_custom_claims,
     include_user_in_login=True,
 )

@@ -6,28 +6,19 @@ All configuration is managed through `FullAuthConfig`, a [Pydantic Settings](htt
 
 Pass config inline or as an object:
 
-=== "Inline kwargs"
-
-    ```python
-    fullauth = FullAuth(
-        secret_key="...",
-        adapter=adapter,
-        access_token_expire_minutes=60,
-        api_prefix="/api/v2",
-    )
-    ```
-
 === "Config object"
 
     ```python
-    from fastapi_fullauth import FullAuthConfig
+    from fastapi_fullauth import FullAuth, FullAuthConfig
 
-    config = FullAuthConfig(
-        SECRET_KEY="...",
-        ACCESS_TOKEN_EXPIRE_MINUTES=60,
-        API_PREFIX="/api/v2",
+    fullauth = FullAuth(
+        adapter=adapter,
+        config=FullAuthConfig(
+            SECRET_KEY="...",
+            ACCESS_TOKEN_EXPIRE_MINUTES=60,
+            API_PREFIX="/api/v2",
+        ),
     )
-    fullauth = FullAuth(config=config, adapter=adapter)
     ```
 
 === "Environment variables"
@@ -38,6 +29,8 @@ Pass config inline or as an object:
     ```
 
     ```python
+    from fastapi_fullauth import FullAuth
+
     # reads from env automatically
     fullauth = FullAuth(adapter=adapter)
     ```

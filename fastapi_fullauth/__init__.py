@@ -5,7 +5,6 @@ from fastapi_fullauth.fullauth import FullAuth
 from fastapi_fullauth.types import (
     CreateUserSchema,
     CreateUserSchemaType,
-    RouteName,
     UserSchema,
     UserSchemaType,
 )
@@ -18,7 +17,6 @@ __all__ = [
     "FullAuth",
     "FullAuthConfig",
     "PasswordValidator",
-    "RouteName",
     "UserSchema",
     "UserSchemaType",
     "create_superuser",

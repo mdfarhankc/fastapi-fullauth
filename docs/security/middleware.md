@@ -40,11 +40,15 @@ app.add_middleware(
 Disabled by default (`CSRF_ENABLED=False`). Enable it for cookie-based auth where the frontend and backend share a domain:
 
 ```python
+from fastapi_fullauth import FullAuth, FullAuthConfig
+
 fullauth = FullAuth(
-    secret_key="...",
     adapter=adapter,
-    csrf_enabled=True,
-    csrf_secret="optional-separate-secret",  # falls back to SECRET_KEY
+    config=FullAuthConfig(
+        SECRET_KEY="...",
+        CSRF_ENABLED=True,
+        CSRF_SECRET="optional-separate-secret",  # falls back to SECRET_KEY
+    ),
 )
 ```
 

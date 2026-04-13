@@ -1,24 +1,9 @@
 from datetime import datetime
-from typing import Any, Literal, NamedTuple
+from typing import Any, NamedTuple
 from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, Field
 from typing_extensions import TypeVar
-
-RouteName = Literal[
-    "login",
-    "logout",
-    "register",
-    "refresh",
-    "verify-email",
-    "password-reset",
-    "me",
-    "verified-me",
-    "change-password",
-    "update-profile",
-    "delete-account",
-]
-
 
 UserID = str | int | UUID
 
@@ -40,7 +25,9 @@ class CreateUserSchema(BaseModel):
 
 
 UserSchemaType = TypeVar("UserSchemaType", bound=UserSchema, default=UserSchema)
-CreateUserSchemaType = TypeVar("CreateUserSchemaType", bound=CreateUserSchema, default=CreateUserSchema)
+CreateUserSchemaType = TypeVar(
+    "CreateUserSchemaType", bound=CreateUserSchema, default=CreateUserSchema
+)
 
 
 class TokenPair(BaseModel):

@@ -39,6 +39,7 @@ async def oauth_callback(
     code: str,
     state: str,
     auto_link_by_email: bool = True,
+    hash_algorithm: str = "argon2id",
 ) -> tuple[TokenPair, UserSchema, bool]:
     redirect_uri = await verify_oauth_state(token_engine, state)
     resolved_uri = provider.get_redirect_uri(redirect_uri)
@@ -88,7 +89,9 @@ async def oauth_callback(
 
             random_password = secrets.token_urlsafe(32)
             data = CreateUserSchema(email=info.email, password=random_password)
-            user = await adapter.create_user(data, hashed_password=hash_password(random_password))
+            user = await adapter.create_user(
+                data, hashed_password=hash_password(random_password, algorithm=hash_algorithm)
+            )
 
             if info.email_verified:
                 await adapter.set_user_verified(user.id)

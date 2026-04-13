@@ -124,3 +124,17 @@ class TokenEngine:
         access = self.create_access_token(user_id, roles, extra)
         refresh = self.create_refresh_token(user_id, family_id)
         return access, refresh
+
+
+def create_blacklist(config: FullAuthConfig) -> TokenBlacklist:
+    """Create a token blacklist backend based on config."""
+    if config.BLACKLIST_BACKEND == "redis":
+        if not config.REDIS_URL:
+            raise ValueError("REDIS_URL must be set when BLACKLIST_BACKEND='redis'")
+        from fastapi_fullauth.core.redis_blacklist import RedisBlacklist
+
+        return RedisBlacklist(
+            redis_url=config.REDIS_URL,
+            default_ttl_seconds=config.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        )
+    return InMemoryBlacklist()

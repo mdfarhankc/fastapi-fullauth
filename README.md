@@ -67,21 +67,21 @@ pip install fastapi-fullauth[all]
 
 ```python
 from fastapi import FastAPI
-from fastapi_fullauth import FullAuth
+from fastapi_fullauth import FullAuth, FullAuthConfig
 from fastapi_fullauth.adapters.memory import InMemoryAdapter
 
 app = FastAPI()
 
 fullauth = FullAuth(
-    secret_key="your-secret-key",
     adapter=InMemoryAdapter(),
+    config=FullAuthConfig(SECRET_KEY="your-secret-key"),
 )
 fullauth.init_app(app)
 ```
 
 That's it — 15+ auth routes are registered under `/api/v1/auth/` automatically.
 
-Omit `secret_key` in dev and a random one is generated (tokens won't survive restarts).
+Omit `config` in dev and a random secret key is generated (tokens won't survive restarts).
 
 ## Routes
 
@@ -128,8 +128,8 @@ class User(UserBase, table=True):
     refresh_tokens: list[RefreshTokenRecord] = Relationship()
 
 fullauth = FullAuth(
-    secret_key="...",
     adapter=SQLModelAdapter(session_maker, user_model=User),
+    config=FullAuthConfig(SECRET_KEY="..."),
 )
 ```
 
@@ -162,23 +162,25 @@ async def editor_panel(user=Depends(require_role("editor"))):
 
 ```python
 fullauth = FullAuth(
-    secret_key="...",
     adapter=adapter,
-    oauth_providers={
-        "google": {
-            "client_id": "your-google-client-id",
-            "client_secret": "your-google-secret",
-            "redirect_uris": [
-                "http://localhost:3000/auth/callback",
-                "https://myapp.com/auth/callback",
-            ],
+    config=FullAuthConfig(
+        SECRET_KEY="...",
+        OAUTH_PROVIDERS={
+            "google": {
+                "client_id": "your-google-client-id",
+                "client_secret": "your-google-secret",
+                "redirect_uris": [
+                    "http://localhost:3000/auth/callback",
+                    "https://myapp.com/auth/callback",
+                ],
+            },
+            "github": {
+                "client_id": "your-github-client-id",
+                "client_secret": "your-github-secret",
+                "redirect_uri": "http://localhost:3000/auth/callback",
+            },
         },
-        "github": {
-            "client_id": "your-github-client-id",
-            "client_secret": "your-github-secret",
-            "redirect_uri": "http://localhost:3000/auth/callback",
-        },
-    },
+    ),
 )
 ```
 
@@ -201,20 +203,22 @@ Events: `after_register`, `after_login`, `after_logout`, `after_password_change`
 
 ## Configuration
 
-Pass inline kwargs or a config object. All options read from env vars with `FULLAUTH_` prefix.
+Pass a `FullAuthConfig` object or set env vars with `FULLAUTH_` prefix.
 
 ```python
 fullauth = FullAuth(
-    secret_key="...",
     adapter=adapter,
-    access_token_expire_minutes=60,
-    api_prefix="/api/v2",
-    login_field="username",
-    password_hash_algorithm="bcrypt",
-    blacklist_backend="redis",
-    redis_url="redis://localhost:6379/0",
-    rate_limit_enabled=True,
-    trusted_proxy_headers=["X-Forwarded-For"],
+    config=FullAuthConfig(
+        SECRET_KEY="...",
+        ACCESS_TOKEN_EXPIRE_MINUTES=60,
+        API_PREFIX="/api/v2",
+        LOGIN_FIELD="username",
+        PASSWORD_HASH_ALGORITHM="bcrypt",
+        BLACKLIST_BACKEND="redis",
+        REDIS_URL="redis://localhost:6379/0",
+        AUTH_RATE_LIMIT_ENABLED=True,
+        TRUSTED_PROXY_HEADERS=["X-Forwarded-For"],
+    ),
 )
 ```
 

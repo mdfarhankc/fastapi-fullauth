@@ -18,12 +18,16 @@ Enabled by default. Protects auth endpoints from brute force:
 | Password reset | 3 per minute | `AUTH_RATE_LIMIT_PASSWORD_RESET` |
 
 ```python
+from fastapi_fullauth import FullAuth, FullAuthConfig
+
 fullauth = FullAuth(
-    secret_key="...",
     adapter=adapter,
-    auth_rate_limit_login=10,           # 10 login attempts per window
-    auth_rate_limit_register=5,         # 5 registrations per window
-    auth_rate_limit_window_seconds=120, # 2-minute window
+    config=FullAuthConfig(
+        SECRET_KEY="...",
+        AUTH_RATE_LIMIT_LOGIN=10,           # 10 login attempts per window
+        AUTH_RATE_LIMIT_REGISTER=5,         # 5 registrations per window
+        AUTH_RATE_LIMIT_WINDOW_SECONDS=120, # 2-minute window
+    ),
 )
 ```
 
@@ -31,9 +35,11 @@ Disable entirely:
 
 ```python
 fullauth = FullAuth(
-    secret_key="...",
     adapter=adapter,
-    auth_rate_limit_enabled=False,
+    config=FullAuthConfig(
+        SECRET_KEY="...",
+        AUTH_RATE_LIMIT_ENABLED=False,
+    ),
 )
 ```
 
@@ -43,9 +49,11 @@ Limits all requests per client IP. Disabled by default:
 
 ```python
 fullauth = FullAuth(
-    secret_key="...",
     adapter=adapter,
-    rate_limit_enabled=True,
+    config=FullAuthConfig(
+        SECRET_KEY="...",
+        RATE_LIMIT_ENABLED=True,
+    ),
 )
 fullauth.init_app(app)  # middleware is auto-added
 ```
@@ -68,9 +76,11 @@ Behind a reverse proxy (Nginx, Cloudflare, AWS ALB), `request.client.host` is th
 
 ```python
 fullauth = FullAuth(
-    secret_key="...",
     adapter=adapter,
-    trusted_proxy_headers=["X-Forwarded-For"],
+    config=FullAuthConfig(
+        SECRET_KEY="...",
+        TRUSTED_PROXY_HEADERS=["X-Forwarded-For"],
+    ),
 )
 ```
 
@@ -87,11 +97,13 @@ For multi-process or multi-server deployments, use the Redis backend:
 
 ```python
 fullauth = FullAuth(
-    secret_key="...",
     adapter=adapter,
-    rate_limit_enabled=True,
-    rate_limit_backend="redis",
-    redis_url="redis://localhost:6379/0",
+    config=FullAuthConfig(
+        SECRET_KEY="...",
+        RATE_LIMIT_ENABLED=True,
+        RATE_LIMIT_BACKEND="redis",
+        REDIS_URL="redis://localhost:6379/0",
+    ),
 )
 ```
 

@@ -33,6 +33,7 @@ async def reset_password(
     token_engine: TokenEngine,
     token: str,
     new_password: str,
+    hash_algorithm: str = "argon2id",
 ) -> UserSchema | None:
     payload = await token_engine.decode_token(token)
 
@@ -45,7 +46,7 @@ async def reset_password(
         logger.error("Password reset failed — user not found: %s", payload.sub)
         raise UserNotFoundError("User not found")
 
-    hashed = hash_password(new_password)
+    hashed = hash_password(new_password, algorithm=hash_algorithm)
     await adapter.set_password(user.id, hashed)
 
     # Blacklist the reset token so it can't be reused

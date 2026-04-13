@@ -47,11 +47,13 @@ adapter = SQLAlchemyAdapter(session_maker=session_maker, user_model=User)
 ### 3. Wire into FullAuth
 
 ```python
-from fastapi_fullauth import FullAuth
+from fastapi_fullauth import FullAuth, FullAuthConfig
 
 fullauth = FullAuth(
-    secret_key="your-secret-key",
     adapter=adapter,
+    config=FullAuthConfig(
+        SECRET_KEY="your-secret-key",
+    ),
 )
 ```
 

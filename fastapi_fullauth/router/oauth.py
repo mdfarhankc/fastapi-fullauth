@@ -106,6 +106,7 @@ def create_oauth_router() -> APIRouter:
                 code=data.code,
                 state=data.state,
                 auto_link_by_email=fullauth.config.OAUTH_AUTO_LINK_BY_EMAIL,
+                hash_algorithm=fullauth.config.PASSWORD_HASH_ALGORITHM,
             )
         except (OAuthProviderError, TokenError):
             raise OAUTH_ERROR_EXCEPTION
