@@ -1,4 +1,5 @@
 import logging
+from uuid import UUID
 
 from fastapi_fullauth.adapters.base import AbstractUserAdapter
 from fastapi_fullauth.core.tokens import TokenEngine
@@ -37,7 +38,7 @@ async def verify_email(
         logger.warning("Invalid email verification token (wrong purpose)")
         raise TokenError("Invalid email verification token")
 
-    user = await adapter.get_user_by_id(payload.sub)
+    user = await adapter.get_user_by_id(UUID(payload.sub))
     if user is None:
         logger.error("Email verification failed — user not found: %s", payload.sub)
         raise UserNotFoundError("User not found")
@@ -52,4 +53,4 @@ async def verify_email(
 
     logger.info("Email verified: user_id=%s", user.id)
     # re-fetch to get updated is_verified
-    return await adapter.get_user_by_id(payload.sub)
+    return await adapter.get_user_by_id(UUID(payload.sub))

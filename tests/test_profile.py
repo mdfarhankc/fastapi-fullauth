@@ -1,15 +1,28 @@
-"""Tests for change-password, update profile, delete account, expires_in, auth rate limiting."""
+"""Tests for profile and account management: change password, update profile,
+and delete account."""
 
 import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlmodel import SQLModel
 
 from fastapi_fullauth import FullAuth, FullAuthConfig
-from fastapi_fullauth.adapters.memory import InMemoryAdapter
+from fastapi_fullauth.adapters.sqlmodel import SQLModelAdapter
+from tests.conftest import User
 
 
-def _make_app(**fullauth_kwargs):
-    adapter = InMemoryAdapter()
+async def _make_db():
+    engine = create_async_engine("sqlite+aiosqlite://", echo=False)
+    session_maker = async_sessionmaker(engine, expire_on_commit=False)
+    async with engine.begin() as conn:
+        await conn.run_sync(SQLModel.metadata.create_all)
+    return engine, session_maker
+
+
+async def _make_app(**fullauth_kwargs):
+    engine, session_maker = await _make_db()
+    adapter = SQLModelAdapter(session_maker=session_maker, user_model=User)
     fullauth = FullAuth(
         config=FullAuthConfig(
             SECRET_KEY="test-secret-key-that-is-long-enough-32b",
@@ -21,7 +34,7 @@ def _make_app(**fullauth_kwargs):
     )
     app = FastAPI()
     fullauth.init_app(app, auto_middleware=False)
-    return app, adapter, fullauth
+    return app, adapter, fullauth, engine
 
 
 async def _register_and_login(client):
@@ -36,14 +49,14 @@ async def _register_and_login(client):
     return r.json()
 
 
-# ---------------------------------------------------------------------------
+# ===========================================================================
 # Change password
-# ---------------------------------------------------------------------------
+# ===========================================================================
 
 
 @pytest.mark.asyncio
 async def test_change_password():
-    app, adapter, _ = _make_app()
+    app, adapter, _, engine = await _make_app()
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         tokens = await _register_and_login(client)
@@ -63,10 +76,12 @@ async def test_change_password():
         )
         assert r.status_code == 200
 
+    await engine.dispose()
+
 
 @pytest.mark.asyncio
 async def test_change_password_wrong_current():
-    app, _, _ = _make_app()
+    app, _, _, engine = await _make_app()
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         tokens = await _register_and_login(client)
@@ -79,10 +94,12 @@ async def test_change_password_wrong_current():
         )
         assert r.status_code == 400
 
+    await engine.dispose()
+
 
 @pytest.mark.asyncio
 async def test_change_password_weak_new():
-    app, _, _ = _make_app()
+    app, _, _, engine = await _make_app()
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         tokens = await _register_and_login(client)
@@ -95,10 +112,12 @@ async def test_change_password_weak_new():
         )
         assert r.status_code == 422
 
+    await engine.dispose()
 
-# ---------------------------------------------------------------------------
+
+# ===========================================================================
 # Update profile
-# ---------------------------------------------------------------------------
+# ===========================================================================
 
 
 @pytest.mark.asyncio
@@ -111,7 +130,13 @@ async def test_update_profile():
     class MyUser(UserSchema):
         display_name: str = ""
 
-    adapter = InMemoryAdapter(user_schema=MyUser, create_user_schema=MyCreate)
+    engine, session_maker = await _make_db()
+    adapter = SQLModelAdapter(
+        session_maker=session_maker,
+        user_model=User,
+        user_schema=MyUser,
+        create_user_schema=MyCreate,
+    )
     fullauth = FullAuth(
         config=FullAuthConfig(
             SECRET_KEY="test-secret-key-that-is-long-enough-32b",
@@ -143,10 +168,12 @@ async def test_update_profile():
         assert r.status_code == 200
         assert r.json()["display_name"] == "New Name"
 
+    await engine.dispose()
+
 
 @pytest.mark.asyncio
 async def test_update_profile_rejects_protected_fields():
-    app, _, _ = _make_app()
+    app, _, _, engine = await _make_app()
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         tokens = await _register_and_login(client)
@@ -159,15 +186,17 @@ async def test_update_profile_rejects_protected_fields():
         )
         assert r.status_code == 400
 
+    await engine.dispose()
 
-# ---------------------------------------------------------------------------
+
+# ===========================================================================
 # Delete account
-# ---------------------------------------------------------------------------
+# ===========================================================================
 
 
 @pytest.mark.asyncio
 async def test_delete_account():
-    app, adapter, _ = _make_app()
+    app, adapter, _, engine = await _make_app()
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         tokens = await _register_and_login(client)
@@ -180,103 +209,4 @@ async def test_delete_account():
         user = await adapter.get_user_by_email("t@t.com")
         assert user is None
 
-
-# ---------------------------------------------------------------------------
-# expires_in in token response
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_login_returns_expires_in():
-    app, _, _ = _make_app()
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as client:
-        tokens = await _register_and_login(client)
-        assert "expires_in" in tokens
-        assert tokens["expires_in"] == 30 * 60  # default 30 minutes
-
-
-@pytest.mark.asyncio
-async def test_refresh_returns_expires_in():
-    app, _, _ = _make_app()
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as client:
-        tokens = await _register_and_login(client)
-        r = await client.post(
-            "/api/v1/auth/refresh",
-            json={"refresh_token": tokens["refresh_token"]},
-        )
-        assert r.status_code == 200
-        assert r.json()["expires_in"] == 30 * 60
-
-
-# ---------------------------------------------------------------------------
-# Auth route rate limiting
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_login_rate_limited():
-    adapter = InMemoryAdapter()
-    fullauth = FullAuth(
-        config=FullAuthConfig(
-            SECRET_KEY="test-secret-key-that-is-long-enough-32b",
-            INJECT_SECURITY_HEADERS=False,
-            AUTH_RATE_LIMIT_ENABLED=True,
-            AUTH_RATE_LIMIT_LOGIN=2,
-            AUTH_RATE_LIMIT_WINDOW_SECONDS=60,
-        ),
-        adapter=adapter,
-    )
-    app = FastAPI()
-    fullauth.init_app(app, auto_middleware=False)
-
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as client:
-        await client.post(
-            "/api/v1/auth/register",
-            json={"email": "t@t.com", "password": "securepass123"},
-        )
-
-        # first 2 login attempts should work (even if wrong password)
-        for _ in range(2):
-            await client.post(
-                "/api/v1/auth/login",
-                json={"email": "t@t.com", "password": "securepass123"},
-            )
-
-        # 3rd should be rate limited
-        r = await client.post(
-            "/api/v1/auth/login",
-            json={"email": "t@t.com", "password": "securepass123"},
-        )
-        assert r.status_code == 429
-
-
-@pytest.mark.asyncio
-async def test_register_rate_limited():
-    adapter = InMemoryAdapter()
-    fullauth = FullAuth(
-        config=FullAuthConfig(
-            SECRET_KEY="test-secret-key-that-is-long-enough-32b",
-            INJECT_SECURITY_HEADERS=False,
-            AUTH_RATE_LIMIT_ENABLED=True,
-            AUTH_RATE_LIMIT_REGISTER=1,
-            AUTH_RATE_LIMIT_WINDOW_SECONDS=60,
-        ),
-        adapter=adapter,
-    )
-    app = FastAPI()
-    fullauth.init_app(app, auto_middleware=False)
-
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as client:
-        await client.post(
-            "/api/v1/auth/register",
-            json={"email": "a@t.com", "password": "securepass123"},
-        )
-        r = await client.post(
-            "/api/v1/auth/register",
-            json={"email": "b@t.com", "password": "securepass123"},
-        )
-        assert r.status_code == 429
+    await engine.dispose()

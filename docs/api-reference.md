@@ -66,13 +66,21 @@ from fastapi_fullauth.types import (
 
 ```python
 class UserSchema(BaseModel):
-    id: str | int | UUID
+    id: UUID
     email: EmailStr
     is_active: bool = True
     is_verified: bool = False
     is_superuser: bool = False
     roles: list[str] = []
+
+    PROTECTED_FIELDS: ClassVar[set[str]] = {
+        "id", "email", "hashed_password", "is_active",
+        "is_verified", "is_superuser", "roles", "password",
+        "created_at", "refresh_tokens",
+    }
 ```
+
+Extend `PROTECTED_FIELDS` in subclasses to protect custom sensitive fields from profile updates.
 
 ### TokenPair
 

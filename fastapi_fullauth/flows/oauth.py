@@ -105,7 +105,7 @@ async def oauth_callback(
             OAuthAccount(
                 provider=info.provider,
                 provider_user_id=info.provider_user_id,
-                user_id=str(user.id),
+                user_id=user.id,
                 provider_email=info.email,
                 access_token=tokens.get("access_token"),
                 refresh_token=tokens.get("refresh_token"),

@@ -194,7 +194,7 @@ async def test_refresh_token_crud(adapter):
 
     token = RefreshToken(
         token="sa-test-token-123",
-        user_id=str(user.id),
+        user_id=user.id,
         expires_at=datetime.now(timezone.utc),
         family_id="family-1",
     )
@@ -251,7 +251,7 @@ async def test_oauth_account_crud(adapter):
     account = OAuthAccount(
         provider="github",
         provider_user_id="gh-456",
-        user_id=str(user.id),
+        user_id=user.id,
         provider_email="oauth@test.com",
     )
     await adapter.create_oauth_account(account)

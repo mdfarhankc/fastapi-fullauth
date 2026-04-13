@@ -4,6 +4,7 @@ from fastapi_fullauth.adapters.base import AbstractUserAdapter
 from fastapi_fullauth.core.crypto import hash_password
 from fastapi_fullauth.exceptions import UserAlreadyExistsError
 from fastapi_fullauth.types import CreateUserSchema, UserSchema
+from fastapi_fullauth.validators import PasswordValidator
 
 logger = logging.getLogger("fastapi_fullauth.register")
 
@@ -13,7 +14,11 @@ async def register(
     data: CreateUserSchema,
     login_field: str = "email",
     hash_algorithm: str = "argon2id",
+    password_validator: PasswordValidator | None = None,
 ) -> UserSchema:
+    if password_validator:
+        password_validator.validate(data.password)
+
     existing = await adapter.get_user_by_email(data.email)
     if existing is not None:
         logger.warning("Registration rejected — email exists: %s", data.email)

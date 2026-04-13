@@ -1,7 +1,6 @@
 from fastapi_fullauth.adapters.base import AbstractUserAdapter
-from fastapi_fullauth.adapters.memory import InMemoryAdapter
 
-__all__ = ["AbstractUserAdapter", "InMemoryAdapter"]
+__all__ = ["AbstractUserAdapter"]
 
 # lazy imports for optional adapters to avoid import errors
 # when sqlalchemy/sqlmodel are not installed

@@ -3,12 +3,15 @@
 import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlmodel import SQLModel
 
 from fastapi_fullauth import FullAuth, FullAuthConfig
-from fastapi_fullauth.adapters.memory import InMemoryAdapter
+from fastapi_fullauth.adapters.sqlmodel import SQLModelAdapter
 from fastapi_fullauth.flows.oauth import generate_oauth_state, oauth_callback, verify_oauth_state
 from fastapi_fullauth.oauth.base import OAuthProvider
 from fastapi_fullauth.types import OAuthUserInfo
+from tests.conftest import User
 
 # ── Mock provider ────────────────────────────────────────────────────
 
@@ -46,14 +49,25 @@ class MockOAuthProvider(OAuthProvider):
 # ── Fixtures ─────────────────────────────────────────────────────────
 
 
+async def _make_db():
+    engine = create_async_engine("sqlite+aiosqlite://", echo=False)
+    session_maker = async_sessionmaker(engine, expire_on_commit=False)
+    async with engine.begin() as conn:
+        await conn.run_sync(SQLModel.metadata.create_all)
+    return engine, session_maker
+
+
 @pytest.fixture
 def config():
     return FullAuthConfig(SECRET_KEY="test-secret-key-that-is-long-enough-32b")
 
 
 @pytest.fixture
-def adapter():
-    return InMemoryAdapter()
+async def adapter():
+    engine, session_maker = await _make_db()
+    adapter = SQLModelAdapter(session_maker=session_maker, user_model=User)
+    yield adapter
+    await engine.dispose()
 
 
 @pytest.fixture
@@ -160,12 +174,12 @@ async def test_oauth_links_existing_user(adapter, config):
     )
 
     assert is_new is False
-    assert str(user.id) == str(existing.id)
+    assert user.id == existing.id
 
     # check OAuth account was linked
     account = await adapter.get_oauth_account("mock", "mock-user-123")
     assert account is not None
-    assert account.user_id == str(existing.id)
+    assert account.user_id == existing.id
 
 
 @pytest.mark.asyncio
@@ -196,7 +210,7 @@ async def test_oauth_returning_user(adapter, config):
         state=state2,
     )
     assert is_new2 is False
-    assert str(user1.id) == str(user2.id)
+    assert user1.id == user2.id
 
 
 # ── Route tests ──────────────────────────────────────────────────────
@@ -265,13 +279,18 @@ async def test_callback_invalid_state(oauth_app):
 
 
 @pytest.mark.asyncio
-async def test_memory_adapter_oauth_crud(adapter):
-    from fastapi_fullauth.types import OAuthAccount
+async def test_sqlmodel_adapter_oauth_crud(adapter):
+    from fastapi_fullauth.core.crypto import hash_password
+    from fastapi_fullauth.types import CreateUserSchema, OAuthAccount
+
+    # OAuth accounts need a valid user_id (foreign key constraint)
+    data = CreateUserSchema(email="oauthuser@test.com", password="pass123")
+    user = await adapter.create_user(data, hashed_password=hash_password("pass123"))
 
     account = OAuthAccount(
         provider="google",
         provider_user_id="g-123",
-        user_id="user-1",
+        user_id=user.id,
         provider_email="test@gmail.com",
     )
 
@@ -280,12 +299,12 @@ async def test_memory_adapter_oauth_crud(adapter):
 
     fetched = await adapter.get_oauth_account("google", "g-123")
     assert fetched is not None
-    assert fetched.user_id == "user-1"
+    assert fetched.user_id == user.id
 
     updated = await adapter.update_oauth_account("google", "g-123", {"access_token": "new-token"})
     assert updated.access_token == "new-token"
 
-    accounts = await adapter.get_user_oauth_accounts("user-1")
+    accounts = await adapter.get_user_oauth_accounts(user.id)
     assert len(accounts) == 1
 
     await adapter.delete_oauth_account("google", "g-123")

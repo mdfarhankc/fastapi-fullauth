@@ -18,7 +18,6 @@ FastAPI FullAuth is a pluggable authentication and authorization library for Fas
 - [Adapters Overview](https://mdfarhankc.github.io/fastapi-fullauth/adapters/): Adapter architecture, choosing an adapter, custom adapter implementation via AbstractUserAdapter
 - [SQLModel Adapter](https://mdfarhankc.github.io/fastapi-fullauth/adapters/sqlmodel/): Recommended adapter setup with UserBase fields, session configuration, table schema, custom schemas, and OAuth support
 - [SQLAlchemy Adapter](https://mdfarhankc.github.io/fastapi-fullauth/adapters/sqlalchemy/): SQLAlchemy declarative base adapter setup with user model, table creation, and custom schemas
-- [In-Memory Adapter](https://mdfarhankc.github.io/fastapi-fullauth/adapters/memory/): Dictionary-based adapter for testing and prototyping, no persistence
 - [Protected Routes](https://mdfarhankc.github.io/fastapi-fullauth/auth/dependencies/): CurrentUser, VerifiedUser, SuperUser, require_role, require_permission dependencies and typed custom schema support
 - [Event Hooks](https://mdfarhankc.github.io/fastapi-fullauth/auth/hooks/): Register callbacks for auth events -- after_register, after_login, send_verification_email, after_oauth_login, etc.
 - [Password Validation](https://mdfarhankc.github.io/fastapi-fullauth/auth/passwords/): Custom password rules (length, complexity, blocklist), hashing algorithms, and transparent rehashing
@@ -27,5 +26,5 @@ FastAPI FullAuth is a pluggable authentication and authorization library for Fas
 - [Rate Limiting](https://mdfarhankc.github.io/fastapi-fullauth/security/rate-limiting/): Per-route auth limits and global IP-based rate limiting with memory or Redis backends
 - [OAuth2 Social Login](https://mdfarhankc.github.io/fastapi-fullauth/oauth/): Google and GitHub OAuth setup, authorization flow, auto-linking by email, provider unlinking
 - [Database Migrations](https://mdfarhankc.github.io/fastapi-fullauth/migrations/): Alembic integration helpers, table schema, include_fullauth_models and get_fullauth_metadata utilities
-- [API Reference](https://mdfarhankc.github.io/fastapi-fullauth/api-reference/): FullAuth class, FullAuthConfig, OAuthProviderConfig, types (UserSchema, TokenPair, TokenPayload), dependencies, exceptions, utilities
+- [API Reference](https://mdfarhankc.github.io/fastapi-fullauth/api-reference/): FullAuth class, FullAuthConfig, types (UserSchema, TokenPair, TokenPayload), dependencies, exceptions, utilities
 - [Contributing](https://mdfarhankc.github.io/fastapi-fullauth/contributing/): Development setup, testing, linting, branch naming, and contribution guidelines

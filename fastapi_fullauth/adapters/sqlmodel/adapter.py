@@ -1,5 +1,4 @@
 from typing import Any
-from uuid import UUID
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession as SAAsyncSession
@@ -57,8 +56,6 @@ class SQLModelAdapter(AbstractUserAdapter[UserSchemaType, CreateUserSchemaType])
         return self._user_schema.model_validate(data)
 
     async def get_user_by_id(self, user_id: UserID) -> UserSchemaType | None:
-        if isinstance(user_id, str):
-            user_id = UUID(user_id)
         async with self._session_maker() as session:
             result = await session.execute(self._user_query().where(self._user_model.id == user_id))
             user = result.scalars().first()
@@ -141,7 +138,7 @@ class SQLModelAdapter(AbstractUserAdapter[UserSchemaType, CreateUserSchemaType])
         async with self._session_maker() as session:
             db_token = RefreshTokenRecord(
                 token=token.token,
-                user_id=UUID(token.user_id) if isinstance(token.user_id, str) else token.user_id,
+                user_id=token.user_id,
                 family_id=token.family_id,
                 expires_at=token.expires_at,
                 revoked=token.revoked,
@@ -159,7 +156,7 @@ class SQLModelAdapter(AbstractUserAdapter[UserSchemaType, CreateUserSchemaType])
                 return None
             return RefreshToken(
                 token=row.token,
-                user_id=str(row.user_id),
+                user_id=row.user_id,
                 expires_at=row.expires_at,
                 family_id=row.family_id,
                 revoked=row.revoked,
@@ -296,7 +293,7 @@ class SQLModelAdapter(AbstractUserAdapter[UserSchemaType, CreateUserSchemaType])
         return OAuthAccount(
             provider=row.provider,
             provider_user_id=row.provider_user_id,
-            user_id=str(row.user_id),
+            user_id=row.user_id,
             provider_email=row.provider_email,
             access_token=row.access_token,
             refresh_token=row.refresh_token,
@@ -326,7 +323,7 @@ class SQLModelAdapter(AbstractUserAdapter[UserSchemaType, CreateUserSchemaType])
             record = OAuthAccountRecord(
                 provider=data.provider,
                 provider_user_id=data.provider_user_id,
-                user_id=UUID(data.user_id) if isinstance(data.user_id, str) else data.user_id,
+                user_id=data.user_id,
                 provider_email=data.provider_email,
                 access_token=data.access_token,
                 refresh_token=data.refresh_token,

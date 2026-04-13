@@ -1,43 +1,26 @@
+"""Tests for security middleware (security headers, CSRF, rate limiting) and
+account lockout."""
+
+import time
+from unittest.mock import MagicMock, patch
+
 import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
 from fastapi_fullauth.middleware import CSRFMiddleware, SecurityHeadersMiddleware
+from fastapi_fullauth.protection.lockout import InMemoryLockoutManager
 from fastapi_fullauth.protection.ratelimit import RateLimitMiddleware
+
+# ===========================================================================
+# Security headers middleware
+# ===========================================================================
 
 
 @pytest.fixture
 def security_app():
     app = FastAPI()
     app.add_middleware(SecurityHeadersMiddleware)
-
-    @app.get("/test")
-    async def test_route():
-        return {"ok": True}
-
-    return app
-
-
-@pytest.fixture
-def csrf_app():
-    app = FastAPI()
-    app.add_middleware(CSRFMiddleware, secret="test-csrf-secret-32bytes-long!!")
-
-    @app.get("/form")
-    async def form():
-        return {"ok": True}
-
-    @app.post("/submit")
-    async def submit():
-        return {"submitted": True}
-
-    return app
-
-
-@pytest.fixture
-def ratelimit_app():
-    app = FastAPI()
-    app.add_middleware(RateLimitMiddleware, max_requests=3, window_seconds=60)
 
     @app.get("/test")
     async def test_route():
@@ -56,6 +39,27 @@ async def test_security_headers(security_app):
         assert r.headers["x-frame-options"] == "DENY"
         assert "strict-transport-security" in r.headers
         assert "referrer-policy" in r.headers
+
+
+# ===========================================================================
+# CSRF middleware
+# ===========================================================================
+
+
+@pytest.fixture
+def csrf_app():
+    app = FastAPI()
+    app.add_middleware(CSRFMiddleware, secret="test-csrf-secret-32bytes-long!!")
+
+    @app.get("/form")
+    async def form():
+        return {"ok": True}
+
+    @app.post("/submit")
+    async def submit():
+        return {"submitted": True}
+
+    return app
 
 
 @pytest.mark.asyncio
@@ -105,6 +109,23 @@ async def test_csrf_rejects_wrong_token(csrf_app):
         assert r.status_code == 403
 
 
+# ===========================================================================
+# Rate limit middleware
+# ===========================================================================
+
+
+@pytest.fixture
+def ratelimit_app():
+    app = FastAPI()
+    app.add_middleware(RateLimitMiddleware, max_requests=3, window_seconds=60)
+
+    @app.get("/test")
+    async def test_route():
+        return {"ok": True}
+
+    return app
+
+
 @pytest.mark.asyncio
 async def test_rate_limit_allows_under_limit(ratelimit_app):
     transport = ASGITransport(app=ratelimit_app)
@@ -125,7 +146,9 @@ async def test_rate_limit_blocks_over_limit(ratelimit_app):
         assert r.status_code == 429
 
 
-# ── Proxy header IP extraction ──────────────────────────────────────
+# ===========================================================================
+# Proxy header IP extraction
+# ===========================================================================
 
 
 @pytest.mark.asyncio
@@ -182,8 +205,6 @@ async def test_rate_limit_ignores_proxy_header_when_not_trusted():
 
 def test_get_client_ip_chain():
     """When X-Forwarded-For contains a chain, the first IP is returned."""
-    from unittest.mock import MagicMock
-
     from fastapi_fullauth.utils import get_client_ip
 
     request = MagicMock()
@@ -194,8 +215,6 @@ def test_get_client_ip_chain():
 
 def test_get_client_ip_falls_back_to_client_host():
     """Without trusted headers, falls back to request.client.host."""
-    from unittest.mock import MagicMock
-
     from fastapi_fullauth.utils import get_client_ip
 
     request = MagicMock()
@@ -205,7 +224,9 @@ def test_get_client_ip_falls_back_to_client_host():
     assert get_client_ip(request, None) == "127.0.0.1"
 
 
-# ── Redis rate limiter ───────────────────────────────────────────────
+# ===========================================================================
+# Redis rate limiter
+# ===========================================================================
 
 
 @pytest.mark.asyncio
@@ -286,3 +307,62 @@ async def test_redis_rate_limiter_middleware():
             assert r.status_code == 200
         r = await client.get("/test")
         assert r.status_code == 429
+
+
+# ===========================================================================
+# Account lockout
+# ===========================================================================
+
+
+@pytest.mark.asyncio
+async def test_not_locked_initially():
+    mgr = InMemoryLockoutManager(max_attempts=3, lockout_seconds=60)
+    assert not await mgr.is_locked("user@test.com")
+
+
+@pytest.mark.asyncio
+async def test_locks_after_max_attempts():
+    mgr = InMemoryLockoutManager(max_attempts=3, lockout_seconds=60)
+    for _ in range(3):
+        await mgr.record_failure("user@test.com")
+    assert await mgr.is_locked("user@test.com")
+
+
+@pytest.mark.asyncio
+async def test_not_locked_before_max():
+    mgr = InMemoryLockoutManager(max_attempts=3, lockout_seconds=60)
+    await mgr.record_failure("user@test.com")
+    await mgr.record_failure("user@test.com")
+    assert not await mgr.is_locked("user@test.com")
+
+
+@pytest.mark.asyncio
+async def test_clear_resets_lockout():
+    mgr = InMemoryLockoutManager(max_attempts=3, lockout_seconds=60)
+    for _ in range(3):
+        await mgr.record_failure("user@test.com")
+    assert await mgr.is_locked("user@test.com")
+    await mgr.clear("user@test.com")
+    assert not await mgr.is_locked("user@test.com")
+
+
+@pytest.mark.asyncio
+async def test_lockout_expires():
+    mgr = InMemoryLockoutManager(max_attempts=2, lockout_seconds=1)
+    await mgr.record_failure("user@test.com")
+    await mgr.record_failure("user@test.com")
+    assert await mgr.is_locked("user@test.com")
+
+    # fast-forward time
+    with patch("fastapi_fullauth.protection.lockout.time") as mock_time:
+        mock_time.monotonic.return_value = time.monotonic() + 2
+        assert not await mgr.is_locked("user@test.com")
+
+
+@pytest.mark.asyncio
+async def test_separate_keys():
+    mgr = InMemoryLockoutManager(max_attempts=2, lockout_seconds=60)
+    await mgr.record_failure("a@test.com")
+    await mgr.record_failure("a@test.com")
+    assert await mgr.is_locked("a@test.com")
+    assert not await mgr.is_locked("b@test.com")

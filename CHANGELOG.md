@@ -1,5 +1,43 @@
 # Changelog
 
+## 0.7.0
+
+### Breaking changes
+
+- **InMemory adapter removed** — use SQLModel + SQLite for prototyping instead.
+- **`UserID` is now `UUID`** (was `str | int | UUID`) — all adapter methods, `RefreshToken.user_id`, `OAuthAccount.user_id`, and `RoleAssignment.user_id` are now `UUID`.
+- **OAuth providers passed as objects** — `FullAuth(providers=[GoogleOAuthProvider(...)])` replaces `OAUTH_PROVIDERS` dict in config. `OAuthProviderConfig` removed.
+- **`OAuthProvider` simplified** — only `redirect_uris: list[str]` (removed singular `redirect_uri`). `get_redirect_uri()` removed.
+- **`redirect_uri` required in authorize URL** — clients must pass `?redirect_uri=` in the OAuth authorize request.
+
+### Added
+
+- **Redis lockout backend** — `LOCKOUT_BACKEND="redis"` for multi-worker deployments
+- `LOCKOUT_ENABLED` config — disable account lockout entirely (`False`)
+- `change_password` flow — business logic extracted from profile router
+- `PROTECTED_FIELDS` ClassVar on `UserSchema` — users can extend in subclasses
+- Password validation moved to flows (`register`, `reset_password`, `change_password`)
+- `Makefile` with `make check`, `make test`, `make lint`, `make format`, `make docs`, etc.
+
+### Changed
+
+- `LockoutManager` is now an abstract base class with async methods
+- `InMemoryLockoutManager` replaces the old sync `LockoutManager`
+
+- All tests migrated from InMemory to SQLModel + SQLite
+- Tests regrouped: `test_auth`, `test_profile`, `test_config`, `test_hooks`, `test_security`, `test_rbac`
+- `UUID(payload.sub)` conversion at token boundaries (dependencies, router, flows)
+- Removed `isinstance` str-to-UUID guards from adapters
+- Removed `str(user.id)` / `str(row.user_id)` conversions — UUID used directly
+
+### Removed
+
+- `InMemoryAdapter` and `examples/memory_app/`
+- `OAuthProviderConfig` from config
+- `OAUTH_PROVIDERS` from `FullAuthConfig`
+- `FullAuth._build_oauth_providers()` and `_OAUTH_PROVIDER_REGISTRY`
+- `OAuthProvider.get_redirect_uri()` method
+
 ## 0.6.0
 
 ### Breaking changes

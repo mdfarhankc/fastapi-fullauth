@@ -6,8 +6,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class FullAuthConfig(BaseSettings):
-    model_config = SettingsConfigDict(
-        env_prefix="FULLAUTH_", case_sensitive=True)
+    model_config = SettingsConfigDict(env_prefix="FULLAUTH_", case_sensitive=True)
 
     SECRET_KEY: str | None = None
     ALGORITHM: str = "HS256"
@@ -21,6 +20,8 @@ class FullAuthConfig(BaseSettings):
 
     LOGIN_FIELD: str = "email"
 
+    LOCKOUT_ENABLED: bool = True
+    LOCKOUT_BACKEND: Literal["memory", "redis"] = "memory"
     MAX_LOGIN_ATTEMPTS: int = 5
     LOCKOUT_DURATION_MINUTES: int = 15
 

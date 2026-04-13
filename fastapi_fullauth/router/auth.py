@@ -1,5 +1,6 @@
 import logging
 from typing import TYPE_CHECKING
+from uuid import UUID
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response
 
@@ -57,17 +58,15 @@ def create_auth_router(
         await fullauth.check_auth_rate_limit("register", client_ip)
 
         try:
-            fullauth.password_validator.validate(data.password)
-        except InvalidPasswordError as e:
-            raise HTTPException(status_code=422, detail=str(e))
-
-        try:
             user = await register(
                 fullauth.adapter,
                 data,
                 login_field=login_field,
                 hash_algorithm=fullauth.config.PASSWORD_HASH_ALGORITHM,
+                password_validator=fullauth.password_validator,
             )
+        except InvalidPasswordError as e:
+            raise HTTPException(status_code=422, detail=str(e))
         except UserAlreadyExistsError:
             raise USER_EXISTS_EXCEPTION
 
@@ -143,7 +142,7 @@ def create_auth_router(
         if payload.type != "refresh":
             raise CREDENTIALS_EXCEPTION
 
-        user = await fullauth.adapter.get_user_by_id(payload.sub)
+        user = await fullauth.adapter.get_user_by_id(UUID(payload.sub))
         if user is None or not user.is_active:
             raise CREDENTIALS_EXCEPTION
 
@@ -228,7 +227,7 @@ def create_auth_router(
             adapter=fullauth.adapter,
             refresh_token=data.refresh_token if data else None,
         )
-        await fullauth.hooks.emit("after_logout", user_id=payload.sub)
+        await fullauth.hooks.emit("after_logout", user_id=UUID(payload.sub))
 
         response = Response(status_code=204)
         for backend in fullauth.backends:

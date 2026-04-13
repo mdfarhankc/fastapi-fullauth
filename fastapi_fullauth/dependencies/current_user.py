@@ -1,4 +1,5 @@
 from typing import TYPE_CHECKING, Annotated, cast
+from uuid import UUID
 
 from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -53,7 +54,7 @@ async def current_user(
     if payload.extra.get("purpose"):
         raise CREDENTIALS_EXCEPTION
 
-    user = await fullauth.adapter.get_user_by_id(payload.sub)
+    user = await fullauth.adapter.get_user_by_id(UUID(payload.sub))
     if user is None or not user.is_active:
         raise CREDENTIALS_EXCEPTION
 
@@ -112,7 +113,7 @@ def get_current_user_dependency(user_type: type[UserSchemaType]):
         if payload.extra.get("purpose"):
             raise CREDENTIALS_EXCEPTION
 
-        user = await fullauth.adapter.get_user_by_id(payload.sub)
+        user = await fullauth.adapter.get_user_by_id(UUID(payload.sub))
         if user is None or not user.is_active:
             raise CREDENTIALS_EXCEPTION
 

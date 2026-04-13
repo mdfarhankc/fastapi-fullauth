@@ -36,7 +36,7 @@ Add a complete authentication and authorization system to your **FastAPI** proje
 - **Role-based access control** — `CurrentUser`, `VerifiedUser`, `SuperUser`, `require_role()`
 - **Rate limiting** — per-route auth limits + global middleware (memory or Redis)
 - **CSRF protection** and **security headers** middleware, auto-wired
-- **Pluggable adapters** — SQLModel, SQLAlchemy, or in-memory
+- **Pluggable adapters** — SQLModel or SQLAlchemy
 - **Generic type parameters** — define your own schemas with full IDE support and type safety
 - **Composable routers** — include only the route groups you need
 - **Event hooks** — `after_register`, `after_login`, `send_verification_email`, etc.
@@ -69,12 +69,12 @@ pip install fastapi-fullauth[all]
 ```python
 from fastapi import FastAPI
 from fastapi_fullauth import FullAuth, FullAuthConfig
-from fastapi_fullauth.adapters.memory import InMemoryAdapter
+from fastapi_fullauth.adapters.sqlmodel import SQLModelAdapter
 
 app = FastAPI()
 
 fullauth = FullAuth(
-    adapter=InMemoryAdapter(),
+    adapter=SQLModelAdapter(session_maker=session_maker, user_model=User),
     config=FullAuthConfig(SECRET_KEY="your-secret-key"),
 )
 fullauth.init_app(app)
@@ -294,7 +294,6 @@ uv sync --dev --extra sqlalchemy --extra sqlmodel
 uv run pytest tests/ -v
 
 # run examples
-uv run uvicorn examples.memory_app.main:app --reload
 uv run uvicorn examples.sqlmodel_app.main:app --reload
 ```
 

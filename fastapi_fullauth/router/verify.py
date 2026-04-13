@@ -96,18 +96,16 @@ def create_verify_router() -> APIRouter:
         fullauth: "FullAuth" = Depends(_get_fullauth),
     ) -> MessageResponse:
         try:
-            fullauth.password_validator.validate(data.new_password)
-        except InvalidPasswordError as e:
-            raise HTTPException(status_code=422, detail=str(e))
-
-        try:
             user = await reset_password(
                 fullauth.adapter,
                 fullauth.token_engine,
                 data.token,
                 data.new_password,
                 hash_algorithm=fullauth.config.PASSWORD_HASH_ALGORITHM,
+                password_validator=fullauth.password_validator,
             )
+        except InvalidPasswordError as e:
+            raise HTTPException(status_code=422, detail=str(e))
         except TokenError:
             raise CREDENTIALS_EXCEPTION
 

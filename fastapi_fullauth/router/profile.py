@@ -3,9 +3,9 @@ from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Response
 
-from fastapi_fullauth.core.crypto import hash_password, verify_password
 from fastapi_fullauth.dependencies.current_user import CurrentUser, VerifiedUser, _get_fullauth
-from fastapi_fullauth.exceptions import InvalidPasswordError
+from fastapi_fullauth.exceptions import AuthenticationError, InvalidPasswordError
+from fastapi_fullauth.flows.change_password import change_password
 from fastapi_fullauth.router._models import ChangePasswordRequest, MessageResponse
 from fastapi_fullauth.types import UserSchema, UserSchemaType
 
@@ -53,18 +53,7 @@ def create_profile_router(
         fullauth: "FullAuth" = Depends(_get_fullauth),
         data: dict = Body(...),
     ) -> UserSchema:
-        protected = {
-            "id",
-            "email",
-            "hashed_password",
-            "is_active",
-            "is_verified",
-            "is_superuser",
-            "roles",
-            "password",
-            "created_at",
-            "refresh_tokens",
-        }
+        protected = user_schema.PROTECTED_FIELDS
         updates = {k: v for k, v in data.items() if k not in protected}
         if not updates:
             raise HTTPException(status_code=400, detail="No valid fields to update")
@@ -100,23 +89,20 @@ def create_profile_router(
         user: CurrentUser,
         fullauth: "FullAuth" = Depends(_get_fullauth),
     ) -> MessageResponse:
-        hashed = await fullauth.adapter.get_hashed_password(user.id)
-        if hashed is None or not verify_password(data.current_password, hashed):
-            logger.warning("Password change failed — wrong current password: user_id=%s", user.id)
-            raise HTTPException(status_code=400, detail="Current password is incorrect")
-
         try:
-            fullauth.password_validator.validate(data.new_password)
+            await change_password(
+                adapter=fullauth.adapter,
+                user_id=user.id,
+                current_password=data.current_password,
+                new_password=data.new_password,
+                hash_algorithm=fullauth.config.PASSWORD_HASH_ALGORITHM,
+                password_validator=fullauth.password_validator,
+            )
+        except AuthenticationError:
+            raise HTTPException(status_code=400, detail="Current password is incorrect")
         except InvalidPasswordError as e:
             raise HTTPException(status_code=422, detail=str(e))
 
-        new_hash = hash_password(
-            data.new_password,
-            algorithm=fullauth.config.PASSWORD_HASH_ALGORITHM,
-        )
-        await fullauth.adapter.set_password(user.id, new_hash)
-        await fullauth.adapter.revoke_all_user_refresh_tokens(user.id)
-        logger.info("Password changed: user_id=%s", user.id)
         await fullauth.hooks.emit("after_password_change", user=user)
         return MessageResponse(detail="Password changed successfully.")
 

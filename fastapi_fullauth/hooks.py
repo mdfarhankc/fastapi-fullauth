@@ -1,7 +1,7 @@
 from collections.abc import Awaitable, Callable
 from typing import Any, Literal, Protocol, overload
 
-from fastapi_fullauth.types import UserSchema
+from fastapi_fullauth.types import UserID, UserSchema
 
 
 class AfterUserHook(Protocol):
@@ -9,7 +9,7 @@ class AfterUserHook(Protocol):
 
 
 class AfterLogoutHook(Protocol):
-    async def __call__(self, user_id: str) -> Any: ...
+    async def __call__(self, user_id: UserID) -> Any: ...
 
 
 class EmailHook(Protocol):
