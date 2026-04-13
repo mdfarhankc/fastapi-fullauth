@@ -9,6 +9,7 @@ from fastapi_fullauth.backends import AbstractBackend, BearerBackend
 from fastapi_fullauth.config import FullAuthConfig
 from fastapi_fullauth.core.tokens import TokenEngine, create_blacklist
 from fastapi_fullauth.hooks import EventHooks
+from fastapi_fullauth.oauth.base import OAuthProvider
 from fastapi_fullauth.protection.lockout import LockoutManager
 from fastapi_fullauth.protection.ratelimit import RateLimiter, RedisRateLimiter, create_rate_limiter
 from fastapi_fullauth.types import CreateUserSchemaType, UserSchema, UserSchemaType
@@ -25,6 +26,7 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
     Args:
         adapter: Database backend (InMemoryAdapter, SQLModelAdapter, etc.).
         config: FullAuthConfig object. Reads from env (FULLAUTH_ prefix) if omitted.
+        providers: OAuth providers (GoogleOAuthProvider, GitHubOAuthProvider, etc.).
         backends: Token transport strategies. Defaults to [BearerBackend()].
         password_validator: Custom PasswordValidator. Defaults to min-length from config.
         include_user_in_login: Include user data in login response.
@@ -36,6 +38,7 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
         *,
         adapter: AbstractUserAdapter[UserSchemaType, CreateUserSchemaType],
         config: FullAuthConfig | None = None,
+        providers: list[OAuthProvider] | None = None,
         backends: list[AbstractBackend] | None = None,
         password_validator: PasswordValidator | None = None,
         include_user_in_login: bool = False,
@@ -72,46 +75,13 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
         self.include_user_in_login = include_user_in_login
         self.on_create_token_claims = on_create_token_claims
         self.hooks = EventHooks()
-        self.oauth_providers = self._build_oauth_providers(config)
+        self.oauth_providers: dict[str, OAuthProvider] = {p.name: p for p in (providers or [])}
 
         self._auth_router: APIRouter | None = None
         self._profile_router: APIRouter | None = None
         self._verify_router: APIRouter | None = None
         self._admin_router: APIRouter | None = None
         self._router: APIRouter | None = None
-
-    _OAUTH_PROVIDER_REGISTRY: dict[str, type] = {}
-
-    @classmethod
-    def _build_oauth_providers(cls, config: FullAuthConfig) -> dict:
-        if not config.OAUTH_PROVIDERS:
-            return {}
-
-        if not cls._OAUTH_PROVIDER_REGISTRY:
-            from fastapi_fullauth.oauth.github import GitHubOAuthProvider
-            from fastapi_fullauth.oauth.google import GoogleOAuthProvider
-
-            cls._OAUTH_PROVIDER_REGISTRY = {
-                "google": GoogleOAuthProvider,
-                "github": GitHubOAuthProvider,
-            }
-
-        providers = {}
-        for name, opts in config.OAUTH_PROVIDERS.items():
-            provider_cls = cls._OAUTH_PROVIDER_REGISTRY.get(name)
-            if provider_cls is None:
-                raise ValueError(
-                    f"Unknown OAuth provider '{name}'. "
-                    f"Available: {', '.join(cls._OAUTH_PROVIDER_REGISTRY)}"
-                )
-            providers[name] = provider_cls(
-                client_id=opts["client_id"],
-                client_secret=opts["client_secret"],
-                redirect_uri=opts.get("redirect_uri"),
-                redirect_uris=opts.get("redirect_uris"),
-                scopes=opts.get("scopes"),
-            )
-        return providers
 
     _RESERVED_CLAIM_KEYS = frozenset(
         {"sub", "exp", "iat", "jti", "type", "roles", "extra", "family_id"}

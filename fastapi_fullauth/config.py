@@ -1,12 +1,13 @@
 import warnings
-from typing import Any, Literal
+from typing import Literal
 
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class FullAuthConfig(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="FULLAUTH_", case_sensitive=True)
+    model_config = SettingsConfigDict(
+        env_prefix="FULLAUTH_", case_sensitive=True)
 
     SECRET_KEY: str | None = None
     ALGORITHM: str = "HS256"
@@ -49,7 +50,6 @@ class FullAuthConfig(BaseSettings):
     COOKIE_SAMESITE: Literal["lax", "strict", "none"] = "lax"
     COOKIE_DOMAIN: str | None = None
 
-    OAUTH_PROVIDERS: dict[str, dict[str, Any]] = {}
     OAUTH_STATE_EXPIRE_SECONDS: int = 300
     OAUTH_AUTO_LINK_BY_EMAIL: bool = True
 

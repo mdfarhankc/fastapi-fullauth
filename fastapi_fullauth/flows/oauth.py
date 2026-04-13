@@ -42,9 +42,8 @@ async def oauth_callback(
     hash_algorithm: str = "argon2id",
 ) -> tuple[TokenPair, UserSchema, bool]:
     redirect_uri = await verify_oauth_state(token_engine, state)
-    resolved_uri = provider.get_redirect_uri(redirect_uri)
 
-    tokens = await provider.exchange_code(code, resolved_uri)
+    tokens = await provider.exchange_code(code, redirect_uri)
     info: OAuthUserInfo = await provider.get_user_info(tokens)
 
     # check if this provider account is already linked

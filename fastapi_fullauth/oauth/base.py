@@ -10,26 +10,15 @@ class OAuthProvider(ABC):
         self,
         client_id: str,
         client_secret: str,
-        redirect_uri: str | None = None,
-        redirect_uris: list[str] | None = None,
+        redirect_uris: list[str],
         scopes: list[str] | None = None,
     ) -> None:
         self.client_id = client_id
         self.client_secret = client_secret
-        if redirect_uris:
-            self.redirect_uris = redirect_uris
-        elif redirect_uri:
-            self.redirect_uris = [redirect_uri]
-        else:
-            raise ValueError("Either redirect_uri or redirect_uris must be provided")
+        if not redirect_uris:
+            raise ValueError("redirect_uris must contain at least one URL")
+        self.redirect_uris = redirect_uris
         self.scopes = scopes or self.default_scopes
-
-    def get_redirect_uri(self, requested: str | None = None) -> str:
-        if requested is None:
-            return self.redirect_uris[0]
-        if requested not in self.redirect_uris:
-            raise ValueError(f"redirect_uri '{requested}' is not in the allowed list")
-        return requested
 
     @property
     @abstractmethod

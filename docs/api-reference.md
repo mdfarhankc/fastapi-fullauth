@@ -12,10 +12,10 @@ from fastapi_fullauth import FullAuth, FullAuthConfig
 fullauth = FullAuth(
     adapter=adapter,                # required — database adapter
     config=FullAuthConfig(...),     # FullAuthConfig object (see Configuration)
+    providers=None,                 # list of OAuthProvider instances
     backends=None,                  # [BearerBackend()] by default
     password_validator=None,        # PasswordValidator instance
     include_user_in_login=False,    # include user data in login response
-    create_user_schema=None,        # custom registration schema
     on_create_token_claims=None,    # async callback for custom JWT claims
 )
 ```

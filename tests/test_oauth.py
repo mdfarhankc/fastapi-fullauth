@@ -58,9 +58,7 @@ def adapter():
 
 @pytest.fixture
 def fullauth_with_oauth(config, adapter):
-    fa = FullAuth(config=config, adapter=adapter)
-    fa.oauth_providers["mock"] = MockOAuthProvider()
-    return fa
+    return FullAuth(config=config, adapter=adapter, providers=[MockOAuthProvider()])
 
 
 @pytest.fixture
@@ -217,7 +215,10 @@ async def test_list_providers(oauth_app):
 async def test_authorize_url(oauth_app):
     transport = ASGITransport(app=oauth_app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        r = await client.get("/api/v1/auth/oauth/mock/authorize")
+        r = await client.get(
+            "/api/v1/auth/oauth/mock/authorize",
+            params={"redirect_uri": "http://localhost/callback"},
+        )
         assert r.status_code == 200
         assert "https://mock.provider/auth" in r.json()["authorization_url"]
 
@@ -226,7 +227,10 @@ async def test_authorize_url(oauth_app):
 async def test_authorize_unknown_provider(oauth_app):
     transport = ASGITransport(app=oauth_app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        r = await client.get("/api/v1/auth/oauth/unknown/authorize")
+        r = await client.get(
+            "/api/v1/auth/oauth/unknown/authorize",
+            params={"redirect_uri": "http://localhost/callback"},
+        )
         assert r.status_code == 404
 
 

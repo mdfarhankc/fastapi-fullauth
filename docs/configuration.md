@@ -115,7 +115,6 @@ Pass config inline or as an object:
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `OAUTH_PROVIDERS` | `dict` | `{}` | OAuth provider configurations. See [OAuth2](oauth.md). |
 | `OAUTH_STATE_EXPIRE_SECONDS` | `int` | `300` | OAuth state token TTL (5 min). |
 | `OAUTH_AUTO_LINK_BY_EMAIL` | `bool` | `True` | Auto-link OAuth accounts to existing users by email. |
 

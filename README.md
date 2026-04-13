@@ -211,26 +211,28 @@ async def editor_panel(user=Depends(require_role("editor"))):
 ## OAuth2 social login
 
 ```python
+from fastapi_fullauth import FullAuth, FullAuthConfig
+from fastapi_fullauth.oauth.google import GoogleOAuthProvider
+from fastapi_fullauth.oauth.github import GitHubOAuthProvider
+
 fullauth = FullAuth(
     adapter=adapter,
-    config=FullAuthConfig(
-        SECRET_KEY="...",
-        OAUTH_PROVIDERS={
-            "google": {
-                "client_id": "your-google-client-id",
-                "client_secret": "your-google-secret",
-                "redirect_uris": [
-                    "http://localhost:3000/auth/callback",
-                    "https://myapp.com/auth/callback",
-                ],
-            },
-            "github": {
-                "client_id": "your-github-client-id",
-                "client_secret": "your-github-secret",
-                "redirect_uri": "http://localhost:3000/auth/callback",
-            },
-        },
-    ),
+    config=FullAuthConfig(SECRET_KEY="..."),
+    providers=[
+        GoogleOAuthProvider(
+            client_id="your-google-client-id",
+            client_secret="your-google-secret",
+            redirect_uris=[
+                "http://localhost:3000/auth/callback",
+                "https://myapp.com/auth/callback",
+            ],
+        ),
+        GitHubOAuthProvider(
+            client_id="your-github-client-id",
+            client_secret="your-github-secret",
+            redirect_uris=["http://localhost:3000/auth/callback"],
+        ),
+    ],
 )
 ```
 

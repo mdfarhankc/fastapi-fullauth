@@ -14,26 +14,48 @@ FastAPI FullAuth is a pluggable authentication and authorization library for Fas
 
 # README
 
-Add a complete authentication and authorization system to your FastAPI project. FastAPI FullAuth is designed to be production-ready, async-native, and pluggable -- handling JWT tokens, refresh rotation, password hashing, email verification, OAuth2 social login, and role-based access out of the box.
+FastAPI FullAuth
+
+
+  Production-grade, async-native authentication and authorization for FastAPI.
+
+
+
+  
+  
+  
+  
+  
+
+
+
+  Documentation: https://mdfarhankc.github.io/fastapi-fullauth
+  
+  Source Code: https://github.com/mdfarhankc/fastapi-fullauth
+
+
+---
+
+Add a complete authentication and authorization system to your **FastAPI** project. FastAPI FullAuth is designed to be production-ready, async-native, and pluggable — handling JWT tokens, refresh rotation, password hashing, email verification, OAuth2 social login, and role-based access out of the box.
 
 ## Features
 
 - **JWT access + refresh tokens** with configurable expiry
-- **Refresh token rotation** with reuse detection -- revokes entire session family on replay
+- **Refresh token rotation** with reuse detection — revokes entire session family on replay
 - **Password hashing** via Argon2id (default) or bcrypt, with transparent rehashing
 - **Email verification** and **password reset** flows with event hooks
-- **OAuth2 social login** -- Google and GitHub, with multi-redirect-URI support
-- **Role-based access control** -- `CurrentUser`, `VerifiedUser`, `SuperUser`, `require_role()`
-- **Rate limiting** -- per-route auth limits + global middleware (memory or Redis)
+- **OAuth2 social login** — Google and GitHub, with multi-redirect-URI support
+- **Role-based access control** — `CurrentUser`, `VerifiedUser`, `SuperUser`, `require_role()`
+- **Rate limiting** — per-route auth limits + global middleware (memory or Redis)
 - **CSRF protection** and **security headers** middleware, auto-wired
-- **Pluggable adapters** -- SQLModel, SQLAlchemy, or in-memory
-- **Generic type parameters** -- define your own schemas with full IDE support and type safety
-- **Composable routers** -- include only the route groups you need
-- **Event hooks** -- `after_register`, `after_login`, `send_verification_email`, etc.
-- **Custom JWT claims** -- embed app-specific data in tokens
-- **Structured logging** -- all auth events, security violations, and failures logged
-- **Redis support** -- token blacklist and rate limiter backends
-- **Python 3.10 -- 3.14** supported
+- **Pluggable adapters** — SQLModel, SQLAlchemy, or in-memory
+- **Generic type parameters** — define your own schemas with full IDE support and type safety
+- **Composable routers** — include only the route groups you need
+- **Event hooks** — `after_register`, `after_login`, `send_verification_email`, etc.
+- **Custom JWT claims** — embed app-specific data in tokens
+- **Structured logging** — all auth events, security violations, and failures logged
+- **Redis support** — token blacklist and rate limiter backends
+- **Python 3.10 – 3.14** supported
 
 ## Installation
 
@@ -70,7 +92,7 @@ fullauth = FullAuth(
 fullauth.init_app(app)
 ```
 
-That's it -- all auth routes are registered under `/api/v1/auth/` automatically.
+That's it — all auth routes are registered under `/api/v1/auth/` automatically.
 
 Omit `config` in dev and a random secret key is generated (tokens won't survive restarts).
 
@@ -125,7 +147,7 @@ With OAuth enabled, additional routes are registered under `/auth/oauth/`. All r
 
 ## Custom user schemas
 
-Define your model and schemas -- pass them explicitly to the adapter:
+Define your model and schemas — pass them explicitly to the adapter:
 
 ```python
 from sqlmodel import Field, Relationship
@@ -201,26 +223,28 @@ async def editor_panel(user=Depends(require_role("editor"))):
 ## OAuth2 social login
 
 ```python
+from fastapi_fullauth import FullAuth, FullAuthConfig
+from fastapi_fullauth.oauth.google import GoogleOAuthProvider
+from fastapi_fullauth.oauth.github import GitHubOAuthProvider
+
 fullauth = FullAuth(
     adapter=adapter,
-    config=FullAuthConfig(
-        SECRET_KEY="...",
-        OAUTH_PROVIDERS={
-            "google": {
-                "client_id": "your-google-client-id",
-                "client_secret": "your-google-secret",
-                "redirect_uris": [
-                    "http://localhost:3000/auth/callback",
-                    "https://myapp.com/auth/callback",
-                ],
-            },
-            "github": {
-                "client_id": "your-github-client-id",
-                "client_secret": "your-github-secret",
-                "redirect_uri": "http://localhost:3000/auth/callback",
-            },
-        },
-    ),
+    config=FullAuthConfig(SECRET_KEY="..."),
+    providers=[
+        GoogleOAuthProvider(
+            client_id="your-google-client-id",
+            client_secret="your-google-secret",
+            redirect_uris=[
+                "http://localhost:3000/auth/callback",
+                "https://myapp.com/auth/callback",
+            ],
+        ),
+        GitHubOAuthProvider(
+            client_id="your-github-client-id",
+            client_secret="your-github-secret",
+            redirect_uris=["http://localhost:3000/auth/callback"],
+        ),
+    ],
 )
 ```
 
@@ -262,7 +286,16 @@ fullauth = FullAuth(
 )
 ```
 
-See Configuration docs for all options.
+See [Configuration docs](https://mdfarhankc.github.io/fastapi-fullauth/configuration/) for all options.
+
+## AI-friendly docs
+
+Using an AI coding assistant? Point it at our LLM-optimized docs:
+
+- **[llms.txt](https://mdfarhankc.github.io/fastapi-fullauth/llms.txt)** — concise overview with links to all doc pages
+- **[llms-full.txt](https://mdfarhankc.github.io/fastapi-fullauth/llms-full.txt)** — full documentation in a single file
+
+Works with Claude, Cursor, Copilot, and any tool that accepts a docs URL.
 
 ## Development
 
@@ -282,6 +315,8 @@ uv run uvicorn examples.sqlmodel_app.main:app --reload
 MIT
 
 ---
+
+# Getting Started
 
 # Getting Started
 
@@ -314,7 +349,8 @@ class User(UserBase, table=True):
 
 `UserBase` provides `id`, `email`, `hashed_password`, `is_active`, `is_verified`, `is_superuser`, and `created_at`. Add any extra fields you need.
 
-Note: Define your own schemas extending `UserSchema` and `CreateUserSchema` to include custom fields like `display_name` and `phone`, then pass them to the adapter. See Custom User Schemas below or the API Reference.
+!!! note
+    Define your own schemas extending `UserSchema` and `CreateUserSchema` to include custom fields like `display_name` and `phone`, then pass them to the adapter. See [Custom User Schemas](#custom-user-schemas) below or the [API Reference](api-reference.md).
 
 ## 2. Set up the database
 
@@ -345,7 +381,8 @@ fullauth = FullAuth(
 )
 ```
 
-Tip: Omit `SECRET_KEY` during development and a random one is generated automatically. Tokens won't survive restarts, but it's convenient for dev.
+!!! tip
+    Omit `SECRET_KEY` during development and a random one is generated automatically. Tokens won't survive restarts, but it's convenient for dev.
 
 ## 4. Wire it into FastAPI
 
@@ -450,53 +487,55 @@ async def admin(user=Depends(require_role("admin"))):
     return {"msg": "admin area"}
 ```
 
-See Protected Routes for all dependency types.
+See [Protected Routes](auth/dependencies.md) for all dependency types.
 
 ## Next steps
 
-- Configuration -- all config options
-- OAuth2 Social Login -- add Google/GitHub login
-- Event Hooks -- send emails, log events
-- Rate Limiting -- protect your endpoints
+- [Configuration](configuration.md) — all config options
+- [OAuth2 Social Login](oauth.md) — add Google/GitHub login
+- [Event Hooks](auth/hooks.md) — send emails, log events
+- [Rate Limiting](security/rate-limiting.md) — protect your endpoints
 
 ---
 
 # Configuration
 
-All configuration is managed through `FullAuthConfig`, a Pydantic Settings class. Every option can be set via environment variables with the `FULLAUTH_` prefix.
+# Configuration
+
+All configuration is managed through `FullAuthConfig`, a [Pydantic Settings](https://docs.pydantic.dev/latest/concepts/pydantic_settings/) class. Every option can be set via environment variables with the `FULLAUTH_` prefix.
 
 ## Usage
 
 Pass config inline or as an object:
 
-Config object:
+=== "Config object"
 
-```python
-from fastapi_fullauth import FullAuth, FullAuthConfig
+    ```python
+    from fastapi_fullauth import FullAuth, FullAuthConfig
 
-fullauth = FullAuth(
-    adapter=adapter,
-    config=FullAuthConfig(
-        SECRET_KEY="...",
-        ACCESS_TOKEN_EXPIRE_MINUTES=60,
-        API_PREFIX="/api/v2",
-    ),
-)
-```
+    fullauth = FullAuth(
+        adapter=adapter,
+        config=FullAuthConfig(
+            SECRET_KEY="...",
+            ACCESS_TOKEN_EXPIRE_MINUTES=60,
+            API_PREFIX="/api/v2",
+        ),
+    )
+    ```
 
-Environment variables:
+=== "Environment variables"
 
-```bash
-export FULLAUTH_SECRET_KEY="your-secret-key"
-export FULLAUTH_ACCESS_TOKEN_EXPIRE_MINUTES=60
-```
+    ```bash
+    export FULLAUTH_SECRET_KEY="your-secret-key"
+    export FULLAUTH_ACCESS_TOKEN_EXPIRE_MINUTES=60
+    ```
 
-```python
-from fastapi_fullauth import FullAuth
+    ```python
+    from fastapi_fullauth import FullAuth
 
-# reads from env automatically
-fullauth = FullAuth(adapter=adapter)
-```
+    # reads from env automatically
+    fullauth = FullAuth(adapter=adapter)
+    ```
 
 ## Reference
 
@@ -504,7 +543,7 @@ fullauth = FullAuth(adapter=adapter)
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `SECRET_KEY` | `str | None` | `None` | JWT signing key. Auto-generated in dev if not set. |
+| `SECRET_KEY` | `str \| None` | `None` | JWT signing key. Auto-generated in dev if not set. |
 | `ALGORITHM` | `str` | `"HS256"` | JWT signing algorithm. |
 
 ### Tokens
@@ -519,7 +558,7 @@ fullauth = FullAuth(adapter=adapter)
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `PASSWORD_HASH_ALGORITHM` | `"argon2id" | "bcrypt"` | `"argon2id"` | Hashing algorithm. |
+| `PASSWORD_HASH_ALGORITHM` | `"argon2id" \| "bcrypt"` | `"argon2id"` | Hashing algorithm. |
 | `PASSWORD_MIN_LENGTH` | `int` | `8` | Minimum password length. |
 
 ### Login
@@ -535,7 +574,7 @@ fullauth = FullAuth(adapter=adapter)
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `RATE_LIMIT_ENABLED` | `bool` | `False` | Enable global rate limit middleware. |
-| `RATE_LIMIT_BACKEND` | `"memory" | "redis"` | `"memory"` | Rate limiter storage backend. |
+| `RATE_LIMIT_BACKEND` | `"memory" \| "redis"` | `"memory"` | Rate limiter storage backend. |
 | `TRUSTED_PROXY_HEADERS` | `list[str]` | `[]` | Headers to read real client IP from (e.g. `["X-Forwarded-For"]`). |
 | `AUTH_RATE_LIMIT_ENABLED` | `bool` | `True` | Enable per-route auth rate limits. |
 | `AUTH_RATE_LIMIT_LOGIN` | `int` | `5` | Max login attempts per window. |
@@ -547,14 +586,14 @@ fullauth = FullAuth(adapter=adapter)
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `REDIS_URL` | `str | None` | `None` | Redis connection URL. Required when using Redis backends. |
+| `REDIS_URL` | `str \| None` | `None` | Redis connection URL. Required when using Redis backends. |
 
 ### Token Blacklist
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `BLACKLIST_ENABLED` | `bool` | `True` | Check blacklist on token decode. |
-| `BLACKLIST_BACKEND` | `"memory" | "redis"` | `"memory"` | Blacklist storage backend. |
+| `BLACKLIST_BACKEND` | `"memory" \| "redis"` | `"memory"` | Blacklist storage backend. |
 
 ### Middleware
 
@@ -562,7 +601,7 @@ fullauth = FullAuth(adapter=adapter)
 |--------|------|---------|-------------|
 | `INJECT_SECURITY_HEADERS` | `bool` | `True` | Auto-add security headers middleware. |
 | `CSRF_ENABLED` | `bool` | `False` | Auto-add CSRF middleware. |
-| `CSRF_SECRET` | `str | None` | `None` | CSRF signing secret. Falls back to `SECRET_KEY`. |
+| `CSRF_SECRET` | `str \| None` | `None` | CSRF signing secret. Falls back to `SECRET_KEY`. |
 
 ### Cookies
 
@@ -571,14 +610,13 @@ fullauth = FullAuth(adapter=adapter)
 | `COOKIE_NAME` | `str` | `"fullauth_access"` | Access token cookie name. |
 | `COOKIE_SECURE` | `bool` | `True` | Set Secure flag on cookies. |
 | `COOKIE_HTTPONLY` | `bool` | `True` | Set HttpOnly flag on cookies. |
-| `COOKIE_SAMESITE` | `"lax" | "strict" | "none"` | `"lax"` | SameSite cookie policy. |
-| `COOKIE_DOMAIN` | `str | None` | `None` | Cookie domain. |
+| `COOKIE_SAMESITE` | `"lax" \| "strict" \| "none"` | `"lax"` | SameSite cookie policy. |
+| `COOKIE_DOMAIN` | `str \| None` | `None` | Cookie domain. |
 
 ### OAuth
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `OAUTH_PROVIDERS` | `dict` | `{}` | OAuth provider configurations. See OAuth2. |
 | `OAUTH_STATE_EXPIRE_SECONDS` | `int` | `300` | OAuth state token TTL (5 min). |
 | `OAUTH_AUTO_LINK_BY_EMAIL` | `bool` | `True` | Auto-link OAuth accounts to existing users by email. |
 
@@ -592,6 +630,8 @@ fullauth = FullAuth(adapter=adapter)
 
 ---
 
+# Adapters Overview
+
 # Adapters
 
 Adapters are the database layer for fastapi-fullauth. They implement `AbstractUserAdapter`, which defines how users, refresh tokens, roles, and OAuth accounts are stored and retrieved.
@@ -600,15 +640,15 @@ Adapters are the database layer for fastapi-fullauth. They implement `AbstractUs
 
 | Adapter | Backend | Install |
 |---------|---------|---------|
-| SQLModel | Any SQLAlchemy-supported DB | `pip install fastapi-fullauth[sqlmodel]` |
-| SQLAlchemy | Any SQLAlchemy-supported DB | `pip install fastapi-fullauth[sqlalchemy]` |
-| In-Memory | Python dicts | Included (no extras) |
+| [SQLModel](sqlmodel.md) | Any SQLAlchemy-supported DB | `pip install fastapi-fullauth[sqlmodel]` |
+| [SQLAlchemy](sqlalchemy.md) | Any SQLAlchemy-supported DB | `pip install fastapi-fullauth[sqlalchemy]` |
+| [In-Memory](memory.md) | Python dicts | Included (no extras) |
 
 ## Choosing an adapter
 
-- **SQLModel** -- recommended for most projects. Clean model definitions, good type support.
-- **SQLAlchemy** -- use if your project already uses SQLAlchemy's declarative base.
-- **In-Memory** -- for testing and prototyping only. Data is lost on restart.
+- **SQLModel** — recommended for most projects. Clean model definitions, good type support.
+- **SQLAlchemy** — use if your project already uses SQLAlchemy's declarative base.
+- **In-Memory** — for testing and prototyping only. Data is lost on restart.
 
 ## Custom adapters
 
@@ -631,18 +671,20 @@ class MongoAdapter(AbstractUserAdapter):
     # ... implement all abstract methods
 ```
 
-See the source of AbstractUserAdapter for the full interface.
+See the [source of AbstractUserAdapter](https://github.com/mdfarhankc/fastapi-fullauth/blob/main/fastapi_fullauth/adapters/base.py) for the full interface.
 
 ## Auto-derived schemas
 
 All adapters support automatic schema derivation. When you add custom fields to your user model, fastapi-fullauth detects them and includes them in:
 
-- **Registration schema** -- extra fields appear in `POST /auth/register`
-- **User response schema** -- extra fields appear in `GET /auth/me` and other user responses
+- **Registration schema** — extra fields appear in `POST /auth/register`
+- **User response schema** — extra fields appear in `GET /auth/me` and other user responses
 
 No need to create separate Pydantic models. You can still pass explicit `user_schema` or `create_user_schema` to `SQLModelAdapter` / `FullAuth` if you want full control.
 
 ---
+
+# SQLModel Adapter
 
 # SQLModel Adapter
 
@@ -699,25 +741,25 @@ session_maker = async_sessionmaker(engine, expire_on_commit=False)
 
 You can use either SQLAlchemy's `AsyncSession` or SQLModel's `AsyncSession`:
 
-SQLAlchemy AsyncSession:
+=== "SQLAlchemy AsyncSession"
 
-```python
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+    ```python
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-engine = create_async_engine("sqlite+aiosqlite:///app.db")
-session_maker = async_sessionmaker(engine, expire_on_commit=False)
-```
+    engine = create_async_engine("sqlite+aiosqlite:///app.db")
+    session_maker = async_sessionmaker(engine, expire_on_commit=False)
+    ```
 
-SQLModel AsyncSession:
+=== "SQLModel AsyncSession"
 
-```python
-from sqlalchemy.ext.asyncio import create_async_engine
-from sqlalchemy.ext.asyncio import async_sessionmaker
-from sqlmodel.ext.asyncio.session import AsyncSession
+    ```python
+    from sqlalchemy.ext.asyncio import create_async_engine
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+    from sqlmodel.ext.asyncio.session import AsyncSession
 
-engine = create_async_engine("sqlite+aiosqlite:///app.db")
-session_maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-```
+    engine = create_async_engine("sqlite+aiosqlite:///app.db")
+    session_maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    ```
 
 Then create the adapter:
 
@@ -781,6 +823,8 @@ If you don't pass custom schemas, the base `UserSchema` and `CreateUserSchema` a
 The SQLModel adapter includes full OAuth support. The `OAuthAccountRecord` model is included and the adapter implements all OAuth methods from `AbstractUserAdapter`.
 
 ---
+
+# SQLAlchemy Adapter
 
 # SQLAlchemy Adapter
 
@@ -877,9 +921,12 @@ If you don't pass custom schemas, the base `UserSchema` and `CreateUserSchema` a
 
 # In-Memory Adapter
 
+# In-Memory Adapter
+
 A simple adapter that stores everything in Python dictionaries. Useful for testing and quick prototyping.
 
-Warning: All data is lost when the process restarts. Do not use in production.
+!!! warning
+    All data is lost when the process restarts. Do not use in production.
 
 ## Usage
 
@@ -899,9 +946,9 @@ No database, no migrations, no setup. Just works.
 
 ## When to use
 
-- **Unit tests** -- all fastapi-fullauth tests use this adapter
-- **Prototyping** -- try out the library without setting up a database
-- **Demos** -- run the `examples/memory_app` example
+- **Unit tests** — all fastapi-fullauth tests use this adapter
+- **Prototyping** — try out the library without setting up a database
+- **Demos** — run the `examples/memory_app` example
 
 ## Limitations
 
@@ -910,6 +957,8 @@ No database, no migrations, no setup. Just works.
 - OAuth account methods are supported but also in-memory
 
 ---
+
+# Protected Routes
 
 # Protected Routes
 
@@ -969,7 +1018,7 @@ from fastapi_fullauth.dependencies import require_role
 async def editor_panel(user=Depends(require_role("editor"))):
     return {"msg": "welcome, editor"}
 
-# multiple roles -- user needs at least one
+# multiple roles — user needs at least one
 @app.get("/content")
 async def content(user=Depends(require_role("editor", "author"))):
     return {"msg": "welcome"}
@@ -977,7 +1026,7 @@ async def content(user=Depends(require_role("editor", "author"))):
 
 ### require_permission
 
-Check that the user has at least one of the specified permissions. Permissions are resolved through roles -- a user with role `"editor"` gets all permissions assigned to that role.
+Check that the user has at least one of the specified permissions. Permissions are resolved through roles — a user with role `"editor"` gets all permissions assigned to that role.
 
 ```python
 from fastapi import Depends
@@ -987,7 +1036,7 @@ from fastapi_fullauth.dependencies import require_permission
 async def delete_post(id: str, user=Depends(require_permission("posts:delete"))):
     ...
 
-# multiple permissions -- user needs at least one
+# multiple permissions — user needs at least one
 @app.put("/posts/{id}")
 async def edit_post(id: str, user=Depends(require_permission("posts:edit", "posts:admin"))):
     ...
@@ -1002,19 +1051,19 @@ Permissions are assigned to roles, not directly to users:
 ```bash
 # Assign permissions to a role (superuser only)
 curl -X POST http://localhost:8000/api/v1/auth/admin/assign-permission \
-  -H "Authorization: Bearer <superuser-token>" \
+  -H "Authorization: Bearer " \
   -H "Content-Type: application/json" \
   -d '{"role": "editor", "permission": "posts:create"}'
 
 curl -X POST http://localhost:8000/api/v1/auth/admin/assign-permission \
-  -H "Authorization: Bearer <superuser-token>" \
+  -H "Authorization: Bearer " \
   -H "Content-Type: application/json" \
   -d '{"role": "editor", "permission": "posts:edit"}'
 
 # List permissions for a role
 curl http://localhost:8000/api/v1/auth/admin/role-permissions/editor \
-  -H "Authorization: Bearer <superuser-token>"
-# -> ["posts:create", "posts:edit"]
+  -H "Authorization: Bearer "
+# → ["posts:create", "posts:edit"]
 ```
 
 Or programmatically:
@@ -1026,7 +1075,7 @@ await adapter.remove_permission_from_role("editor", "posts:create")
 
 # resolve all permissions for a user (through their roles)
 perms = await adapter.get_user_permissions(user.id)
-# -> ["posts:edit"]
+# → ["posts:edit"]
 ```
 
 #### require_role vs require_permission
@@ -1042,7 +1091,7 @@ perms = await adapter.get_user_permissions(user.id)
 
 All dependencies follow the same flow:
 
-1. Extract the JWT from the `Authorization: Bearer <token>` header (or cookie backend)
+1. Extract the JWT from the `Authorization: Bearer ` header (or cookie backend)
 2. Decode and validate the token (expiry, blacklist, signature)
 3. Look up the user by `sub` (user ID) from the token payload
 4. Apply additional checks (verified, superuser, roles)
@@ -1094,13 +1143,13 @@ Roles are managed through the admin endpoints (superuser only):
 ```bash
 # Assign a role
 curl -X POST http://localhost:8000/api/v1/auth/admin/assign-role \
-  -H "Authorization: Bearer <superuser-token>" \
+  -H "Authorization: Bearer " \
   -H "Content-Type: application/json" \
   -d '{"user_id": "...", "role": "editor"}'
 
 # Remove a role
 curl -X POST http://localhost:8000/api/v1/auth/admin/remove-role \
-  -H "Authorization: Bearer <superuser-token>" \
+  -H "Authorization: Bearer " \
   -H "Content-Type: application/json" \
   -d '{"user_id": "...", "role": "editor"}'
 ```
@@ -1114,6 +1163,8 @@ roles = await adapter.get_user_roles(user_id)
 ```
 
 ---
+
+# Event Hooks
 
 # Event Hooks
 
@@ -1180,7 +1231,8 @@ fullauth.hooks.on("send_verification_email", send_verification_email)
 fullauth.hooks.on("send_password_reset_email", send_password_reset_email)
 ```
 
-Note: If you don't register a `send_verification_email` hook, the verification token is still generated but never delivered. Same for password reset.
+!!! note
+    If you don't register a `send_verification_email` hook, the verification token is still generated but never delivered. Same for password reset.
 
 ## Example: audit logging
 
@@ -1210,6 +1262,8 @@ fullauth.hooks.on("after_register", track_signup_analytics)
 ```
 
 ---
+
+# Password Validation
 
 # Password Validation
 
@@ -1282,6 +1336,8 @@ When switching algorithms, existing hashes are transparently detected by prefix 
 
 # Custom Token Claims
 
+# Custom Token Claims
+
 Embed app-specific data into JWT tokens. Custom claims are available in the `extra` field of decoded token payloads.
 
 ## Setup
@@ -1331,13 +1387,15 @@ If your callback returns any of these, a `ValueError` is raised at token creatio
 
 Custom claims are generated on:
 
-- **Login** -- embedded in the access token
-- **Token refresh** -- regenerated from the current user state
-- **OAuth callback** -- embedded after OAuth user creation/linking
+- **Login** — embedded in the access token
+- **Token refresh** — regenerated from the current user state
+- **OAuth callback** — embedded after OAuth user creation/linking
 
 This means claims stay fresh on each refresh. If a user's plan changes, the next token refresh picks it up.
 
 ---
+
+# Middleware
 
 # Middleware
 
@@ -1436,16 +1494,18 @@ app.add_middleware(
 
 ## Rate Limiting
 
-See Rate Limiting for full details.
+See [Rate Limiting](rate-limiting.md) for full details.
 
 ---
 
 # Rate Limiting
 
+# Rate Limiting
+
 fastapi-fullauth provides two levels of rate limiting:
 
-1. **Auth rate limits** -- per-route limits on login, register, and password reset (enabled by default)
-2. **Global rate limit middleware** -- limits all requests per IP (disabled by default)
+1. **Auth rate limits** — per-route limits on login, register, and password reset (enabled by default)
+2. **Global rate limit middleware** — limits all requests per IP (disabled by default)
 
 Both support in-memory and Redis backends.
 
@@ -1526,7 +1586,8 @@ fullauth = FullAuth(
 )
 ```
 
-Warning: Only list headers you trust. If your server is directly exposed to the internet (no proxy), leave this empty -- otherwise users can spoof their IP via the header.
+!!! warning
+    Only list headers you trust. If your server is directly exposed to the internet (no proxy), leave this empty — otherwise users can spoof their IP via the header.
 
 When `X-Forwarded-For` contains a chain (e.g. `1.2.3.4, 10.0.0.1`), the first IP (original client) is used.
 
@@ -1572,6 +1633,8 @@ app.add_middleware(
 
 # OAuth2 Social Login
 
+# OAuth2 Social Login
+
 Add Google and GitHub login with a few config lines. Users can link multiple providers alongside email/password login.
 
 ## Installation
@@ -1584,31 +1647,32 @@ pip install fastapi-fullauth[oauth]
 
 ```python
 from fastapi_fullauth import FullAuth, FullAuthConfig
+from fastapi_fullauth.oauth.google import GoogleOAuthProvider
+from fastapi_fullauth.oauth.github import GitHubOAuthProvider
 
 fullauth = FullAuth(
     adapter=adapter,
-    config=FullAuthConfig(
-        SECRET_KEY="...",
-        OAUTH_PROVIDERS={
-            "google": {
-                "client_id": "your-google-client-id",
-                "client_secret": "your-google-secret",
-                "redirect_uris": [
-                    "http://localhost:3000/auth/callback",
-                    "https://myapp.com/auth/callback",
-                ],
-            },
-            "github": {
-                "client_id": "your-github-client-id",
-                "client_secret": "your-github-secret",
-                "redirect_uri": "http://localhost:3000/auth/callback",
-            },
-        },
-    ),
+    config=FullAuthConfig(SECRET_KEY="..."),
+    providers=[
+        GoogleOAuthProvider(
+            client_id="your-google-client-id",
+            client_secret="your-google-secret",
+            redirect_uris=[
+                "http://localhost:3000/auth/callback",
+                "https://myapp.com/auth/callback",
+            ],
+        ),
+        GitHubOAuthProvider(
+            client_id="your-github-client-id",
+            client_secret="your-github-secret",
+            redirect_uris=["http://localhost:3000/auth/callback"],
+        ),
+    ],
 )
 ```
 
-Tip: Use `redirect_uris` (list) for multiple allowed callback URLs, or `redirect_uri` (string) for a single one.
+!!! tip
+    `redirect_uris` is the list of allowed callback URLs. The client must pass `redirect_uri` as a query parameter in the authorize request — the library validates it against this list.
 
 ## Routes
 
@@ -1675,12 +1739,13 @@ From this point on, the session works exactly like email/password login. The use
 2. **Authorization code is exchanged** for provider tokens
 3. **User info is fetched** from the provider (email, name, picture)
 4. **Account linking logic** runs:
-    - If this provider account is already linked -> update tokens, return existing user
-    - If an account with the same email exists -> link the OAuth account to it
-    - Otherwise -> create a new user with a random password
+    - If this provider account is already linked → update tokens, return existing user
+    - If an account with the same email exists → link the OAuth account to it
+    - Otherwise → create a new user with a random password
 5. **JWT tokens are issued** (same as regular login)
 
-Note: If the provider reports the email as verified, the user's `is_verified` flag is set to `True` automatically.
+!!! note
+    If the provider reports the email as verified, the user's `is_verified` flag is set to `True` automatically.
 
 ## Auto-linking by email
 
@@ -1724,25 +1789,27 @@ The `after_register` hook also fires for new OAuth users.
 
 ### Google
 
-1. Go to Google Cloud Console (https://console.cloud.google.com/)
+1. Go to [Google Cloud Console](https://console.cloud.google.com/)
 2. Create a project (or select existing)
-3. Go to APIs & Services > Credentials
-4. Create an OAuth 2.0 Client ID (Web application)
-5. Add your redirect URIs under Authorized redirect URIs
+3. Go to **APIs & Services > Credentials**
+4. Create an **OAuth 2.0 Client ID** (Web application)
+5. Add your redirect URIs under **Authorized redirect URIs**
 6. Copy the Client ID and Client Secret
 
 Default scopes: `openid`, `email`, `profile`
 
 ### GitHub
 
-1. Go to GitHub Developer Settings (https://github.com/settings/developers)
-2. Click New OAuth App
-3. Set the Authorization callback URL to your redirect URI
+1. Go to [GitHub Developer Settings](https://github.com/settings/developers)
+2. Click **New OAuth App**
+3. Set the **Authorization callback URL** to your redirect URI
 4. Copy the Client ID and Client Secret
 
 Default scopes: `read:user`, `user:email`
 
 ---
+
+# Database Migrations
 
 # Database Migrations
 
@@ -1752,23 +1819,23 @@ fastapi-fullauth provides Alembic integration helpers for managing database sche
 
 For development or simple projects, create tables directly:
 
-SQLModel:
+=== "SQLModel"
 
-```python
-from sqlmodel import SQLModel
+    ```python
+    from sqlmodel import SQLModel
 
-async with engine.begin() as conn:
-    await conn.run_sync(SQLModel.metadata.create_all)
-```
+    async with engine.begin() as conn:
+        await conn.run_sync(SQLModel.metadata.create_all)
+    ```
 
-SQLAlchemy:
+=== "SQLAlchemy"
 
-```python
-from fastapi_fullauth.adapters.sqlalchemy.models import FullAuthBase
+    ```python
+    from fastapi_fullauth.adapters.sqlalchemy.models import FullAuthBase
 
-async with engine.begin() as conn:
-    await conn.run_sync(FullAuthBase.metadata.create_all)
-```
+    async with engine.begin() as conn:
+        await conn.run_sync(FullAuthBase.metadata.create_all)
+    ```
 
 ## Alembic integration
 
@@ -1784,31 +1851,31 @@ alembic init alembic
 
 Import fullauth models so Alembic detects them during autogenerate:
 
-SQLModel:
+=== "SQLModel"
 
-```python
-# alembic/env.py
-from fastapi_fullauth.migrations import include_fullauth_models
-from sqlmodel import SQLModel
+    ```python
+    # alembic/env.py
+    from fastapi_fullauth.migrations import include_fullauth_models
+    from sqlmodel import SQLModel
 
-include_fullauth_models("sqlmodel")
+    include_fullauth_models("sqlmodel")
 
-# import your app's models too
-from your_app.models import User  # noqa: F401
+    # import your app's models too
+    from your_app.models import User  # noqa: F401
 
-target_metadata = SQLModel.metadata
-```
+    target_metadata = SQLModel.metadata
+    ```
 
-SQLAlchemy:
+=== "SQLAlchemy"
 
-```python
-# alembic/env.py
-from fastapi_fullauth.migrations import include_fullauth_models
-from your_app.models import Base  # your declarative base
+    ```python
+    # alembic/env.py
+    from fastapi_fullauth.migrations import include_fullauth_models
+    from your_app.models import Base  # your declarative base
 
-include_fullauth_models("sqlalchemy")
-target_metadata = Base.metadata
-```
+    include_fullauth_models("sqlalchemy")
+    target_metadata = Base.metadata
+    ```
 
 ### 3. Generate migrations
 
@@ -1851,6 +1918,8 @@ metadata = get_fullauth_metadata("sqlalchemy")
 
 # API Reference
 
+# API Reference
+
 Quick reference for the main classes, types, and functions.
 
 ## FullAuth
@@ -1861,12 +1930,12 @@ The main auth manager. Central entry point for the library.
 from fastapi_fullauth import FullAuth, FullAuthConfig
 
 fullauth = FullAuth(
-    adapter=adapter,                # required -- database adapter
+    adapter=adapter,                # required — database adapter
     config=FullAuthConfig(...),     # FullAuthConfig object (see Configuration)
+    providers=None,                 # list of OAuthProvider instances
     backends=None,                  # [BearerBackend()] by default
     password_validator=None,        # PasswordValidator instance
     include_user_in_login=False,    # include user data in login response
-    create_user_schema=None,        # custom registration schema
     on_create_token_claims=None,    # async callback for custom JWT claims
 )
 ```
@@ -1897,7 +1966,7 @@ fullauth = FullAuth(
 from fastapi_fullauth import FullAuthConfig
 ```
 
-Pydantic Settings class. See Configuration for all options.
+Pydantic Settings class. See [Configuration](configuration.md) for all options.
 
 ## Types
 
@@ -1953,9 +2022,9 @@ class TokenPayload(BaseModel):
 
 ```python
 from fastapi_fullauth.dependencies import (
-    CurrentUser,        # Annotated type -- any authenticated user
-    VerifiedUser,       # Annotated type -- verified email required
-    SuperUser,          # Annotated type -- superuser required
+    CurrentUser,        # Annotated type — any authenticated user
+    VerifiedUser,       # Annotated type — verified email required
+    SuperUser,          # Annotated type — superuser required
     current_user,       # function form of CurrentUser
     require_role,       # require_role("admin", "editor")
     require_permission, # require_permission("posts:edit", "posts:delete")
@@ -2012,6 +2081,8 @@ validator = PasswordValidator(
 
 # Contributing
 
+# Contributing
+
 Thanks for your interest in contributing to FastAPI FullAuth!
 
 ## Development setup
@@ -2065,11 +2136,11 @@ Both must pass before submitting a PR. CI enforces this.
 
 ## Reporting bugs
 
-Use the bug report template on GitHub Issues: https://github.com/mdfarhankc/fastapi-fullauth/issues/new?template=bug_report.yml
+Use the [bug report template](https://github.com/mdfarhankc/fastapi-fullauth/issues/new?template=bug_report.yml) on GitHub Issues.
 
 ## Requesting features
 
-Use the feature request template on GitHub Issues: https://github.com/mdfarhankc/fastapi-fullauth/issues/new?template=feature_request.yml
+Use the [feature request template](https://github.com/mdfarhankc/fastapi-fullauth/issues/new?template=feature_request.yml) on GitHub Issues.
 
 ## Code style
 

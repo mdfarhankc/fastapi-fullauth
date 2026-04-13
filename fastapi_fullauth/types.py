@@ -24,7 +24,8 @@ class CreateUserSchema(BaseModel):
     password: str
 
 
-UserSchemaType = TypeVar("UserSchemaType", bound=UserSchema, default=UserSchema)
+UserSchemaType = TypeVar(
+    "UserSchemaType", bound=UserSchema, default=UserSchema)
 CreateUserSchemaType = TypeVar(
     "CreateUserSchemaType", bound=CreateUserSchema, default=CreateUserSchema
 )
