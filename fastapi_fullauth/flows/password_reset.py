@@ -6,6 +6,7 @@ from fastapi_fullauth.core.crypto import hash_password
 from fastapi_fullauth.core.tokens import TokenEngine
 from fastapi_fullauth.exceptions import TokenError, UserNotFoundError
 from fastapi_fullauth.types import UserSchema
+from fastapi_fullauth.validators import PasswordValidator
 
 logger = logging.getLogger("fastapi_fullauth.password_reset")
 
@@ -35,12 +36,16 @@ async def reset_password(
     token: str,
     new_password: str,
     hash_algorithm: str = "argon2id",
+    password_validator: PasswordValidator | None = None,
 ) -> UserSchema | None:
     payload = await token_engine.decode_token(token)
 
     if payload.extra.get("purpose") != "password_reset":
         logger.warning("Invalid password reset token (wrong purpose)")
         raise TokenError("Invalid password reset token")
+
+    if password_validator:
+        password_validator.validate(new_password)
 
     user = await adapter.get_user_by_id(UUID(payload.sub))
     if user is None:

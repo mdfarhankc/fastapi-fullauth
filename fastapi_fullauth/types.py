@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, NamedTuple
+from typing import Any, ClassVar, NamedTuple
 from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, Field
@@ -17,6 +17,19 @@ class UserSchema(BaseModel):
     roles: list[str] = Field(default_factory=list)
 
     model_config = {"from_attributes": True}
+
+    PROTECTED_FIELDS: ClassVar[set[str]] = {
+        "id",
+        "email",
+        "hashed_password",
+        "is_active",
+        "is_verified",
+        "is_superuser",
+        "roles",
+        "password",
+        "created_at",
+        "refresh_tokens",
+    }
 
 
 class CreateUserSchema(BaseModel):

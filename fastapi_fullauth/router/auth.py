@@ -58,17 +58,15 @@ def create_auth_router(
         await fullauth.check_auth_rate_limit("register", client_ip)
 
         try:
-            fullauth.password_validator.validate(data.password)
-        except InvalidPasswordError as e:
-            raise HTTPException(status_code=422, detail=str(e))
-
-        try:
             user = await register(
                 fullauth.adapter,
                 data,
                 login_field=login_field,
                 hash_algorithm=fullauth.config.PASSWORD_HASH_ALGORITHM,
+                password_validator=fullauth.password_validator,
             )
+        except InvalidPasswordError as e:
+            raise HTTPException(status_code=422, detail=str(e))
         except UserAlreadyExistsError:
             raise USER_EXISTS_EXCEPTION
 
