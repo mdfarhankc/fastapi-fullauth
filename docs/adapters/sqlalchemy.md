@@ -66,13 +66,25 @@ async with engine.begin() as conn:
     await conn.run_sync(FullAuthBase.metadata.create_all)
 ```
 
-## Schema derivation
+## Custom schemas
 
-The SQLAlchemy adapter auto-derives schemas from your model's column definitions. Column types are mapped to Python types:
+Define your own schemas and pass them to the adapter:
 
-| SQLAlchemy Type | Python Type |
-|-----------------|-------------|
-| `String`, `Text` | `str` |
-| `Integer` | `int` |
-| `Float`, `Numeric` | `float` |
-| `Boolean` | `bool` |
+```python
+from fastapi_fullauth import UserSchema, CreateUserSchema
+
+class MyUserSchema(UserSchema):
+    display_name: str = ""
+
+class MyCreateSchema(CreateUserSchema):
+    display_name: str
+
+adapter = SQLAlchemyAdapter(
+    session_maker=session_maker,
+    user_model=User,
+    user_schema=MyUserSchema,
+    create_user_schema=MyCreateSchema,
+)
+```
+
+If you don't pass custom schemas, the base `UserSchema` and `CreateUserSchema` are used.

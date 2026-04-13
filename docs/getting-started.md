@@ -30,7 +30,7 @@ class User(UserBase, table=True):
 `UserBase` provides `id`, `email`, `hashed_password`, `is_active`, `is_verified`, `is_superuser`, and `created_at`. Add any extra fields you need.
 
 !!! note
-    Registration and response schemas are **auto-derived** from your model. `display_name` and `phone` will appear in the register endpoint and user responses automatically.
+    Define your own schemas extending `UserSchema` and `CreateUserSchema` to include custom fields like `display_name` and `phone`, then pass them to the adapter. See [Custom User Schemas](#custom-user-schemas) below or the [API Reference](api-reference.md).
 
 ## 2. Set up the database
 
@@ -91,6 +91,27 @@ That's it. Start the server and you have a full auth system:
 ```bash
 uvicorn main:app --reload
 ```
+
+### Composable routers
+
+`init_app()` registers all routes. If you want only specific route groups, include them manually:
+
+```python
+app = FastAPI(lifespan=lifespan)
+app.state.fullauth = fullauth
+
+# only auth + profile, no verification/admin/oauth
+app.include_router(fullauth.auth_router, prefix="/api/v1/auth")
+app.include_router(fullauth.profile_router, prefix="/api/v1/auth")
+```
+
+| Router | Routes |
+|--------|--------|
+| `auth_router` | register, login, logout, refresh |
+| `profile_router` | me, verified-me, update profile, delete account, change password |
+| `verify_router` | email verification, password reset |
+| `admin_router` | assign/remove roles and permissions (superuser) |
+| `oauth_router` | OAuth provider routes (only if configured) |
 
 ## 5. Try it out
 

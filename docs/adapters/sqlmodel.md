@@ -106,24 +106,29 @@ The SQLModel adapter uses these tables:
 | `fullauth_refresh_tokens` | Stored refresh tokens |
 | `fullauth_oauth_accounts` | Linked OAuth provider accounts |
 
-## Custom user schema
+## Custom schemas
 
-By default, the response schema is auto-derived from your model. To use an explicit schema:
+Define your own schemas and pass them to the adapter:
 
 ```python
-from pydantic import BaseModel, EmailStr
-from fastapi_fullauth.types import UserSchema
+from fastapi_fullauth import UserSchema, CreateUserSchema
 
-class MyUserResponse(UserSchema):
+class MyUserSchema(UserSchema):
     display_name: str = ""
     phone: str = ""
+
+class MyCreateSchema(CreateUserSchema):
+    display_name: str = ""
 
 adapter = SQLModelAdapter(
     session_maker=session_maker,
     user_model=User,
-    user_schema=MyUserResponse,
+    user_schema=MyUserSchema,
+    create_user_schema=MyCreateSchema,
 )
 ```
+
+If you don't pass custom schemas, the base `UserSchema` and `CreateUserSchema` are used.
 
 ## OAuth support
 

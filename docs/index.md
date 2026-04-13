@@ -36,7 +36,8 @@ Add a complete authentication and authorization system to your **FastAPI** proje
 - **Rate limiting** — per-route auth limits + global middleware (memory or Redis)
 - **CSRF protection** and **security headers** middleware
 - **Pluggable adapters** — SQLModel, SQLAlchemy, or in-memory
-- **Auto-derived schemas** — custom user fields are picked up automatically
+- **Generic type parameters** — define your own schemas with full IDE support and type safety
+- **Composable routers** — include only the route groups you need
 - **Event hooks** — `after_register`, `after_login`, `send_verification_email`, etc.
 - **Custom JWT claims** — embed app-specific data in tokens
 - **Redis support** — token blacklist and rate limiter backends
@@ -79,9 +80,32 @@ fullauth = FullAuth(
 fullauth.init_app(app)
 ```
 
-This gives you `/auth/register`, `/auth/login`, `/auth/logout`, `/auth/refresh`, `/auth/me`, `/auth/change-password`, `/auth/password-reset/*`, `/auth/verify-email/*`, and admin role management — all under `/api/v1` by default.
+This registers all auth routes under `/api/v1/auth/` automatically.
 
 Omit `SECRET_KEY` in dev and a random one is generated (tokens won't survive restarts).
+
+### Composable routers
+
+Include only the route groups you need:
+
+```python
+app = FastAPI()
+app.state.fullauth = fullauth
+
+app.include_router(fullauth.auth_router, prefix="/api/v1/auth")
+app.include_router(fullauth.profile_router, prefix="/api/v1/auth")
+# skip verify, admin, oauth
+```
+
+| Router | Routes |
+|--------|--------|
+| `auth_router` | register, login, logout, refresh |
+| `profile_router` | me, verified-me, update profile, delete account, change password |
+| `verify_router` | email verification, password reset |
+| `admin_router` | assign/remove roles and permissions (superuser) |
+| `oauth_router` | OAuth provider routes (only if configured) |
+
+`fullauth.init_app(app)` includes all of them.
 
 ## Routes
 

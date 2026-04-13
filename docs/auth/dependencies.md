@@ -136,6 +136,31 @@ All dependencies follow the same flow:
 
 If any step fails, a `401 Unauthorized` or `403 Forbidden` response is returned automatically.
 
+## Typed dependencies for custom schemas
+
+If you use custom user schemas, the default `CurrentUser` type resolves to the base `UserSchema`. Use the factory functions for full type safety:
+
+```python
+from typing import Annotated
+from fastapi import Depends
+from fastapi_fullauth.dependencies import (
+    get_current_user_dependency,
+    get_verified_user_dependency,
+    get_superuser_dependency,
+)
+
+# your custom schema
+from myapp.schemas import MyUserSchema
+
+MyCurrentUser = Annotated[MyUserSchema, Depends(get_current_user_dependency(MyUserSchema))]
+MyVerifiedUser = Annotated[MyUserSchema, Depends(get_verified_user_dependency(MyUserSchema))]
+MySuperUser = Annotated[MyUserSchema, Depends(get_superuser_dependency(MyUserSchema))]
+
+@app.get("/profile")
+async def profile(user: MyCurrentUser):
+    return {"name": user.display_name}  # IDE knows this field exists
+```
+
 ## Using with the function form
 
 If you prefer the function form over `Annotated` types:

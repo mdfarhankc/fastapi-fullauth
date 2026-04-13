@@ -37,7 +37,8 @@ Add a complete authentication and authorization system to your **FastAPI** proje
 - **Rate limiting** — per-route auth limits + global middleware (memory or Redis)
 - **CSRF protection** and **security headers** middleware, auto-wired
 - **Pluggable adapters** — SQLModel, SQLAlchemy, or in-memory
-- **Auto-derived schemas** — custom user fields picked up automatically
+- **Generic type parameters** — define your own schemas with full IDE support and type safety
+- **Composable routers** — include only the route groups you need
 - **Event hooks** — `after_register`, `after_login`, `send_verification_email`, etc.
 - **Custom JWT claims** — embed app-specific data in tokens
 - **Structured logging** — all auth events, security violations, and failures logged
@@ -79,9 +80,33 @@ fullauth = FullAuth(
 fullauth.init_app(app)
 ```
 
-That's it — 15+ auth routes are registered under `/api/v1/auth/` automatically.
+That's it — all auth routes are registered under `/api/v1/auth/` automatically.
 
 Omit `config` in dev and a random secret key is generated (tokens won't survive restarts).
+
+### Composable routers
+
+Include only the route groups you need:
+
+```python
+app = FastAPI()
+app.state.fullauth = fullauth
+
+# pick what you want
+app.include_router(fullauth.auth_router, prefix="/api/v1/auth")
+app.include_router(fullauth.profile_router, prefix="/api/v1/auth")
+# skip verify, admin, oauth
+```
+
+| Router | Routes |
+|--------|--------|
+| `auth_router` | register, login, logout, refresh |
+| `profile_router` | me, verified-me, update profile, delete account, change password |
+| `verify_router` | email verification, password reset |
+| `admin_router` | assign/remove roles and permissions (superuser) |
+| `oauth_router` | OAuth provider routes (only if configured) |
+
+`fullauth.init_app(app)` includes all of them. Use individual routers for granular control.
 
 ## Routes
 
@@ -108,12 +133,13 @@ Omit `config` in dev and a random secret key is generated (tokens won't survive 
 
 With OAuth enabled, additional routes are registered under `/auth/oauth/`. All routes are prefixed with `/api/v1` by default.
 
-## Custom user fields
+## Custom user schemas
 
-Define your model — schemas are auto-derived:
+Define your model and schemas — pass them explicitly to the adapter:
 
 ```python
 from sqlmodel import Field, Relationship
+from fastapi_fullauth import FullAuth, FullAuthConfig, UserSchema, CreateUserSchema
 from fastapi_fullauth.adapters.sqlmodel import (
     UserBase, Role, UserRoleLink, RefreshTokenRecord, SQLModelAdapter,
 )
@@ -127,13 +153,37 @@ class User(UserBase, table=True):
     roles: list[Role] = Relationship(link_model=UserRoleLink)
     refresh_tokens: list[RefreshTokenRecord] = Relationship()
 
+class MyUserSchema(UserSchema):
+    display_name: str = ""
+    phone: str = ""
+
+class MyCreateSchema(CreateUserSchema):
+    display_name: str = ""
+
 fullauth = FullAuth(
-    adapter=SQLModelAdapter(session_maker, user_model=User),
+    adapter=SQLModelAdapter(
+        session_maker,
+        user_model=User,
+        user_schema=MyUserSchema,
+        create_user_schema=MyCreateSchema,
+    ),
     config=FullAuthConfig(SECRET_KEY="..."),
 )
 ```
 
-Registration and response schemas pick up `display_name` and `phone` automatically. No separate schema classes needed.
+Full IDE autocompletion and type checking on custom fields. Use `get_current_user_dependency()` for typed dependencies:
+
+```python
+from typing import Annotated
+from fastapi import Depends
+from fastapi_fullauth.dependencies import get_current_user_dependency
+
+MyCurrentUser = Annotated[MyUserSchema, Depends(get_current_user_dependency(MyUserSchema))]
+
+@app.get("/profile")
+async def profile(user: MyCurrentUser):
+    return {"name": user.display_name}  # IDE knows this field exists
+```
 
 ## Protected routes
 
