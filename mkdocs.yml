@@ -1,6 +1,6 @@
 site_name: fastapi-fullauth
 site_url: https://mdfarhankc.github.io/fastapi-fullauth
-site_description: Async auth library for FastAPI — JWT, refresh rotation, OAuth2, RBAC, and more.
+site_description: Production-grade, async-native authentication and authorization library for FastAPI.
 repo_url: https://github.com/mdfarhankc/fastapi-fullauth
 repo_name: mdfarhankc/fastapi-fullauth
 

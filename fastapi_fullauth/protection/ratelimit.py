@@ -125,6 +125,25 @@ class RedisRateLimiter:
         await self._redis.delete(f"{self._prefix}{key}")
 
 
+def create_rate_limiter(config, max_requests: int, window_seconds: int):
+    """Create a rate limiter backend based on config.
+
+    Args:
+        config: FullAuthConfig instance.
+        max_requests: Maximum requests per window.
+        window_seconds: Window size in seconds.
+    """
+    if config.RATE_LIMIT_BACKEND == "redis":
+        if not config.REDIS_URL:
+            raise ValueError("REDIS_URL must be set when RATE_LIMIT_BACKEND='redis'")
+        return RedisRateLimiter(
+            redis_url=config.REDIS_URL,
+            max_requests=max_requests,
+            window_seconds=window_seconds,
+        )
+    return RateLimiter(max_requests=max_requests, window_seconds=window_seconds)
+
+
 class RateLimitMiddleware(BaseHTTPMiddleware):
     def __init__(
         self,

@@ -12,12 +12,14 @@ async def create_superuser(
     adapter: AbstractUserAdapter,
     email: str,
     password: str,
+    hash_algorithm: str = "argon2id",
 ) -> UserSchema:
     if await adapter.get_user_by_email(email) is not None:
         raise UserAlreadyExistsError(f"User with email {email} already exists")
 
     data = CreateUserSchema(email=email, password=password)
-    user = await adapter.create_user(data, hashed_password=hash_password(password))
+    hashed = hash_password(password, algorithm=hash_algorithm)
+    user = await adapter.create_user(data, hashed_password=hashed)
     return await adapter.update_user(user.id, {"is_superuser": True, "is_verified": True})
 
 

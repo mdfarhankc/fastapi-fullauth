@@ -47,20 +47,22 @@ session_maker = async_sessionmaker(engine, expire_on_commit=False)
 
 ```python
 # auth.py
-from fastapi_fullauth import FullAuth
+from fastapi_fullauth import FullAuth, FullAuthConfig
 from fastapi_fullauth.adapters.sqlmodel import SQLModelAdapter
 
 from .config import session_maker
 from .models import User
 
 fullauth = FullAuth(
-    secret_key="your-secret-key-at-least-32-bytes",
     adapter=SQLModelAdapter(session_maker=session_maker, user_model=User),
+    config=FullAuthConfig(
+        SECRET_KEY="your-secret-key-at-least-32-bytes",
+    ),
 )
 ```
 
 !!! tip
-    Omit `secret_key` during development and a random one is generated automatically. Tokens won't survive restarts, but it's convenient for dev.
+    Omit `SECRET_KEY` during development and a random one is generated automatically. Tokens won't survive restarts, but it's convenient for dev.
 
 ## 4. Wire it into FastAPI
 

@@ -8,12 +8,14 @@ A simple adapter that stores everything in Python dictionaries. Useful for testi
 ## Usage
 
 ```python
-from fastapi_fullauth import FullAuth
+from fastapi_fullauth import FullAuth, FullAuthConfig
 from fastapi_fullauth.adapters.memory import InMemoryAdapter
 
 fullauth = FullAuth(
-    secret_key="dev-secret",
     adapter=InMemoryAdapter(),
+    config=FullAuthConfig(
+        SECRET_KEY="dev-secret",
+    ),
 )
 ```
 

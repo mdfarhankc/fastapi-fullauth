@@ -14,17 +14,16 @@ from fastapi_fullauth.types import CreateUserSchema, UserSchema
 
 
 @pytest.mark.asyncio
-async def test_enabled_routes_with_literals():
+async def test_composable_routers_exclude_register():
+    """Only including specific routers means excluded routes return 404."""
     fullauth = FullAuth(
-        config=FullAuthConfig(
-            SECRET_KEY="test-key-32b-long-enough-here!!!",
-            INJECT_SECURITY_HEADERS=False,
-        ),
         adapter=InMemoryAdapter(),
-        enabled_routes=["login", "logout"],
+        config=FullAuthConfig(SECRET_KEY="test-key-32b-long-enough-here!!!"),
     )
     app = FastAPI()
-    fullauth.init_app(app, auto_middleware=False)
+    app.state.fullauth = fullauth
+    # only include profile, not auth — so no register/login
+    app.include_router(fullauth.profile_router, prefix="/api/v1/auth")
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -32,7 +31,7 @@ async def test_enabled_routes_with_literals():
             "/api/v1/auth/register",
             json={"email": "t@t.com", "password": "securepass123"},
         )
-        assert r.status_code == 404  # register disabled
+        assert r.status_code == 404
 
 
 # ---------------------------------------------------------------------------
@@ -104,30 +103,23 @@ async def test_email_callback_via_hooks():
 
 
 def test_flat_config_secret_key():
-    """FullAuth(secret_key=..., adapter=...) works without FullAuthConfig."""
+    """FullAuth(adapter=..., config=FullAuthConfig(SECRET_KEY=...)) passes key via config."""
     fullauth = FullAuth(
-        secret_key="flat-config-key-32b-long!!!!!!!!!",
         adapter=InMemoryAdapter(),
+        config=FullAuthConfig(SECRET_KEY="flat-config-key-32b-long!!!!!!!!!"),
     )
     assert fullauth.config.SECRET_KEY == "flat-config-key-32b-long!!!!!!!!!"
 
 
 def test_flat_config_with_extras():
     fullauth = FullAuth(
-        secret_key="flat-config-key-32b-long!!!!!!!!!",
         adapter=InMemoryAdapter(),
-        api_prefix="/v2",
+        config=FullAuthConfig(
+            SECRET_KEY="flat-config-key-32b-long!!!!!!!!!",
+            API_PREFIX="/v2",
+        ),
     )
     assert fullauth.config.API_PREFIX == "/v2"
-
-
-def test_flat_config_rejects_both():
-    with pytest.raises(ValueError, match="not both"):
-        FullAuth(
-            config=FullAuthConfig(SECRET_KEY="x"),
-            secret_key="y",
-            adapter=InMemoryAdapter(),
-        )
 
 
 def test_no_config_auto_generates_key():
@@ -147,9 +139,11 @@ def test_no_config_auto_generates_key():
 async def test_auto_security_headers():
     """Security headers are injected when INJECT_SECURITY_HEADERS=True."""
     fullauth = FullAuth(
-        secret_key="test-key-32b-long-enough-here!!!",
         adapter=InMemoryAdapter(),
-        inject_security_headers=True,
+        config=FullAuthConfig(
+            SECRET_KEY="test-key-32b-long-enough-here!!!",
+            INJECT_SECURITY_HEADERS=True,
+        ),
     )
     app = FastAPI()
     fullauth.init_app(app)
@@ -169,9 +163,11 @@ async def test_auto_security_headers():
 async def test_auto_middleware_false_skips():
     """auto_middleware=False skips all auto-wired middleware."""
     fullauth = FullAuth(
-        secret_key="test-key-32b-long-enough-here!!!",
         adapter=InMemoryAdapter(),
-        inject_security_headers=True,
+        config=FullAuthConfig(
+            SECRET_KEY="test-key-32b-long-enough-here!!!",
+            INJECT_SECURITY_HEADERS=True,
+        ),
     )
     app = FastAPI()
     fullauth.init_app(app, auto_middleware=False)
@@ -195,9 +191,11 @@ async def test_auto_middleware_false_skips():
 async def test_builtin_me_route():
     """The /me route is available out of the box."""
     fullauth = FullAuth(
-        secret_key="test-key-32b-long-enough-here!!!",
         adapter=InMemoryAdapter(),
-        inject_security_headers=False,
+        config=FullAuthConfig(
+            SECRET_KEY="test-key-32b-long-enough-here!!!",
+            INJECT_SECURITY_HEADERS=False,
+        ),
     )
     app = FastAPI()
     fullauth.init_app(app, auto_middleware=False)
@@ -223,14 +221,16 @@ async def test_builtin_me_route():
 
 
 @pytest.mark.asyncio
-async def test_me_route_disabled():
+async def test_me_route_excluded_with_composable_routers():
+    """Including only auth_router means /me is not available."""
     fullauth = FullAuth(
-        secret_key="test-key-32b-long-enough-here!!!",
         adapter=InMemoryAdapter(),
-        enabled_routes=["login", "register"],
+        config=FullAuthConfig(SECRET_KEY="test-key-32b-long-enough-here!!!"),
     )
     app = FastAPI()
-    fullauth.init_app(app, auto_middleware=False)
+    app.state.fullauth = fullauth
+    # only include auth router (login/register/logout/refresh), not profile
+    app.include_router(fullauth.auth_router, prefix="/api/v1/auth")
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -292,8 +292,8 @@ async def test_explicit_schemas_on_adapter():
 
     adapter = InMemoryAdapter(user_schema=MyUser, create_user_schema=MyCreate)
     fullauth = FullAuth(
-        secret_key="test-key-32b-long-enough-here!!!",
         adapter=adapter,
+        config=FullAuthConfig(SECRET_KEY="test-key-32b-long-enough-here!!!"),
     )
     app = FastAPI()
     fullauth.init_app(app, auto_middleware=False)

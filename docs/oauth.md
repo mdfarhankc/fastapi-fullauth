@@ -11,24 +11,28 @@ pip install fastapi-fullauth[oauth]
 ## Configuration
 
 ```python
+from fastapi_fullauth import FullAuth, FullAuthConfig
+
 fullauth = FullAuth(
-    secret_key="...",
     adapter=adapter,
-    oauth_providers={
-        "google": {
-            "client_id": "your-google-client-id",
-            "client_secret": "your-google-secret",
-            "redirect_uris": [
-                "http://localhost:3000/auth/callback",
-                "https://myapp.com/auth/callback",
-            ],
+    config=FullAuthConfig(
+        SECRET_KEY="...",
+        OAUTH_PROVIDERS={
+            "google": {
+                "client_id": "your-google-client-id",
+                "client_secret": "your-google-secret",
+                "redirect_uris": [
+                    "http://localhost:3000/auth/callback",
+                    "https://myapp.com/auth/callback",
+                ],
+            },
+            "github": {
+                "client_id": "your-github-client-id",
+                "client_secret": "your-github-secret",
+                "redirect_uri": "http://localhost:3000/auth/callback",
+            },
         },
-        "github": {
-            "client_id": "your-github-client-id",
-            "client_secret": "your-github-secret",
-            "redirect_uri": "http://localhost:3000/auth/callback",
-        },
-    },
+    ),
 )
 ```
 
@@ -114,8 +118,11 @@ By default, if a user registers with `user@example.com` via email/password, then
 
 ```python
 fullauth = FullAuth(
-    ...
-    oauth_auto_link_by_email=False,
+    adapter=adapter,
+    config=FullAuthConfig(
+        ...,
+        OAUTH_AUTO_LINK_BY_EMAIL=False,
+    ),
 )
 ```
 

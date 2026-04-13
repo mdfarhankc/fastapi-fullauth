@@ -4,23 +4,10 @@ from argon2 import PasswordHasher
 from argon2.exceptions import VerificationError, VerifyMismatchError
 
 _argon2_hasher = PasswordHasher()
-_algorithm: Literal["argon2id", "bcrypt"] = "argon2id"
 
 
-def configure_hasher(algorithm: Literal["argon2id", "bcrypt"] = "argon2id") -> None:
-    global _algorithm
+def hash_password(password: str, algorithm: Literal["argon2id", "bcrypt"] = "argon2id") -> str:
     if algorithm == "bcrypt":
-        try:
-            import bcrypt  # noqa: F401
-        except ImportError:
-            raise ImportError(
-                "bcrypt is not installed. Install it with: pip install bcrypt"
-            ) from None
-    _algorithm = algorithm
-
-
-def hash_password(password: str) -> str:
-    if _algorithm == "bcrypt":
         import bcrypt
 
         return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
@@ -28,7 +15,7 @@ def hash_password(password: str) -> str:
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    if _algorithm == "bcrypt" or hashed.startswith("$2b$"):
+    if hashed.startswith("$2b$"):
         try:
             import bcrypt
 
@@ -41,7 +28,9 @@ def verify_password(plain: str, hashed: str) -> bool:
         return False
 
 
-def password_needs_rehash(hashed: str) -> bool:
+def password_needs_rehash(
+    hashed: str, algorithm: Literal["argon2id", "bcrypt"] = "argon2id"
+) -> bool:
     if hashed.startswith("$2b$"):
-        return _algorithm != "bcrypt"
+        return algorithm != "bcrypt"
     return _argon2_hasher.check_needs_rehash(hashed)
