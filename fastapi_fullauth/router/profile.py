@@ -102,9 +102,7 @@ def create_profile_router(
     ) -> MessageResponse:
         hashed = await fullauth.adapter.get_hashed_password(user.id)
         if hashed is None or not verify_password(data.current_password, hashed):
-            logger.warning(
-                "Password change failed — wrong current password: user_id=%s", user.id
-            )
+            logger.warning("Password change failed — wrong current password: user_id=%s", user.id)
             raise HTTPException(status_code=400, detail="Current password is incorrect")
 
         try:

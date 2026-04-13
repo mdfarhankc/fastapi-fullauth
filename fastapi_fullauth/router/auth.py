@@ -63,11 +63,11 @@ def create_auth_router(
 
         try:
             user = await register(
-                    fullauth.adapter,
-                    data,
-                    login_field=login_field,
-                    hash_algorithm=fullauth.config.PASSWORD_HASH_ALGORITHM,
-                )
+                fullauth.adapter,
+                data,
+                login_field=login_field,
+                hash_algorithm=fullauth.config.PASSWORD_HASH_ALGORITHM,
+            )
         except UserAlreadyExistsError:
             raise USER_EXISTS_EXCEPTION
 
@@ -161,9 +161,7 @@ def create_auth_router(
         uid = str(user.id)
 
         if fullauth.config.REFRESH_TOKEN_ROTATION:
-            already_blacklisted = await fullauth.token_engine.blacklist.is_blacklisted(
-                payload.jti
-            )
+            already_blacklisted = await fullauth.token_engine.blacklist.is_blacklisted(payload.jti)
             if already_blacklisted:
                 logger.warning(
                     "Concurrent refresh token use detected: jti=%s",

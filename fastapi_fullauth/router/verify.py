@@ -78,14 +78,10 @@ def create_verify_router() -> APIRouter:
         client_ip = get_client_ip(request, fullauth.config.TRUSTED_PROXY_HEADERS)
         await fullauth.check_auth_rate_limit("password-reset", client_ip)
 
-        token = await request_password_reset(
-            fullauth.adapter, fullauth.token_engine, data.email
-        )
+        token = await request_password_reset(fullauth.adapter, fullauth.token_engine, data.email)
 
         if token:
-            await fullauth.hooks.emit(
-                "send_password_reset_email", email=data.email, token=token
-            )
+            await fullauth.hooks.emit("send_password_reset_email", email=data.email, token=token)
 
         return MessageResponse(detail="If the email exists, a reset link has been sent.")
 
