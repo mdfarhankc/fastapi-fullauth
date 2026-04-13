@@ -1,5 +1,45 @@
 # Changelog
 
+## 0.6.0
+
+### Breaking changes
+
+- **Config-only API** — `FullAuth` no longer accepts `secret_key=`, `**config_kwargs`, or positional `config`. Pass `config=FullAuthConfig(SECRET_KEY="...")` or set `FULLAUTH_SECRET_KEY` env var. All params are keyword-only.
+- **`enabled_routes` removed** — replaced by composable routers. Include only the routers you need instead of filtering route names.
+- **`RouteName` type removed** — no longer needed with composable routers.
+- **`configure_hasher()` removed** — hash algorithm is now passed explicitly from config through flows. No more global mutable state.
+- **Schema auto-derivation removed** — `_derive_user_schema()` and `_resolve_create_schema()` deleted from all adapters and FullAuth. Define your own schemas extending `UserSchema` / `CreateUserSchema` and pass them to the adapter.
+- **`create_user_schema` moved to adapter** — pass it to the adapter, not FullAuth: `InMemoryAdapter(user_schema=MyUser, create_user_schema=MyCreate)`.
+
+### Added
+
+- **Generic type parameters** — `AbstractUserAdapter[UserSchemaType, CreateUserSchemaType]`, `FullAuth[UserSchemaType, CreateUserSchemaType]` with PEP 696 defaults for full type safety
+- **Composable routers** — `fullauth.auth_router`, `fullauth.profile_router`, `fullauth.verify_router`, `fullauth.admin_router`, `fullauth.oauth_router`. Each lazily created, include only what you need
+- **Typed dependency factories** — `get_current_user_dependency(MyUser)`, `get_verified_user_dependency(MyUser)`, `get_superuser_dependency(MyUser)` for custom schema type safety
+- `create_blacklist(config)` — extracted from FullAuth to `core/tokens.py`
+- `create_rate_limiter(config, max, window)` — extracted from FullAuth to `protection/ratelimit.py`
+- `UserSchemaType`, `CreateUserSchemaType` TypeVars exported from top-level package
+- `UserSchema`, `CreateUserSchema` base classes exported from top-level package
+
+### Changed
+
+- **Router split** — 613-line monolithic `create_auth_router()` split into `create_auth_router()` (login/register/logout/refresh), `create_profile_router()` (me/update/delete/change-password), `create_verify_router()` (email verify/password reset), `create_admin_router()` (roles/permissions)
+- **FullAuth slimmed** — factory methods extracted, composable router properties added, `_OAUTH_PROVIDER_REGISTRY` stays on class for now
+- `fullauth.router` still works as before (composes all sub-routers), `fullauth.init_app(app)` unchanged
+- `hash_password()` and `password_needs_rehash()` now accept explicit `algorithm` parameter (default `argon2id`)
+- Shared request/response models extracted to `router/_models.py`
+- RBAC permissions (`require_role`, `require_permission`) available via `fastapi_fullauth.dependencies` (removed `rbac/` re-export package will happen in next release)
+
+### Removed
+
+- `FullAuth._resolve_create_schema()` — auto-derivation of create schema from ORM model
+- `SQLModelAdapter._derive_user_schema()` — auto-derivation of user schema
+- `SQLAlchemyAdapter._derive_user_schema()` — auto-derivation of user schema
+- `_SA_TYPE_MAP` and `_get_sa_type_map()` — SQLAlchemy type mapping for auto-derivation
+- `FullAuth._create_blacklist()` — moved to `core/tokens.create_blacklist()`
+- `FullAuth._create_rate_limiter()` — moved to `protection.ratelimit.create_rate_limiter()`
+- `configure_hasher()` and `_algorithm` global from `core/crypto.py`
+
 ## 0.5.0
 
 ### Added
