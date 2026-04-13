@@ -172,6 +172,25 @@ async def test_update_profile():
 
 
 @pytest.mark.asyncio
+async def test_update_profile_rejects_unknown_fields():
+    app, _, _, engine = await _make_app()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        tokens = await _register_and_login(client)
+        headers = {"Authorization": f"Bearer {tokens['access_token']}"}
+
+        r = await client.patch(
+            "/api/v1/auth/me",
+            json={"nonexistent_field": "value"},
+            headers=headers,
+        )
+        assert r.status_code == 422
+        assert "Unknown fields" in r.json()["detail"]
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
 async def test_update_profile_rejects_protected_fields():
     app, _, _, engine = await _make_app()
     transport = ASGITransport(app=app)

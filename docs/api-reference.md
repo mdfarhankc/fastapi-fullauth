@@ -15,7 +15,6 @@ fullauth = FullAuth(
     providers=None,                 # list of OAuthProvider instances
     backends=None,                  # [BearerBackend()] by default
     password_validator=None,        # PasswordValidator instance
-    include_user_in_login=False,    # include user data in login response
     on_create_token_claims=None,    # async callback for custom JWT claims
 )
 ```
@@ -91,6 +90,10 @@ class TokenPair(BaseModel):
     token_type: str = "bearer"
     expires_in: int | None = None
 ```
+
+### LoginResponse
+
+Returned by login and OAuth callback routes. Extends `TokenPair` with an optional `user` field. The `user` field contains the full user schema object when `INCLUDE_USER_IN_LOGIN=True`, otherwise `null`. The user type matches your configured user schema (e.g., `MyUserSchema`).
 
 ### TokenPayload
 

@@ -1,11 +1,17 @@
 import logging
 from typing import TYPE_CHECKING
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Response
+from fastapi import APIRouter, Body, Depends, HTTPException
 
 from fastapi_fullauth.dependencies.current_user import CurrentUser, VerifiedUser, _get_fullauth
-from fastapi_fullauth.exceptions import AuthenticationError, InvalidPasswordError
+from fastapi_fullauth.exceptions import (
+    AuthenticationError,
+    InvalidPasswordError,
+    NoValidFieldsError,
+    UnknownFieldsError,
+)
 from fastapi_fullauth.flows.change_password import change_password
+from fastapi_fullauth.flows.update_profile import validate_profile_updates
 from fastapi_fullauth.router._models import ChangePasswordRequest, MessageResponse
 from fastapi_fullauth.types import UserSchema, UserSchemaType
 
@@ -53,18 +59,12 @@ def create_profile_router(
         fullauth: "FullAuth" = Depends(_get_fullauth),
         data: dict = Body(...),
     ) -> UserSchema:
-        protected = user_schema.PROTECTED_FIELDS
-        updates = {k: v for k, v in data.items() if k not in protected}
-        if not updates:
+        try:
+            updates = validate_profile_updates(data, user_schema)
+        except NoValidFieldsError:
             raise HTTPException(status_code=400, detail="No valid fields to update")
-
-        allowed = set(user_schema.model_fields.keys()) - protected
-        unknown = set(updates.keys()) - allowed
-        if unknown:
-            raise HTTPException(
-                status_code=422,
-                detail=f"Unknown fields: {', '.join(sorted(unknown))}",
-            )
+        except UnknownFieldsError as e:
+            raise HTTPException(status_code=422, detail=str(e))
 
         return await fullauth.adapter.update_user(user.id, updates)
 
@@ -76,7 +76,6 @@ def create_profile_router(
         await fullauth.adapter.revoke_all_user_refresh_tokens(user.id)
         await fullauth.adapter.delete_user(user.id)
         logger.warning("Account deleted: user_id=%s, email=%s", user.id, user.email)
-        return Response(status_code=204)
 
     @router.post(
         "/change-password",

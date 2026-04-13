@@ -138,9 +138,12 @@ Response:
   "access_token": "eyJ...",
   "refresh_token": "eyJ...",
   "token_type": "bearer",
-  "expires_in": 1800
+  "expires_in": 1800,
+  "user": null
 }
 ```
+
+When `INCLUDE_USER_IN_LOGIN=True`, `user` contains the full user object instead of `null`.
 
 **Get current user:**
 

@@ -29,7 +29,6 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
         providers: OAuth providers (GoogleOAuthProvider, GitHubOAuthProvider, etc.).
         backends: Token transport strategies. Defaults to [BearerBackend()].
         password_validator: Custom PasswordValidator. Defaults to min-length from config.
-        include_user_in_login: Include user data in login response.
         on_create_token_claims: async def cb(user) -> dict — extra claims embedded in JWTs.
     """
 
@@ -41,7 +40,6 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
         providers: list[OAuthProvider] | None = None,
         backends: list[AbstractBackend] | None = None,
         password_validator: PasswordValidator | None = None,
-        include_user_in_login: bool = False,
         on_create_token_claims: TokenClaimsBuilder | None = None,
     ) -> None:
         if config is None:
@@ -69,7 +67,6 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
         self.password_validator = password_validator or PasswordValidator(
             min_length=config.PASSWORD_MIN_LENGTH
         )
-        self.include_user_in_login = include_user_in_login
         self.on_create_token_claims = on_create_token_claims
         self.hooks = EventHooks()
         self.oauth_providers: dict[str, OAuthProvider] = {p.name: p for p in (providers or [])}
@@ -155,7 +152,7 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
             return None
         from fastapi_fullauth.router.oauth import create_oauth_router
 
-        return create_oauth_router()
+        return create_oauth_router(user_schema=self.adapter._user_schema)
 
     @property
     def router(self) -> APIRouter:

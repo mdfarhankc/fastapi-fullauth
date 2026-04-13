@@ -68,7 +68,7 @@ class CSRFMiddleware(BaseHTTPMiddleware):
     def _resolve_secret() -> str:
         from fastapi_fullauth.config import FullAuthConfig
 
-        cfg = FullAuthConfig()  # type: ignore[call-arg]
+        cfg = FullAuthConfig.model_validate({})
         return cfg.CSRF_SECRET or cfg.SECRET_KEY
 
     def _is_exempt(self, path: str) -> bool:

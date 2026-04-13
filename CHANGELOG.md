@@ -10,10 +10,19 @@
 - **`OAuthProvider` simplified** — only `redirect_uris: list[str]` (removed singular `redirect_uri`). `get_redirect_uri()` removed.
 - **`redirect_uri` required in authorize URL** — clients must pass `?redirect_uri=` in the OAuth authorize request.
 
+### Breaking changes (audit cleanup)
+
+- **`include_user_in_login` moved to config** — use `FullAuthConfig(INCLUDE_USER_IN_LOGIN=True)` or `FULLAUTH_INCLUDE_USER_IN_LOGIN=true` env var instead of `FullAuth(include_user_in_login=True)`.
+- **Login response always includes `user` field** — when `INCLUDE_USER_IN_LOGIN=False`, `user` is `null` (previously the key was absent). When `True`, `user` contains the full user schema object.
+
 ### Added
 
 - **Redis lockout backend** — `LOCKOUT_BACKEND="redis"` for multi-worker deployments
 - `LOCKOUT_ENABLED` config — disable account lockout entirely (`False`)
+- `INCLUDE_USER_IN_LOGIN` config — include user object in login/OAuth callback response
+- `LoginResponse` dynamic model — login and OAuth callback routes now have proper `response_model` with typed `user` field matching the configured user schema
+- `validate_profile_updates` flow — profile field filtering extracted from router to `flows/update_profile.py`
+- `NoValidFieldsError`, `UnknownFieldsError` exceptions for profile update validation
 - `change_password` flow — business logic extracted from profile router
 - `PROTECTED_FIELDS` ClassVar on `UserSchema` — users can extend in subclasses
 - Password validation moved to flows (`register`, `reset_password`, `change_password`)
@@ -23,7 +32,11 @@
 
 - `LockoutManager` is now an abstract base class with async methods
 - `InMemoryLockoutManager` replaces the old sync `LockoutManager`
-
+- `migrations/` package flattened to single `migrations.py` module (import paths unchanged)
+- 4 `type: ignore` comments fixed (replaced with `getattr`, assertions, `model_validate`)
+- Misplaced `type: ignore` comments moved inline
+- 204 routes (`delete_me`, `unlink_oauth_account`) no longer return unnecessary `Response` objects
+- Logout route return type corrected to `Response` (needs it for cookie deletion)
 - All tests migrated from InMemory to SQLModel + SQLite
 - Tests regrouped: `test_auth`, `test_profile`, `test_config`, `test_hooks`, `test_security`, `test_rbac`
 - `UUID(payload.sub)` conversion at token boundaries (dependencies, router, flows)
@@ -37,6 +50,7 @@
 - `OAUTH_PROVIDERS` from `FullAuthConfig`
 - `FullAuth._build_oauth_providers()` and `_OAUTH_PROVIDER_REGISTRY`
 - `OAuthProvider.get_redirect_uri()` method
+- `rbac/` package (was empty, just re-exported from `dependencies`)
 
 ## 0.6.0
 

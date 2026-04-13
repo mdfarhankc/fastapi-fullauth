@@ -15,8 +15,7 @@ _bearer_scheme = HTTPBearer(auto_error=False)
 
 
 def _get_fullauth(request: Request) -> "FullAuth":
-    # type: ignore[union-attr]
-    fullauth: FullAuth | None = request.app.state.fullauth
+    fullauth: FullAuth | None = getattr(request.app.state, "fullauth", None)
     if fullauth is None:
         raise RuntimeError("FullAuth not initialized on app.state")
     return fullauth

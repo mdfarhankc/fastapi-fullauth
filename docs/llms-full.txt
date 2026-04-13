@@ -457,9 +457,12 @@ Response:
   "access_token": "eyJ...",
   "refresh_token": "eyJ...",
   "token_type": "bearer",
-  "expires_in": 1800
+  "expires_in": 1800,
+  "user": null
 }
 ```
+
+When `INCLUDE_USER_IN_LOGIN=True`, `user` contains the full user object instead of `null`.
 
 **Get current user:**
 
@@ -565,6 +568,7 @@ Pass config inline or as an object:
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `LOGIN_FIELD` | `str` | `"email"` | Field used for login (`"email"`, `"username"`, etc.). |
+| `INCLUDE_USER_IN_LOGIN` | `bool` | `False` | Include user object in login/OAuth callback response. |
 | `LOCKOUT_ENABLED` | `bool` | `True` | Enable account lockout after failed login attempts. |
 | `LOCKOUT_BACKEND` | `"memory" \| "redis"` | `"memory"` | Lockout storage backend. Use `"redis"` for multi-worker deployments. |
 | `MAX_LOGIN_ATTEMPTS` | `int` | `5` | Failed attempts before account lockout. |
@@ -1689,7 +1693,8 @@ Response:
   "access_token": "eyJ...",
   "refresh_token": "eyJ...",
   "token_type": "bearer",
-  "expires_in": 1800
+  "expires_in": 1800,
+  "user": null
 }
 ```
 
@@ -1897,7 +1902,6 @@ fullauth = FullAuth(
     providers=None,                 # list of OAuthProvider instances
     backends=None,                  # [BearerBackend()] by default
     password_validator=None,        # PasswordValidator instance
-    include_user_in_login=False,    # include user data in login response
     on_create_token_claims=None,    # async callback for custom JWT claims
 )
 ```
@@ -2015,6 +2019,8 @@ from fastapi_fullauth.exceptions import (
     UserNotFoundError,              # user not found
     InvalidPasswordError,           # password validation failed
     AccountLockedError,             # too many failed attempts
+    NoValidFieldsError,             # all profile update fields are protected
+    UnknownFieldsError,             # profile update contains unknown fields
     OAuthError,                     # OAuth base error
     OAuthProviderError,             # provider-specific error
 )

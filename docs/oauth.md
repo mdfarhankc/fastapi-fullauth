@@ -92,9 +92,12 @@ Response:
   "access_token": "eyJ...",
   "refresh_token": "eyJ...",
   "token_type": "bearer",
-  "expires_in": 1800
+  "expires_in": 1800,
+  "user": null
 }
 ```
+
+When `INCLUDE_USER_IN_LOGIN=True`, `user` contains the full user object instead of `null`.
 
 From this point on, the session works exactly like email/password login. The user can call `/me`, `/refresh`, `/logout`, etc. with the JWT tokens.
 
