@@ -12,9 +12,17 @@
 
 ### Added
 
+- **Redis lockout backend** — `LOCKOUT_BACKEND="redis"` for multi-worker deployments
+- `LOCKOUT_ENABLED` config — disable account lockout entirely (`False`)
+- `change_password` flow — business logic extracted from profile router
+- `PROTECTED_FIELDS` ClassVar on `UserSchema` — users can extend in subclasses
+- Password validation moved to flows (`register`, `reset_password`, `change_password`)
 - `Makefile` with `make check`, `make test`, `make lint`, `make format`, `make docs`, etc.
 
 ### Changed
+
+- `LockoutManager` is now an abstract base class with async methods
+- `InMemoryLockoutManager` replaces the old sync `LockoutManager`
 
 - All tests migrated from InMemory to SQLModel + SQLite
 - Tests regrouped: `test_auth`, `test_profile`, `test_config`, `test_hooks`, `test_security`, `test_rbac`

@@ -10,7 +10,7 @@ from fastapi_fullauth.config import FullAuthConfig
 from fastapi_fullauth.core.tokens import TokenEngine, create_blacklist
 from fastapi_fullauth.hooks import EventHooks
 from fastapi_fullauth.oauth.base import OAuthProvider
-from fastapi_fullauth.protection.lockout import LockoutManager
+from fastapi_fullauth.protection.lockout import create_lockout
 from fastapi_fullauth.protection.ratelimit import RateLimiter, RedisRateLimiter, create_rate_limiter
 from fastapi_fullauth.types import CreateUserSchemaType, UserSchema, UserSchemaType
 from fastapi_fullauth.validators import PasswordValidator
@@ -51,10 +51,7 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
         self.adapter = adapter
         self.backends = backends or [BearerBackend()]
         self.token_engine = TokenEngine(config=config, blacklist=create_blacklist(config))
-        self.lockout = LockoutManager(
-            max_attempts=config.MAX_LOGIN_ATTEMPTS,
-            lockout_seconds=config.LOCKOUT_DURATION_MINUTES * 60,
-        )
+        self.lockout = create_lockout(config)
 
         self.auth_rate_limiters: dict[str, RateLimiter | RedisRateLimiter] = {}
         if config.AUTH_RATE_LIMIT_ENABLED:

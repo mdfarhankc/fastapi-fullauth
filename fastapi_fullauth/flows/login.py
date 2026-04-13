@@ -21,7 +21,7 @@ async def login(
     user: UserSchema | None = None,
     hash_algorithm: str = "argon2id",
 ) -> TokenPair:
-    if lockout and lockout.is_locked(identifier):
+    if lockout and await lockout.is_locked(identifier):
         logger.warning("Login blocked — account locked: %s", identifier)
         raise AccountLockedError(f"Account {identifier} is temporarily locked")
 
@@ -29,14 +29,14 @@ async def login(
         user = await adapter.get_user_by_field(login_field, identifier)
     if user is None:
         if lockout:
-            lockout.record_failure(identifier)
+            await lockout.record_failure(identifier)
         logger.warning("Login failed — user not found: %s", identifier)
         raise AuthenticationError("Invalid credentials")
 
     hashed = await adapter.get_hashed_password(user.id)
     if hashed is None or not verify_password(password, hashed):
         if lockout:
-            lockout.record_failure(identifier)
+            await lockout.record_failure(identifier)
         logger.warning("Login failed — invalid password: %s", identifier)
         raise AuthenticationError("Invalid credentials")
 
@@ -48,13 +48,12 @@ async def login(
         await adapter.set_password(user.id, hash_password(password, algorithm=hash_algorithm))
 
     if lockout:
-        lockout.clear(identifier)
+        await lockout.clear(identifier)
 
     logger.info("Login successful: user_id=%s", user.id)
-    uid = str(user.id)
     roles = await adapter.get_user_roles(user.id)
     access, refresh_meta = token_engine.create_token_pair(
-        user_id=uid,
+        user_id=str(user.id),
         roles=roles,
         extra=extra_claims,
     )
@@ -62,7 +61,7 @@ async def login(
     await adapter.store_refresh_token(
         RefreshToken(
             token=refresh_meta.token,
-            user_id=uid,
+            user_id=user.id,
             expires_at=refresh_meta.expires_at,
             family_id=refresh_meta.family_id,
         )

@@ -64,6 +64,8 @@ Pass config inline or as an object:
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `LOGIN_FIELD` | `str` | `"email"` | Field used for login (`"email"`, `"username"`, etc.). |
+| `LOCKOUT_ENABLED` | `bool` | `True` | Enable account lockout after failed login attempts. |
+| `LOCKOUT_BACKEND` | `"memory" \| "redis"` | `"memory"` | Lockout storage backend. Use `"redis"` for multi-worker deployments. |
 | `MAX_LOGIN_ATTEMPTS` | `int` | `5` | Failed attempts before account lockout. |
 | `LOCKOUT_DURATION_MINUTES` | `int` | `15` | Lockout duration after max attempts. |
 

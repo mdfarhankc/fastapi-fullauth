@@ -20,6 +20,8 @@ class FullAuthConfig(BaseSettings):
 
     LOGIN_FIELD: str = "email"
 
+    LOCKOUT_ENABLED: bool = True
+    LOCKOUT_BACKEND: Literal["memory", "redis"] = "memory"
     MAX_LOGIN_ATTEMPTS: int = 5
     LOCKOUT_DURATION_MINUTES: int = 15
 

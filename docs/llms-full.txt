@@ -565,6 +565,8 @@ Pass config inline or as an object:
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `LOGIN_FIELD` | `str` | `"email"` | Field used for login (`"email"`, `"username"`, etc.). |
+| `LOCKOUT_ENABLED` | `bool` | `True` | Enable account lockout after failed login attempts. |
+| `LOCKOUT_BACKEND` | `"memory" \| "redis"` | `"memory"` | Lockout storage backend. Use `"redis"` for multi-worker deployments. |
 | `MAX_LOGIN_ATTEMPTS` | `int` | `5` | Failed attempts before account lockout. |
 | `LOCKOUT_DURATION_MINUTES` | `int` | `15` | Lockout duration after max attempts. |
 
@@ -1952,7 +1954,15 @@ class UserSchema(BaseModel):
     is_verified: bool = False
     is_superuser: bool = False
     roles: list[str] = []
+
+    PROTECTED_FIELDS: ClassVar[set[str]] = {
+        "id", "email", "hashed_password", "is_active",
+        "is_verified", "is_superuser", "roles", "password",
+        "created_at", "refresh_tokens",
+    }
 ```
+
+Extend `PROTECTED_FIELDS` in subclasses to protect custom sensitive fields from profile updates.
 
 ### TokenPair
 
