@@ -274,6 +274,15 @@ fullauth = FullAuth(
 
 See [Configuration docs](https://mdfarhankc.github.io/fastapi-fullauth/configuration/) for all options.
 
+## AI-friendly docs
+
+Using an AI coding assistant? Point it at our LLM-optimized docs:
+
+- **[llms.txt](https://mdfarhankc.github.io/fastapi-fullauth/llms.txt)** — concise overview with links to all doc pages
+- **[llms-full.txt](https://mdfarhankc.github.io/fastapi-fullauth/llms-full.txt)** — full documentation in a single file
+
+Works with Claude, Cursor, Copilot, and any tool that accepts a docs URL.
+
 ## Development
 
 ```bash

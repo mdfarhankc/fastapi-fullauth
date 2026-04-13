@@ -138,6 +138,15 @@ With OAuth enabled, additional routes are registered under `/auth/oauth/`. See [
 
 All routes are prefixed with `/api/v1` by default (configurable via `API_PREFIX`).
 
+## AI-friendly docs
+
+Using an AI coding assistant? Point it at our LLM-optimized docs:
+
+- **[llms.txt](llms.txt)** — concise overview with links to all doc pages
+- **[llms-full.txt](llms-full.txt)** — full documentation in a single file
+
+Works with Claude, Cursor, Copilot, and any tool that accepts a docs URL.
+
 ## License
 
 MIT
