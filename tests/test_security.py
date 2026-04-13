@@ -88,10 +88,10 @@ async def test_csrf_allows_post_with_valid_token(csrf_app):
         csrf_token = r.cookies["fullauth_csrf"]
 
         # post with matching header and cookie
+        client.cookies.set("fullauth_csrf", csrf_token)
         r = await client.post(
             "/submit",
             headers={"X-CSRF-Token": csrf_token},
-            cookies={"fullauth_csrf": csrf_token},
         )
         assert r.status_code == 200
 
@@ -101,10 +101,10 @@ async def test_csrf_rejects_wrong_token(csrf_app):
     transport = ASGITransport(app=csrf_app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         r = await client.get("/form")
+        client.cookies.set("fullauth_csrf", r.cookies["fullauth_csrf"])
         r = await client.post(
             "/submit",
             headers={"X-CSRF-Token": "wrong-token"},
-            cookies={"fullauth_csrf": r.cookies["fullauth_csrf"]},
         )
         assert r.status_code == 403
 

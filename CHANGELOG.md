@@ -80,7 +80,7 @@
 - `fullauth.router` still works as before (composes all sub-routers), `fullauth.init_app(app)` unchanged
 - `hash_password()` and `password_needs_rehash()` now accept explicit `algorithm` parameter (default `argon2id`)
 - Shared request/response models extracted to `router/_models.py`
-- RBAC permissions (`require_role`, `require_permission`) available via `fastapi_fullauth.dependencies` (removed `rbac/` re-export package will happen in next release)
+- RBAC permissions (`require_role`, `require_permission`) available via `fastapi_fullauth.dependencies`
 
 ### Removed
 
