@@ -18,7 +18,12 @@ from fastapi_fullauth.exceptions import (
 from fastapi_fullauth.flows.login import login
 from fastapi_fullauth.flows.logout import logout
 from fastapi_fullauth.flows.register import register
-from fastapi_fullauth.router._models import LogoutRequest, RefreshRequest, build_login_model
+from fastapi_fullauth.router._models import (
+    LogoutRequest,
+    RefreshRequest,
+    build_login_model,
+    build_login_response_model,
+)
 from fastapi_fullauth.types import (
     CreateUserSchema,
     CreateUserSchemaType,
@@ -41,6 +46,7 @@ def create_auth_router(
     login_field: str = "email",
 ) -> APIRouter:
     LoginRequest = build_login_model(login_field)  # noqa: N806
+    LoginResponse = build_login_response_model(user_schema)  # noqa: N806
     router = APIRouter()
 
     @router.post(
@@ -76,6 +82,7 @@ def create_auth_router(
     @router.post(
         "/login",
         status_code=200,
+        response_model=LoginResponse,
         description="Authenticate and get access + refresh tokens.",
     )
     async def login_route(
@@ -83,7 +90,7 @@ def create_auth_router(
         request: Request,
         response: Response,
         fullauth: "FullAuth" = Depends(_get_fullauth),
-    ):
+    ) -> TokenPair:
         client_ip = get_client_ip(request, fullauth.config.TRUSTED_PROXY_HEADERS)
         await fullauth.check_auth_rate_limit("login", client_ip)
 
@@ -113,14 +120,14 @@ def create_auth_router(
 
         await fullauth.hooks.emit("after_login", user=user)
 
-        if fullauth.include_user_in_login and user:
-            return {
-                "access_token": tokens.access_token,
-                "refresh_token": tokens.refresh_token,
-                "token_type": tokens.token_type,
-                "expires_in": tokens.expires_in,
-                "user": user.model_dump(),
-            }
+        if fullauth.config.INCLUDE_USER_IN_LOGIN and user:
+            return LoginResponse(
+                access_token=tokens.access_token,
+                refresh_token=tokens.refresh_token,
+                token_type=tokens.token_type,
+                expires_in=tokens.expires_in,
+                user=user,
+            )
 
         return tokens
 
@@ -215,7 +222,7 @@ def create_auth_router(
         fullauth: "FullAuth" = Depends(_get_fullauth),
         token: str = Depends(_extract_token),
         data: LogoutRequest | None = Body(None),
-    ) -> None:
+    ) -> Response:
         try:
             payload = await fullauth.token_engine.decode_token(token)
         except TokenError:

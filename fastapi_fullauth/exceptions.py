@@ -1,5 +1,29 @@
 from fastapi import HTTPException, status
 
+__all__ = [
+    "ACCOUNT_LOCKED_EXCEPTION",
+    "CREDENTIALS_EXCEPTION",
+    "FORBIDDEN_EXCEPTION",
+    "OAUTH_ERROR_EXCEPTION",
+    "USER_EXISTS_EXCEPTION",
+    "AccountLockedError",
+    "AuthenticationError",
+    "AuthorizationError",
+    "FullAuthError",
+    "InvalidPasswordError",
+    "NoValidFieldsError",
+    "OAuthAccountAlreadyLinkedError",
+    "OAuthError",
+    "OAuthProviderError",
+    "RefreshTokenReuseError",
+    "TokenBlacklistedError",
+    "TokenError",
+    "TokenExpiredError",
+    "UnknownFieldsError",
+    "UserAlreadyExistsError",
+    "UserNotFoundError",
+]
+
 
 class FullAuthError(Exception):
     pass
@@ -55,6 +79,16 @@ class OAuthProviderError(OAuthError):
 
 class OAuthAccountAlreadyLinkedError(OAuthError):
     pass
+
+
+class NoValidFieldsError(FullAuthError):
+    pass
+
+
+class UnknownFieldsError(FullAuthError):
+    def __init__(self, fields: set[str]) -> None:
+        self.fields = fields
+        super().__init__(f"Unknown fields: {', '.join(sorted(fields))}")
 
 
 CREDENTIALS_EXCEPTION = HTTPException(

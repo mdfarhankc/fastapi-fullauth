@@ -40,8 +40,7 @@ class SQLModelAdapter(AbstractUserAdapter[UserSchemaType, CreateUserSchemaType])
         self._create_user_schema = create_user_schema
 
     def _user_query(self):
-        # type: ignore[arg-type]
-        return select(self._user_model).options(selectinload(self._user_model.roles))
+        return select(self._user_model).options(selectinload(self._user_model.roles))  # type: ignore[arg-type]
 
     def _to_schema(self, user) -> UserSchemaType:
         # convert Role objects to role name strings before validation
@@ -85,8 +84,9 @@ class SQLModelAdapter(AbstractUserAdapter[UserSchemaType, CreateUserSchemaType])
             await session.commit()
             # re-fetch with roles loaded
             result = await session.execute(self._user_query().where(self._user_model.id == user.id))
-            user = result.scalars().first()  # type: ignore[assignment]
-            return self._to_schema(user)  # type: ignore[arg-type]
+            user = result.scalars().first()
+            assert user is not None  # just committed above
+            return self._to_schema(user)
 
     async def update_user(self, user_id: UserID, data: dict[str, Any]) -> UserSchemaType:
         async with self._session_maker() as session:

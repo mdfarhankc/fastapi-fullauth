@@ -11,6 +11,8 @@ from fastapi_fullauth.exceptions import (
     TokenError,
 )
 from fastapi_fullauth.flows.oauth import generate_oauth_state, oauth_callback
+from fastapi_fullauth.router._models import build_login_response_model
+from fastapi_fullauth.types import TokenPair, UserSchema, UserSchemaType
 
 logger = logging.getLogger("fastapi_fullauth.oauth")
 
@@ -37,7 +39,10 @@ class OAuthAccountResponse(BaseModel):
     provider_email: str | None = None
 
 
-def create_oauth_router() -> APIRouter:
+def create_oauth_router(
+    user_schema: type[UserSchemaType] = UserSchema,  # type: ignore[assignment]
+) -> APIRouter:
+    LoginResponse = build_login_response_model(user_schema)  # noqa: N806
     router = APIRouter()
 
     @router.get(
@@ -82,6 +87,7 @@ def create_oauth_router() -> APIRouter:
     @router.post(
         "/oauth/{provider}/callback",
         status_code=200,
+        response_model=LoginResponse,
         description="Exchange OAuth authorization code for tokens.",
     )
     async def callback(
@@ -89,7 +95,7 @@ def create_oauth_router() -> APIRouter:
         data: OAuthCallbackRequest,
         response: Response,
         fullauth: "FullAuth" = Depends(_get_fullauth),
-    ):
+    ) -> TokenPair:
         oauth_provider = fullauth.oauth_providers.get(provider)
         if oauth_provider is None:
             raise HTTPException(
@@ -118,14 +124,14 @@ def create_oauth_router() -> APIRouter:
         if is_new_user:
             await fullauth.hooks.emit("after_register", user=user)
 
-        if fullauth.include_user_in_login and user:
-            return {
-                "access_token": token_pair.access_token,
-                "refresh_token": token_pair.refresh_token,
-                "token_type": token_pair.token_type,
-                "expires_in": token_pair.expires_in,
-                "user": user.model_dump(),
-            }
+        if fullauth.config.INCLUDE_USER_IN_LOGIN and user:
+            return LoginResponse(
+                access_token=token_pair.access_token,
+                refresh_token=token_pair.refresh_token,
+                token_type=token_pair.token_type,
+                expires_in=token_pair.expires_in,
+                user=user,
+            )
 
         return token_pair
 
@@ -171,6 +177,5 @@ def create_oauth_router() -> APIRouter:
 
         await fullauth.adapter.delete_oauth_account(provider, user.id)
         logger.info("OAuth account unlinked: user_id=%s, provider=%s", user.id, provider)
-        return Response(status_code=204)
 
     return router

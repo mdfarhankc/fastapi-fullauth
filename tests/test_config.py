@@ -324,11 +324,13 @@ async def test_custom_token_claims():
 async def test_login_includes_user():
     engine, session_maker = await _make_db()
     adapter = SQLModelAdapter(session_maker=session_maker, user_model=User)
-    config = FullAuthConfig(SECRET_KEY="test-secret-key-that-is-long-enough-32b")
+    config = FullAuthConfig(
+        SECRET_KEY="test-secret-key-that-is-long-enough-32b",
+        INCLUDE_USER_IN_LOGIN=True,
+    )
     fullauth = FullAuth(
         config=config,
         adapter=adapter,
-        include_user_in_login=True,
     )
     app = FastAPI()
     fullauth.init_app(app, auto_middleware=False)
@@ -359,7 +361,7 @@ async def test_login_excludes_user_by_default(client, registered_user):
     )
     data = r.json()
     assert "access_token" in data
-    assert "user" not in data
+    assert data["user"] is None
 
 
 # ===========================================================================

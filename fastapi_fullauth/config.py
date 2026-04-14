@@ -19,6 +19,7 @@ class FullAuthConfig(BaseSettings):
     PASSWORD_MIN_LENGTH: int = 8
 
     LOGIN_FIELD: str = "email"
+    INCLUDE_USER_IN_LOGIN: bool = False
 
     LOCKOUT_ENABLED: bool = True
     LOCKOUT_BACKEND: Literal["memory", "redis"] = "memory"

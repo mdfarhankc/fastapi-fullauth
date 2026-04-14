@@ -29,10 +29,8 @@ class SQLAlchemyAdapter(AbstractUserAdapter[UserSchemaType, CreateUserSchemaType
         self,
         session_maker: async_sessionmaker[AsyncSession],
         user_model: type[UserBase],
-        # type: ignore[assignment]
-        user_schema: type[UserSchemaType] = UserSchema,
-        # type: ignore[assignment]
-        create_user_schema: type[CreateUserSchemaType] = CreateUserSchema,
+        user_schema: type[UserSchemaType] = UserSchema,  # type: ignore[assignment]
+        create_user_schema: type[CreateUserSchemaType] = CreateUserSchema,  # type: ignore[assignment]
     ) -> None:
         self._session_maker = session_maker
         self._user_model = user_model
