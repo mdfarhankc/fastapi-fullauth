@@ -12,6 +12,18 @@ keywords = [
     "security",
     "jwt",
     "argon2",
+    "oauth2",
+    "rbac",
+    "async",
+    "pydantic",
+    "sqlmodel",
+    "sqlalchemy",
+    "redis",
+    "bcrypt",
+    "csrf",
+    "refresh-token",
+    "password-hashing",
+    "role-based-access-control",
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
