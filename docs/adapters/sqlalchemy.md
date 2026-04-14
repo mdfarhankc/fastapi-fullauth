@@ -15,9 +15,8 @@ pip install fastapi-fullauth[sqlalchemy]
 ```python
 from sqlalchemy import Boolean, Column, DateTime, String, Table, ForeignKey
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
-from fastapi_fullauth.adapters.sqlalchemy.models import (
-    FullAuthBase, RoleModel, UserBase, user_role_table,
-)
+from fastapi_fullauth.adapters.sqlalchemy.models.base import FullAuthBase, UserBase
+from fastapi_fullauth.adapters.sqlalchemy.models.role import RoleModel
 
 class User(UserBase):
     __tablename__ = "fullauth_users"
@@ -27,7 +26,9 @@ class User(UserBase):
     phone: Mapped[str] = mapped_column(String(20), default="")
 
     # required relationships
-    roles: Mapped[list[RoleModel]] = relationship(secondary=user_role_table)
+    roles: Mapped[list[RoleModel]] = relationship(
+        secondary="fullauth_user_roles", lazy="selectin",
+    )
 ```
 
 `UserBase` provides the same core fields as the SQLModel version: `id`, `email`, `hashed_password`, `is_active`, `is_verified`, `is_superuser`, `created_at`.

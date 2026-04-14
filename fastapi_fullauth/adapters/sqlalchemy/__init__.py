@@ -1,6 +1,7 @@
 from fastapi_fullauth.adapters.sqlalchemy.adapter import SQLAlchemyAdapter
 from fastapi_fullauth.adapters.sqlalchemy.models import (
     FullAuthBase,
+    OAuthAccountModel,
     PermissionModel,
     RefreshTokenModel,
     RoleModel,
@@ -11,6 +12,7 @@ from fastapi_fullauth.adapters.sqlalchemy.models import (
 
 __all__ = [
     "FullAuthBase",
+    "OAuthAccountModel",
     "PermissionModel",
     "RefreshTokenModel",
     "RoleModel",

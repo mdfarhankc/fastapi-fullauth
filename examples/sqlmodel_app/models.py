@@ -1,11 +1,7 @@
 from sqlmodel import Field, Relationship
 
-from fastapi_fullauth.adapters.sqlmodel import (
-    RefreshTokenRecord,
-    Role,
-    UserBase,
-    UserRoleLink,
-)
+from fastapi_fullauth.adapters.sqlmodel.models.base import RefreshTokenRecord, UserBase
+from fastapi_fullauth.adapters.sqlmodel.models.role import Role, UserRoleLink
 
 
 class User(UserBase, table=True):

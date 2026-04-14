@@ -1,6 +1,5 @@
 import logging
-from collections.abc import Awaitable, Callable
-from typing import Any, Generic
+from typing import Generic
 
 from fastapi import APIRouter, FastAPI
 
@@ -12,12 +11,16 @@ from fastapi_fullauth.hooks import EventHooks
 from fastapi_fullauth.oauth.base import OAuthProvider
 from fastapi_fullauth.protection.lockout import create_lockout
 from fastapi_fullauth.protection.ratelimit import RateLimiter, RedisRateLimiter, create_rate_limiter
-from fastapi_fullauth.types import CreateUserSchemaType, UserSchema, UserSchemaType
+from fastapi_fullauth.types import (
+    CreateUserSchemaType,
+    RouterName,
+    TokenClaimsBuilder,
+    UserSchema,
+    UserSchemaType,
+)
 from fastapi_fullauth.validators import PasswordValidator
 
 logger = logging.getLogger("fastapi_fullauth")
-
-TokenClaimsBuilder = Callable[[UserSchema], Awaitable[dict[str, Any]]]
 
 
 class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
@@ -154,27 +157,34 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
 
         return create_oauth_router(user_schema=self.adapter._user_schema)
 
+    _ROUTER_NAMES: set[RouterName] = {"auth", "profile", "verify", "admin", "oauth"}
+
+    def _build_router(self, exclude: set[str] | None = None) -> APIRouter:
+        """Build combined router, optionally excluding named sub-routers."""
+        exclude = exclude or set()
+        prefix = self.config.API_PREFIX.rstrip("/") + self.config.AUTH_ROUTER_PREFIX
+        router = APIRouter(prefix=prefix, tags=self.config.ROUTER_TAGS)
+        if "auth" not in exclude:
+            router.include_router(self.auth_router)
+        if "profile" not in exclude:
+            router.include_router(self.profile_router)
+        if "verify" not in exclude:
+            router.include_router(self.verify_router)
+        if "admin" not in exclude:
+            router.include_router(self.admin_router)
+        if "oauth" not in exclude and self.oauth_router is not None:
+            router.include_router(self.oauth_router)
+        return router
+
     @property
     def router(self) -> APIRouter:
         """Combined router with all route groups. Used by init_app()."""
         if self._router is None:
-            prefix = self.config.API_PREFIX.rstrip("/") + self.config.AUTH_ROUTER_PREFIX
-            self._router = APIRouter(prefix=prefix, tags=self.config.ROUTER_TAGS)
-            self._router.include_router(self.auth_router)
-            self._router.include_router(self.profile_router)
-            self._router.include_router(self.verify_router)
-            self._router.include_router(self.admin_router)
-            if self.oauth_router is not None:
-                self._router.include_router(self.oauth_router)
+            self._router = self._build_router()
         return self._router
 
-    def init_app(self, app: FastAPI, *, auto_middleware: bool = True) -> None:
-        app.state.fullauth = self
-        app.include_router(self.router)
-
-        if not auto_middleware:
-            return
-
+    def init_middleware(self, app: FastAPI) -> None:
+        """Wire up middleware (CSRF, rate limiting, security headers) from config."""
         if self.config.CSRF_ENABLED:
             from fastapi_fullauth.middleware.csrf import CSRFMiddleware
 
@@ -202,3 +212,26 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
             )
 
             app.add_middleware(SecurityHeadersMiddleware)
+
+    def init_app(
+        self,
+        app: FastAPI,
+        *,
+        auto_middleware: bool = True,
+        exclude_routers: list[RouterName] | None = None,
+    ) -> None:
+        app.state.fullauth = self
+
+        if exclude_routers:
+            unknown = set(exclude_routers) - self._ROUTER_NAMES
+            if unknown:
+                raise ValueError(
+                    f"Unknown routers: {', '.join(sorted(unknown))}. "
+                    f"Valid names: {', '.join(sorted(self._ROUTER_NAMES))}"
+                )
+            app.include_router(self._build_router(exclude=set(exclude_routers)))
+        else:
+            app.include_router(self.router)
+
+        if auto_middleware:
+            self.init_middleware(app)

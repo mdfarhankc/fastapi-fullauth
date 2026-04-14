@@ -17,6 +17,11 @@
 
 ### Added
 
+- **Composable models** — models split into `models/base.py`, `models/role.py`, `models/permission.py`, `models/oauth.py`. Import only what you need — only imported models register tables. Apps that don't need roles/permissions/oauth skip those tables entirely.
+- **Selective migration helper** — `include_fullauth_models("sqlmodel", include=["base", "role"])` imports only specified model groups for Alembic.
+- **`exclude_routers` param on `init_app()`** — `fullauth.init_app(app, exclude_routers=["admin"])` to skip routers you don't need.
+- **`init_middleware()` method** — wire up middleware independently when using composable routers.
+- **`RouterName` type** — `Literal["auth", "profile", "verify", "admin", "oauth"]` for type-safe router exclusion.
 - **Redis lockout backend** — `LOCKOUT_BACKEND="redis"` for multi-worker deployments
 - `LOCKOUT_ENABLED` config — disable account lockout entirely (`False`)
 - `INCLUDE_USER_IN_LOGIN` config — include user object in login/OAuth callback response

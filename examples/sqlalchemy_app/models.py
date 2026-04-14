@@ -1,12 +1,12 @@
 from sqlalchemy import String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from fastapi_fullauth.adapters.sqlalchemy import (
+from fastapi_fullauth.adapters.sqlalchemy.models.base import (
     FullAuthBase,
     RefreshTokenModel,
-    RoleModel,
     UserBase,
 )
+from fastapi_fullauth.adapters.sqlalchemy.models.role import RoleModel
 
 
 class User(UserBase, FullAuthBase):
