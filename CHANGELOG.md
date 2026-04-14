@@ -18,6 +18,12 @@
 - **`exchange_oauth_code()`, `link_or_create_user()`, `issue_oauth_tokens()`** — OAuth callback split into composable flow functions. `oauth_callback()` still works as before (delegates to the three).
 - **`register_lockout_backend()`** — register custom lockout backends for `create_lockout()` factory.
 - **`register_rate_limiter_backend()`** — register custom rate limiter backends for `create_rate_limiter()` factory.
+- **Adapter mixins** — `AbstractUserAdapter` split into composable interfaces: `RoleAdapterMixin`, `PermissionAdapterMixin`, `OAuthAdapterMixin`. Custom adapters implement only what they need. Built-in adapters inherit all mixins (backward compatible).
+
+### Breaking changes
+
+- **`roles` removed from default `UserSchema`** — apps that use roles should extend `UserSchema` with `roles: list[str] = Field(default_factory=list)`. Apps without roles are unaffected.
+- **Admin router auto-skipped** when adapter doesn't implement `RoleAdapterMixin`. OAuth router auto-skipped when adapter doesn't implement `OAuthAdapterMixin`.
 
 ### Changed
 

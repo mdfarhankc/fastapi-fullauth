@@ -72,7 +72,6 @@ class UserSchema(BaseModel):
     is_active: bool = True
     is_verified: bool = False
     is_superuser: bool = False
-    roles: list[str] = []
 
     PROTECTED_FIELDS: ClassVar[set[str]] = {
         "id", "email", "hashed_password", "is_active",

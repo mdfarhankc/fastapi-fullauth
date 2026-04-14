@@ -666,24 +666,34 @@ Adapters are the database layer for fastapi-fullauth. They implement `AbstractUs
 
 ## Custom adapters
 
-You can implement your own adapter for any database by subclassing `AbstractUserAdapter`:
+Subclass `AbstractUserAdapter` for core auth. Add mixins for roles, permissions, or OAuth:
 
 ```python
-from fastapi_fullauth.adapters.base import AbstractUserAdapter
-from fastapi_fullauth.types import CreateUserSchema, RefreshToken, UserSchema
+from fastapi_fullauth.adapters.base import (
+    AbstractUserAdapter,
+    RoleAdapterMixin,
+    PermissionAdapterMixin,
+    OAuthAdapterMixin,
+)
 
-class MongoAdapter(AbstractUserAdapter):
-    async def get_user_by_id(self, user_id: str) -> UserSchema | None:
-        ...
+# Minimal — just auth
+class MyAdapter(AbstractUserAdapter):
+    async def get_user_by_id(self, user_id): ...
+    async def get_user_by_email(self, email): ...
+    async def create_user(self, data, hashed_password): ...
+    # ... core methods only
 
-    async def get_user_by_email(self, email: str) -> UserSchema | None:
-        ...
-
-    async def create_user(self, data: CreateUserSchema, hashed_password: str) -> UserSchema:
-        ...
-
-    # ... implement all abstract methods
+# With roles and permissions
+class MyFullAdapter(AbstractUserAdapter, RoleAdapterMixin, PermissionAdapterMixin):
+    # ... core + role + permission methods
+    pass
 ```
+
+| Mixin | Methods | When to use |
+|-------|---------|-------------|
+| `RoleAdapterMixin` | `assign_role`, `remove_role`, `get_user_roles` | Role management |
+| `PermissionAdapterMixin` | `get_role_permissions`, `assign/remove_permission_to_role` | RBAC permissions |
+| `OAuthAdapterMixin` | 5 OAuth account methods | OAuth providers |
 
 See the [source of AbstractUserAdapter](https://github.com/mdfarhankc/fastapi-fullauth/blob/main/fastapi_fullauth/adapters/base.py) for the full interface.
 
@@ -706,6 +716,12 @@ adapter = SQLModelAdapter(
     user_schema=MyUserSchema,
     create_user_schema=MyCreateSchema,
 )
+```
+
+If your app uses roles, add `roles` to your custom schema:
+```python
+class MyUserSchema(UserSchema):
+    roles: list[str] = Field(default_factory=list)
 ```
 
 ---
@@ -846,7 +862,7 @@ If you don't pass custom schemas, the base `UserSchema` and `CreateUserSchema` a
 
 ## OAuth support
 
-The SQLModel adapter includes full OAuth support. The `OAuthAccountRecord` model is included and the adapter implements all OAuth methods from `AbstractUserAdapter`.
+The SQLModel adapter implements `OAuthAdapterMixin`. Import `OAuthAccountRecord` from `models.oauth` to register the table.
 
 ---
 
@@ -2022,7 +2038,6 @@ class UserSchema(BaseModel):
     is_active: bool = True
     is_verified: bool = False
     is_superuser: bool = False
-    roles: list[str] = []
 
     PROTECTED_FIELDS: ClassVar[set[str]] = {
         "id", "email", "hashed_password", "is_active",

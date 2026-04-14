@@ -3,7 +3,7 @@ from typing import Generic
 
 from fastapi import APIRouter, FastAPI
 
-from fastapi_fullauth.adapters.base import AbstractUserAdapter
+from fastapi_fullauth.adapters.base import AbstractUserAdapter, OAuthAdapterMixin, RoleAdapterMixin
 from fastapi_fullauth.backends import AbstractBackend, BearerBackend
 from fastapi_fullauth.config import FullAuthConfig
 from fastapi_fullauth.core.tokens import TokenEngine, create_blacklist
@@ -153,9 +153,13 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
             router.include_router(self.profile_router)
         if "verify" not in exclude:
             router.include_router(self.verify_router)
-        if "admin" not in exclude:
+        if "admin" not in exclude and isinstance(self.adapter, RoleAdapterMixin):
             router.include_router(self.admin_router)
-        if "oauth" not in exclude and self.oauth_router is not None:
+        if (
+            "oauth" not in exclude
+            and isinstance(self.adapter, OAuthAdapterMixin)
+            and self.oauth_router is not None
+        ):
             router.include_router(self.oauth_router)
         return router
 

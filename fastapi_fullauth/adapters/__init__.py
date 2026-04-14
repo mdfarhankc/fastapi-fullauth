@@ -1,6 +1,16 @@
-from fastapi_fullauth.adapters.base import AbstractUserAdapter
+from fastapi_fullauth.adapters.base import (
+    AbstractUserAdapter,
+    OAuthAdapterMixin,
+    PermissionAdapterMixin,
+    RoleAdapterMixin,
+)
 
-__all__ = ["AbstractUserAdapter"]
+__all__ = [
+    "AbstractUserAdapter",
+    "OAuthAdapterMixin",
+    "PermissionAdapterMixin",
+    "RoleAdapterMixin",
+]
 
 # lazy imports for optional adapters to avoid import errors
 # when sqlalchemy/sqlmodel are not installed

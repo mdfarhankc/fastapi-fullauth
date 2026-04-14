@@ -15,7 +15,6 @@ class UserSchema(BaseModel):
     is_active: bool = True
     is_verified: bool = False
     is_superuser: bool = False
-    roles: list[str] = Field(default_factory=list)
 
     model_config = {"from_attributes": True}
 
