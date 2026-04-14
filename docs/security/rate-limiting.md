@@ -109,6 +109,29 @@ fullauth = FullAuth(
 
 The in-memory backend is per-process. Redis shares state across all workers/servers.
 
+## Custom backends
+
+Register your own lockout or rate limiter backend:
+
+```python
+from fastapi_fullauth.protection.lockout import LockoutManager, register_lockout_backend
+from fastapi_fullauth.protection.ratelimit import register_rate_limiter_backend
+
+class DatabaseLockoutManager(LockoutManager):
+    def __init__(self, max_attempts, lockout_seconds, **kwargs):
+        super().__init__(max_attempts, lockout_seconds)
+        # your database setup
+
+    async def is_locked(self, key: str) -> bool: ...
+    async def record_failure(self, key: str) -> None: ...
+    async def clear(self, key: str) -> None: ...
+
+register_lockout_backend("database", DatabaseLockoutManager)
+# Then set LOCKOUT_BACKEND="database" in config
+```
+
+The same pattern works for rate limiters with `register_rate_limiter_backend()`.
+
 ## Manual middleware setup
 
 If you need more control, disable auto-middleware and add it yourself:

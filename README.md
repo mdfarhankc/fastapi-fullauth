@@ -86,16 +86,21 @@ Omit `config` in dev and a random secret key is generated (tokens won't survive 
 
 ### Composable routers
 
-Include only the route groups you need:
+Exclude routers you don't need:
+
+```python
+fullauth.init_app(app, exclude_routers=["admin"])
+```
+
+Or wire routers manually for full control:
 
 ```python
 app = FastAPI()
-app.state.fullauth = fullauth
+fullauth.bind(app)  # required for dependencies to work
 
-# pick what you want
 app.include_router(fullauth.auth_router, prefix="/api/v1/auth")
 app.include_router(fullauth.profile_router, prefix="/api/v1/auth")
-# skip verify, admin, oauth
+fullauth.init_middleware(app)
 ```
 
 | Router | Routes |
@@ -140,9 +145,9 @@ Define your model and schemas — pass them explicitly to the adapter:
 ```python
 from sqlmodel import Field, Relationship
 from fastapi_fullauth import FullAuth, FullAuthConfig, UserSchema, CreateUserSchema
-from fastapi_fullauth.adapters.sqlmodel import (
-    UserBase, Role, UserRoleLink, RefreshTokenRecord, SQLModelAdapter,
-)
+from fastapi_fullauth.adapters.sqlmodel import SQLModelAdapter
+from fastapi_fullauth.adapters.sqlmodel.models.base import UserBase, RefreshTokenRecord
+from fastapi_fullauth.adapters.sqlmodel.models.role import Role, UserRoleLink
 
 class User(UserBase, table=True):
     __tablename__ = "fullauth_users"

@@ -14,9 +14,8 @@ pip install fastapi-fullauth[sqlmodel]
 
 ```python
 from sqlmodel import Field, Relationship
-from fastapi_fullauth.adapters.sqlmodel import (
-    UserBase, Role, UserRoleLink, RefreshTokenRecord,
-)
+from fastapi_fullauth.adapters.sqlmodel.models.base import UserBase, RefreshTokenRecord
+from fastapi_fullauth.adapters.sqlmodel.models.role import Role, UserRoleLink
 
 class User(UserBase, table=True):
     __tablename__ = "fullauth_users"
@@ -25,10 +24,12 @@ class User(UserBase, table=True):
     display_name: str = Field(default="", max_length=100)
     phone: str = Field(default="", max_length=20)
 
-    # required relationships
+    # relationships — import only what you need
     roles: list[Role] = Relationship(link_model=UserRoleLink)
     refresh_tokens: list[RefreshTokenRecord] = Relationship()
 ```
+
+Only tables for imported models are created. Skip `role` imports for apps that don't need roles.
 
 `UserBase` provides these fields:
 
@@ -96,15 +97,14 @@ fullauth = FullAuth(
 
 ## Tables created
 
-The SQLModel adapter uses these tables:
+Tables are created based on which model groups you import:
 
-| Table | Purpose |
-|-------|---------|
-| `fullauth_users` | User accounts (your model) |
-| `fullauth_roles` | Role definitions |
-| `fullauth_user_roles` | User-role link table |
-| `fullauth_refresh_tokens` | Stored refresh tokens |
-| `fullauth_oauth_accounts` | Linked OAuth provider accounts |
+| Group | Tables | Import from |
+|-------|--------|-------------|
+| Core (always) | `fullauth_users`, `fullauth_refresh_tokens` | `models.base` |
+| Roles | `fullauth_roles`, `fullauth_user_roles` | `models.role` |
+| Permissions | `fullauth_permissions`, `fullauth_role_permissions` | `models.permission` |
+| OAuth | `fullauth_oauth_accounts` | `models.oauth` |
 
 ## Custom schemas
 

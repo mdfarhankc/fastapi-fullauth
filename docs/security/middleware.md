@@ -1,9 +1,12 @@
 # Middleware
 
-fastapi-fullauth includes three middleware components. By default, `init_app()` auto-wires them based on config flags. Pass `auto_middleware=False` to manage them yourself.
+fastapi-fullauth includes three middleware components. By default, `init_app()` auto-wires them based on config flags. Pass `auto_middleware=False` to manage them yourself, or use `init_middleware()` when wiring routers manually:
 
 ```python
 fullauth.init_app(app, auto_middleware=False)
+
+# or, when using composable routers:
+fullauth.init_middleware(app)
 ```
 
 ## Security Headers

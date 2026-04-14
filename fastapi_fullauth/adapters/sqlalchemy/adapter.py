@@ -5,14 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import selectinload
 
 from fastapi_fullauth.adapters.base import AbstractUserAdapter
-from fastapi_fullauth.adapters.sqlalchemy.models import (
-    OAuthAccountModel,
-    PermissionModel,
-    RefreshTokenModel,
-    RoleModel,
-    RolePermissionModel,
-    UserBase,
-)
+from fastapi_fullauth.adapters.sqlalchemy.models.base import RefreshTokenModel, UserBase
 from fastapi_fullauth.types import (
     CreateUserSchema,
     CreateUserSchemaType,
@@ -195,6 +188,8 @@ class SQLAlchemyAdapter(AbstractUserAdapter[UserSchemaType, CreateUserSchemaType
             await session.commit()
 
     async def assign_role(self, user_id: UserID, role_name: str) -> None:
+        from fastapi_fullauth.adapters.sqlalchemy.models.role import RoleModel
+
         async with self._session_maker() as session:
             # get or create the role
             result = await session.execute(select(RoleModel).where(RoleModel.name == role_name))
@@ -230,6 +225,12 @@ class SQLAlchemyAdapter(AbstractUserAdapter[UserSchemaType, CreateUserSchemaType
     # ── Permissions ──────────────────────────────────────────────────
 
     async def get_role_permissions(self, role_name: str) -> list[str]:
+        from fastapi_fullauth.adapters.sqlalchemy.models.permission import (
+            PermissionModel,
+            RolePermissionModel,
+        )
+        from fastapi_fullauth.adapters.sqlalchemy.models.role import RoleModel
+
         async with self._session_maker() as session:
             result = await session.execute(
                 select(PermissionModel.name)
@@ -243,6 +244,12 @@ class SQLAlchemyAdapter(AbstractUserAdapter[UserSchemaType, CreateUserSchemaType
             return list(result.scalars().all())
 
     async def assign_permission_to_role(self, role_name: str, permission: str) -> None:
+        from fastapi_fullauth.adapters.sqlalchemy.models.permission import (
+            PermissionModel,
+            RolePermissionModel,
+        )
+        from fastapi_fullauth.adapters.sqlalchemy.models.role import RoleModel
+
         async with self._session_maker() as session:
             result = await session.execute(select(RoleModel).where(RoleModel.name == role_name))
             role = result.scalars().first()
@@ -271,6 +278,12 @@ class SQLAlchemyAdapter(AbstractUserAdapter[UserSchemaType, CreateUserSchemaType
                 await session.commit()
 
     async def remove_permission_from_role(self, role_name: str, permission: str) -> None:
+        from fastapi_fullauth.adapters.sqlalchemy.models.permission import (
+            PermissionModel,
+            RolePermissionModel,
+        )
+        from fastapi_fullauth.adapters.sqlalchemy.models.role import RoleModel
+
         async with self._session_maker() as session:
             result = await session.execute(select(RoleModel).where(RoleModel.name == role_name))
             role = result.scalars().first()
@@ -297,7 +310,7 @@ class SQLAlchemyAdapter(AbstractUserAdapter[UserSchemaType, CreateUserSchemaType
 
     # ── OAuth ────────────────────────────────────────────────────────
 
-    def _to_oauth_account(self, row: OAuthAccountModel) -> OAuthAccount:
+    def _to_oauth_account(self, row) -> OAuthAccount:
         return OAuthAccount(
             provider=row.provider,
             provider_user_id=row.provider_user_id,
@@ -309,6 +322,8 @@ class SQLAlchemyAdapter(AbstractUserAdapter[UserSchemaType, CreateUserSchemaType
         )
 
     async def get_oauth_account(self, provider: str, provider_user_id: str) -> OAuthAccount | None:
+        from fastapi_fullauth.adapters.sqlalchemy.models.oauth import OAuthAccountModel
+
         async with self._session_maker() as session:
             result = await session.execute(
                 select(OAuthAccountModel).where(
@@ -320,6 +335,8 @@ class SQLAlchemyAdapter(AbstractUserAdapter[UserSchemaType, CreateUserSchemaType
             return self._to_oauth_account(row) if row else None
 
     async def get_user_oauth_accounts(self, user_id: UserID) -> list[OAuthAccount]:
+        from fastapi_fullauth.adapters.sqlalchemy.models.oauth import OAuthAccountModel
+
         async with self._session_maker() as session:
             result = await session.execute(
                 select(OAuthAccountModel).where(OAuthAccountModel.user_id == user_id)
@@ -327,6 +344,8 @@ class SQLAlchemyAdapter(AbstractUserAdapter[UserSchemaType, CreateUserSchemaType
             return [self._to_oauth_account(row) for row in result.scalars().all()]
 
     async def create_oauth_account(self, data: OAuthAccount) -> OAuthAccount:
+        from fastapi_fullauth.adapters.sqlalchemy.models.oauth import OAuthAccountModel
+
         async with self._session_maker() as session:
             record = OAuthAccountModel(
                 provider=data.provider,
@@ -344,6 +363,8 @@ class SQLAlchemyAdapter(AbstractUserAdapter[UserSchemaType, CreateUserSchemaType
     async def update_oauth_account(
         self, provider: str, provider_user_id: str, data: dict[str, Any]
     ) -> OAuthAccount | None:
+        from fastapi_fullauth.adapters.sqlalchemy.models.oauth import OAuthAccountModel
+
         async with self._session_maker() as session:
             await session.execute(
                 update(OAuthAccountModel)
@@ -357,6 +378,8 @@ class SQLAlchemyAdapter(AbstractUserAdapter[UserSchemaType, CreateUserSchemaType
             return await self.get_oauth_account(provider, provider_user_id)
 
     async def delete_oauth_account(self, provider: str, provider_user_id: str) -> None:
+        from fastapi_fullauth.adapters.sqlalchemy.models.oauth import OAuthAccountModel
+
         async with self._session_maker() as session:
             result = await session.execute(
                 select(OAuthAccountModel).where(

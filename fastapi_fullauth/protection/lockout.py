@@ -110,20 +110,46 @@ class RedisLockoutManager(LockoutManager):
         await pipe.execute()
 
 
+_lockout_registry: dict[str, type[LockoutManager]] = {
+    "memory": InMemoryLockoutManager,
+    "redis": RedisLockoutManager,
+}
+
+
+def register_lockout_backend(name: str, cls: type[LockoutManager]) -> None:
+    """Register a custom lockout backend.
+
+    Usage::
+
+        class DatabaseLockoutManager(LockoutManager):
+            ...
+
+        register_lockout_backend("database", DatabaseLockoutManager)
+        # Then set LOCKOUT_BACKEND="database" in config
+    """
+    _lockout_registry[name] = cls
+
+
 def create_lockout(config) -> LockoutManager | None:
     """Create a lockout manager based on config. Returns None if disabled."""
     if not config.LOCKOUT_ENABLED:
         return None
 
+    backend_cls = _lockout_registry.get(config.LOCKOUT_BACKEND)
+    if backend_cls is None:
+        raise ValueError(
+            f"Unknown lockout backend: {config.LOCKOUT_BACKEND}. "
+            f"Available: {', '.join(sorted(_lockout_registry))}. "
+            f"Register custom backends with register_lockout_backend()."
+        )
+
+    kwargs = {
+        "max_attempts": config.MAX_LOGIN_ATTEMPTS,
+        "lockout_seconds": config.LOCKOUT_DURATION_MINUTES * 60,
+    }
     if config.LOCKOUT_BACKEND == "redis":
         if not config.REDIS_URL:
             raise ValueError("REDIS_URL must be set when LOCKOUT_BACKEND='redis'")
-        return RedisLockoutManager(
-            redis_url=config.REDIS_URL,
-            max_attempts=config.MAX_LOGIN_ATTEMPTS,
-            lockout_seconds=config.LOCKOUT_DURATION_MINUTES * 60,
-        )
-    return InMemoryLockoutManager(
-        max_attempts=config.MAX_LOGIN_ATTEMPTS,
-        lockout_seconds=config.LOCKOUT_DURATION_MINUTES * 60,
-    )
+        kwargs["redis_url"] = config.REDIS_URL
+
+    return backend_cls(**kwargs)

@@ -7,14 +7,7 @@ from sqlalchemy.orm import selectinload
 from sqlmodel.ext.asyncio.session import AsyncSession as SMAsyncSession
 
 from fastapi_fullauth.adapters.base import AbstractUserAdapter
-from fastapi_fullauth.adapters.sqlmodel.models import (
-    OAuthAccountRecord,
-    Permission,
-    RefreshTokenRecord,
-    Role,
-    RolePermissionLink,
-    UserBase,
-)
+from fastapi_fullauth.adapters.sqlmodel.models.base import RefreshTokenRecord, UserBase
 from fastapi_fullauth.types import (
     CreateUserSchema,
     CreateUserSchemaType,
@@ -29,7 +22,7 @@ from fastapi_fullauth.types import (
 class SQLModelAdapter(AbstractUserAdapter[UserSchemaType, CreateUserSchemaType]):
     def __init__(
         self,
-        session_maker: async_sessionmaker[SMAsyncSession] | async_sessionmaker[SAAsyncSession],
+        session_maker: async_sessionmaker[SMAsyncSession | SAAsyncSession],
         user_model: type[UserBase],
         user_schema: type[UserSchemaType] = UserSchema,  # type: ignore[assignment]
         create_user_schema: type[CreateUserSchemaType] = CreateUserSchema,  # type: ignore[assignment]
@@ -199,6 +192,8 @@ class SQLModelAdapter(AbstractUserAdapter[UserSchemaType, CreateUserSchemaType])
             await session.commit()
 
     async def assign_role(self, user_id: UserID, role_name: str) -> None:
+        from fastapi_fullauth.adapters.sqlmodel.models.role import Role
+
         async with self._session_maker() as session:
             result = await session.execute(select(Role).where(Role.name == role_name))
             role = result.scalars().first()
@@ -226,6 +221,12 @@ class SQLModelAdapter(AbstractUserAdapter[UserSchemaType, CreateUserSchemaType])
     # ── Permissions ──────────────────────────────────────────────────
 
     async def get_role_permissions(self, role_name: str) -> list[str]:
+        from fastapi_fullauth.adapters.sqlmodel.models.permission import (
+            Permission,
+            RolePermissionLink,
+        )
+        from fastapi_fullauth.adapters.sqlmodel.models.role import Role
+
         async with self._session_maker() as session:
             result = await session.execute(
                 select(Permission.name)
@@ -236,6 +237,12 @@ class SQLModelAdapter(AbstractUserAdapter[UserSchemaType, CreateUserSchemaType])
             return list(result.scalars().all())
 
     async def assign_permission_to_role(self, role_name: str, permission: str) -> None:
+        from fastapi_fullauth.adapters.sqlmodel.models.permission import (
+            Permission,
+            RolePermissionLink,
+        )
+        from fastapi_fullauth.adapters.sqlmodel.models.role import Role
+
         async with self._session_maker() as session:
             # get or create role
             result = await session.execute(select(Role).where(Role.name == role_name))
@@ -265,6 +272,12 @@ class SQLModelAdapter(AbstractUserAdapter[UserSchemaType, CreateUserSchemaType])
                 await session.commit()
 
     async def remove_permission_from_role(self, role_name: str, permission: str) -> None:
+        from fastapi_fullauth.adapters.sqlmodel.models.permission import (
+            Permission,
+            RolePermissionLink,
+        )
+        from fastapi_fullauth.adapters.sqlmodel.models.role import Role
+
         async with self._session_maker() as session:
             result = await session.execute(select(Role).where(Role.name == role_name))
             role = result.scalars().first()
@@ -289,7 +302,7 @@ class SQLModelAdapter(AbstractUserAdapter[UserSchemaType, CreateUserSchemaType])
 
     # ── OAuth ────────────────────────────────────────────────────────
 
-    def _to_oauth_account(self, row: OAuthAccountRecord) -> OAuthAccount:
+    def _to_oauth_account(self, row) -> OAuthAccount:
         return OAuthAccount(
             provider=row.provider,
             provider_user_id=row.provider_user_id,
@@ -301,6 +314,8 @@ class SQLModelAdapter(AbstractUserAdapter[UserSchemaType, CreateUserSchemaType])
         )
 
     async def get_oauth_account(self, provider: str, provider_user_id: str) -> OAuthAccount | None:
+        from fastapi_fullauth.adapters.sqlmodel.models.oauth import OAuthAccountRecord
+
         async with self._session_maker() as session:
             result = await session.execute(
                 select(OAuthAccountRecord).where(
@@ -312,6 +327,8 @@ class SQLModelAdapter(AbstractUserAdapter[UserSchemaType, CreateUserSchemaType])
             return self._to_oauth_account(row) if row else None
 
     async def get_user_oauth_accounts(self, user_id: UserID) -> list[OAuthAccount]:
+        from fastapi_fullauth.adapters.sqlmodel.models.oauth import OAuthAccountRecord
+
         async with self._session_maker() as session:
             result = await session.execute(
                 select(OAuthAccountRecord).where(OAuthAccountRecord.user_id == user_id)
@@ -319,6 +336,8 @@ class SQLModelAdapter(AbstractUserAdapter[UserSchemaType, CreateUserSchemaType])
             return [self._to_oauth_account(row) for row in result.scalars().all()]
 
     async def create_oauth_account(self, data: OAuthAccount) -> OAuthAccount:
+        from fastapi_fullauth.adapters.sqlmodel.models.oauth import OAuthAccountRecord
+
         async with self._session_maker() as session:
             record = OAuthAccountRecord(
                 provider=data.provider,
@@ -336,6 +355,8 @@ class SQLModelAdapter(AbstractUserAdapter[UserSchemaType, CreateUserSchemaType])
     async def update_oauth_account(
         self, provider: str, provider_user_id: str, data: dict[str, Any]
     ) -> OAuthAccount | None:
+        from fastapi_fullauth.adapters.sqlmodel.models.oauth import OAuthAccountRecord
+
         async with self._session_maker() as session:
             await session.execute(
                 update(OAuthAccountRecord)
@@ -349,6 +370,8 @@ class SQLModelAdapter(AbstractUserAdapter[UserSchemaType, CreateUserSchemaType])
             return await self.get_oauth_account(provider, provider_user_id)
 
     async def delete_oauth_account(self, provider: str, provider_user_id: str) -> None:
+        from fastapi_fullauth.adapters.sqlmodel.models.oauth import OAuthAccountRecord
+
         async with self._session_maker() as session:
             result = await session.execute(
                 select(OAuthAccountRecord).where(

@@ -23,7 +23,9 @@ fullauth = FullAuth(
 
 | Method | Description |
 |--------|-------------|
-| `init_app(app, auto_middleware=True)` | Mount routes and middleware on a FastAPI app |
+| `init_app(app, *, auto_middleware=True, exclude_routers=None)` | Mount routes and middleware on a FastAPI app. Pass `exclude_routers=["admin"]` to skip specific routers. |
+| `bind(app)` | Bind FullAuth to a FastAPI app (sets `app.state.fullauth`). Required when using composable routers without `init_app()`. |
+| `init_middleware(app)` | Wire up middleware from config. Also calls `bind()` if not already done. |
 | `hooks.on(event, callback)` | Register an event hook |
 
 ### Properties

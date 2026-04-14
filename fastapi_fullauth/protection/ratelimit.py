@@ -125,6 +125,30 @@ class RedisRateLimiter:
         await self._redis.delete(f"{self._prefix}{key}")
 
 
+_rate_limiter_registry: dict[str, type[RateLimiter] | type[RedisRateLimiter]] = {
+    "memory": RateLimiter,
+    "redis": RedisRateLimiter,
+}
+
+
+def register_rate_limiter_backend(name: str, cls: type) -> None:
+    """Register a custom rate limiter backend.
+
+    The class must accept ``max_requests`` and ``window_seconds`` kwargs.
+    Redis-based backends also receive ``redis_url``.
+
+    Usage::
+
+        class DatabaseRateLimiter:
+            def __init__(self, max_requests, window_seconds, **kwargs): ...
+            async def is_allowed(self, key: str) -> bool: ...
+
+        register_rate_limiter_backend("database", DatabaseRateLimiter)
+        # Then set RATE_LIMIT_BACKEND="database" in config
+    """
+    _rate_limiter_registry[name] = cls
+
+
 def create_rate_limiter(config, max_requests: int, window_seconds: int):
     """Create a rate limiter backend based on config.
 
@@ -133,15 +157,48 @@ def create_rate_limiter(config, max_requests: int, window_seconds: int):
         max_requests: Maximum requests per window.
         window_seconds: Window size in seconds.
     """
+    backend_cls = _rate_limiter_registry.get(config.RATE_LIMIT_BACKEND)
+    if backend_cls is None:
+        raise ValueError(
+            f"Unknown rate limiter backend: {config.RATE_LIMIT_BACKEND}. "
+            f"Available: {', '.join(sorted(_rate_limiter_registry))}. "
+            f"Register custom backends with register_rate_limiter_backend()."
+        )
+
+    kwargs: dict = {"max_requests": max_requests, "window_seconds": window_seconds}
     if config.RATE_LIMIT_BACKEND == "redis":
         if not config.REDIS_URL:
             raise ValueError("REDIS_URL must be set when RATE_LIMIT_BACKEND='redis'")
-        return RedisRateLimiter(
-            redis_url=config.REDIS_URL,
-            max_requests=max_requests,
-            window_seconds=window_seconds,
+        kwargs["redis_url"] = config.REDIS_URL
+
+    return backend_cls(**kwargs)
+
+
+class AuthRateLimiter:
+    """Per-route auth rate limiter. Wraps individual RateLimiter instances
+    for login, register, and password-reset routes."""
+
+    def __init__(self, config) -> None:
+        self._limiters: dict[str, RateLimiter | RedisRateLimiter] = {}
+        if not config.AUTH_RATE_LIMIT_ENABLED:
+            return
+
+        window = config.AUTH_RATE_LIMIT_WINDOW_SECONDS
+        self._limiters["login"] = create_rate_limiter(config, config.AUTH_RATE_LIMIT_LOGIN, window)
+        self._limiters["register"] = create_rate_limiter(
+            config, config.AUTH_RATE_LIMIT_REGISTER, window
         )
-    return RateLimiter(max_requests=max_requests, window_seconds=window_seconds)
+        self._limiters["password-reset"] = create_rate_limiter(
+            config, config.AUTH_RATE_LIMIT_PASSWORD_RESET, window
+        )
+
+    async def check(self, route_name: str, client_ip: str) -> None:
+        limiter = self._limiters.get(route_name)
+        if limiter and not await limiter.is_allowed(client_ip):
+            from fastapi import HTTPException
+
+            logger.warning("Auth rate limit exceeded: route=%s, ip=%s", route_name, client_ip)
+            raise HTTPException(status_code=429, detail="Too many requests. Try again later.")
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):

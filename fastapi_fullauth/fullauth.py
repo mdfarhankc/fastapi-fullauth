@@ -1,6 +1,5 @@
 import logging
-from collections.abc import Awaitable, Callable
-from typing import Any, Generic
+from typing import Generic
 
 from fastapi import APIRouter, FastAPI
 
@@ -11,13 +10,17 @@ from fastapi_fullauth.core.tokens import TokenEngine, create_blacklist
 from fastapi_fullauth.hooks import EventHooks
 from fastapi_fullauth.oauth.base import OAuthProvider
 from fastapi_fullauth.protection.lockout import create_lockout
-from fastapi_fullauth.protection.ratelimit import RateLimiter, RedisRateLimiter, create_rate_limiter
-from fastapi_fullauth.types import CreateUserSchemaType, UserSchema, UserSchemaType
+from fastapi_fullauth.protection.ratelimit import AuthRateLimiter, create_rate_limiter
+from fastapi_fullauth.types import (
+    CreateUserSchemaType,
+    RouterName,
+    TokenClaimsBuilder,
+    UserSchema,
+    UserSchemaType,
+)
 from fastapi_fullauth.validators import PasswordValidator
 
 logger = logging.getLogger("fastapi_fullauth")
-
-TokenClaimsBuilder = Callable[[UserSchema], Awaitable[dict[str, Any]]]
 
 
 class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
@@ -50,19 +53,7 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
         self.backends = backends or [BearerBackend()]
         self.token_engine = TokenEngine(config=config, blacklist=create_blacklist(config))
         self.lockout = create_lockout(config)
-
-        self.auth_rate_limiters: dict[str, RateLimiter | RedisRateLimiter] = {}
-        if config.AUTH_RATE_LIMIT_ENABLED:
-            window = config.AUTH_RATE_LIMIT_WINDOW_SECONDS
-            self.auth_rate_limiters["login"] = create_rate_limiter(
-                config, config.AUTH_RATE_LIMIT_LOGIN, window
-            )
-            self.auth_rate_limiters["register"] = create_rate_limiter(
-                config, config.AUTH_RATE_LIMIT_REGISTER, window
-            )
-            self.auth_rate_limiters["password-reset"] = create_rate_limiter(
-                config, config.AUTH_RATE_LIMIT_PASSWORD_RESET, window
-            )
+        self.auth_rate_limiter = AuthRateLimiter(config)
 
         self.password_validator = password_validator or PasswordValidator(
             min_length=config.PASSWORD_MIN_LENGTH
@@ -99,12 +90,7 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
         return claims
 
     async def check_auth_rate_limit(self, route_name: str, client_ip: str) -> None:
-        limiter = self.auth_rate_limiters.get(route_name)
-        if limiter and not await limiter.is_allowed(client_ip):
-            from fastapi import HTTPException
-
-            logger.warning("Auth rate limit exceeded: route=%s, ip=%s", route_name, client_ip)
-            raise HTTPException(status_code=429, detail="Too many requests. Try again later.")
+        await self.auth_rate_limiter.check(route_name, client_ip)
 
     # ── composable routers ──────────────────────────────────────────
 
@@ -154,27 +140,48 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
 
         return create_oauth_router(user_schema=self.adapter._user_schema)
 
+    _ROUTER_NAMES: set[RouterName] = {"auth", "profile", "verify", "admin", "oauth"}
+
+    def _build_router(self, exclude: set[str] | None = None) -> APIRouter:
+        """Build combined router, optionally excluding named sub-routers."""
+        exclude = exclude or set()
+        prefix = self.config.API_PREFIX.rstrip("/") + self.config.AUTH_ROUTER_PREFIX
+        router = APIRouter(prefix=prefix, tags=self.config.ROUTER_TAGS)
+        if "auth" not in exclude:
+            router.include_router(self.auth_router)
+        if "profile" not in exclude:
+            router.include_router(self.profile_router)
+        if "verify" not in exclude:
+            router.include_router(self.verify_router)
+        if "admin" not in exclude:
+            router.include_router(self.admin_router)
+        if "oauth" not in exclude and self.oauth_router is not None:
+            router.include_router(self.oauth_router)
+        return router
+
     @property
     def router(self) -> APIRouter:
         """Combined router with all route groups. Used by init_app()."""
         if self._router is None:
-            prefix = self.config.API_PREFIX.rstrip("/") + self.config.AUTH_ROUTER_PREFIX
-            self._router = APIRouter(prefix=prefix, tags=self.config.ROUTER_TAGS)
-            self._router.include_router(self.auth_router)
-            self._router.include_router(self.profile_router)
-            self._router.include_router(self.verify_router)
-            self._router.include_router(self.admin_router)
-            if self.oauth_router is not None:
-                self._router.include_router(self.oauth_router)
+            self._router = self._build_router()
         return self._router
 
-    def init_app(self, app: FastAPI, *, auto_middleware: bool = True) -> None:
+    def bind(self, app: FastAPI) -> None:
+        """Bind this FullAuth instance to a FastAPI app.
+
+        Required when using composable routers without init_app().
+        Sets app.state.fullauth so dependencies can resolve.
+        Called automatically by init_app() and init_middleware().
+        """
         app.state.fullauth = self
-        app.include_router(self.router)
 
-        if not auto_middleware:
-            return
+    def init_middleware(self, app: FastAPI) -> None:
+        """Wire up middleware (CSRF, rate limiting, security headers) from config.
 
+        Also binds the FullAuth instance to app.state if not already done.
+        """
+        if not hasattr(app.state, "fullauth") or app.state.fullauth is None:
+            self.bind(app)
         if self.config.CSRF_ENABLED:
             from fastapi_fullauth.middleware.csrf import CSRFMiddleware
 
@@ -202,3 +209,26 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
             )
 
             app.add_middleware(SecurityHeadersMiddleware)
+
+    def init_app(
+        self,
+        app: FastAPI,
+        *,
+        auto_middleware: bool = True,
+        exclude_routers: list[RouterName] | None = None,
+    ) -> None:
+        self.bind(app)
+
+        if exclude_routers:
+            unknown = set(exclude_routers) - self._ROUTER_NAMES
+            if unknown:
+                raise ValueError(
+                    f"Unknown routers: {', '.join(sorted(unknown))}. "
+                    f"Valid names: {', '.join(sorted(self._ROUTER_NAMES))}"
+                )
+            app.include_router(self._build_router(exclude=set(exclude_routers)))
+        else:
+            app.include_router(self.router)
+
+        if auto_middleware:
+            self.init_middleware(app)

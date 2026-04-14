@@ -18,7 +18,7 @@ For development or simple projects, create tables directly:
 === "SQLAlchemy"
 
     ```python
-    from fastapi_fullauth.adapters.sqlalchemy.models import FullAuthBase
+    from fastapi_fullauth.adapters.sqlalchemy.models.base import FullAuthBase
 
     async with engine.begin() as conn:
         await conn.run_sync(FullAuthBase.metadata.create_all)
@@ -38,7 +38,7 @@ alembic init alembic
 
 Import fullauth models so Alembic detects them during autogenerate:
 
-=== "SQLModel"
+=== "All tables"
 
     ```python
     # alembic/env.py
@@ -48,6 +48,20 @@ Import fullauth models so Alembic detects them during autogenerate:
     include_fullauth_models("sqlmodel")
 
     # import your app's models too
+    from your_app.models import User  # noqa: F401
+
+    target_metadata = SQLModel.metadata
+    ```
+
+=== "Selective tables"
+
+    ```python
+    # alembic/env.py — only core + roles, no permissions/oauth
+    from fastapi_fullauth.migrations import include_fullauth_models
+    from sqlmodel import SQLModel
+
+    include_fullauth_models("sqlmodel", include=["base", "role"])
+
     from your_app.models import User  # noqa: F401
 
     target_metadata = SQLModel.metadata
@@ -71,25 +85,31 @@ alembic revision --autogenerate -m "add fullauth tables"
 alembic upgrade head
 ```
 
-## Tables created
+## Model groups
 
-| Table | Description |
-|-------|-------------|
-| `fullauth_users` | User accounts (your model extends `UserBase`) |
-| `fullauth_roles` | Role definitions |
-| `fullauth_user_roles` | User-role many-to-many link |
-| `fullauth_refresh_tokens` | Stored refresh tokens with family tracking |
-| `fullauth_oauth_accounts` | Linked OAuth provider accounts |
+Models are split into groups. Import only what you need:
+
+| Group | Tables | When to include |
+|-------|--------|-----------------|
+| `base` | `fullauth_users`, `fullauth_refresh_tokens` | Always (core auth) |
+| `role` | `fullauth_roles`, `fullauth_user_roles` | When using roles |
+| `permission` | `fullauth_permissions`, `fullauth_role_permissions` | When using RBAC permissions |
+| `oauth` | `fullauth_oauth_accounts` | When using OAuth providers |
 
 ## Helper functions
 
-### `include_fullauth_models(adapter)`
+### `include_fullauth_models(adapter, include=None)`
 
 Imports fullauth model classes so Alembic's autogenerate detects them. Call this in `env.py` before setting `target_metadata`.
 
 ```python
 from fastapi_fullauth.migrations import include_fullauth_models
-include_fullauth_models("sqlmodel")  # or "sqlalchemy"
+
+# all tables
+include_fullauth_models("sqlmodel")
+
+# selective — only core + roles
+include_fullauth_models("sqlmodel", include=["base", "role"])
 ```
 
 ### `get_fullauth_metadata(adapter)`

@@ -13,9 +13,8 @@ pip install fastapi-fullauth[sqlmodel]
 ```python
 # models.py
 from sqlmodel import Field, Relationship
-from fastapi_fullauth.adapters.sqlmodel import (
-    UserBase, Role, UserRoleLink, RefreshTokenRecord,
-)
+from fastapi_fullauth.adapters.sqlmodel.models.base import UserBase, RefreshTokenRecord
+from fastapi_fullauth.adapters.sqlmodel.models.role import Role, UserRoleLink
 
 class User(UserBase, table=True):
     __tablename__ = "fullauth_users"
@@ -94,15 +93,24 @@ uvicorn main:app --reload
 
 ### Composable routers
 
-`init_app()` registers all routes. If you want only specific route groups, include them manually:
+`init_app()` registers all routes. To exclude specific routers, use `exclude_routers`:
+
+```python
+# skip admin routes
+fullauth.init_app(app, exclude_routers=["admin"])
+```
+
+For full manual control, wire routers and middleware yourself:
 
 ```python
 app = FastAPI(lifespan=lifespan)
-app.state.fullauth = fullauth
+fullauth.bind(app)  # required for dependencies to work
 
-# only auth + profile, no verification/admin/oauth
 app.include_router(fullauth.auth_router, prefix="/api/v1/auth")
 app.include_router(fullauth.profile_router, prefix="/api/v1/auth")
+
+# optionally wire middleware from config
+fullauth.init_middleware(app)  # also calls bind() if not done
 ```
 
 | Router | Routes |

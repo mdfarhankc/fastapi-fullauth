@@ -1,5 +1,6 @@
+from collections.abc import Awaitable, Callable
 from datetime import datetime
-from typing import Any, ClassVar, NamedTuple
+from typing import Any, ClassVar, Literal, NamedTuple
 from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, Field
@@ -95,3 +96,7 @@ class TokenPayload(BaseModel):
     roles: list[str] = Field(default_factory=list)
     extra: dict[str, Any] = Field(default_factory=dict)
     family_id: str | None = None
+
+
+RouterName = Literal["auth", "profile", "verify", "admin", "oauth"]
+TokenClaimsBuilder = Callable[[UserSchema], Awaitable[dict[str, Any]]]

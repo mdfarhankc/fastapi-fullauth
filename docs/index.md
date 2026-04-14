@@ -86,15 +86,21 @@ Omit `SECRET_KEY` in dev and a random one is generated (tokens won't survive res
 
 ### Composable routers
 
-Include only the route groups you need:
+Exclude routers you don't need:
+
+```python
+fullauth.init_app(app, exclude_routers=["admin"])
+```
+
+Or wire routers manually for full control:
 
 ```python
 app = FastAPI()
-app.state.fullauth = fullauth
+fullauth.bind(app)  # required for dependencies to work
 
 app.include_router(fullauth.auth_router, prefix="/api/v1/auth")
 app.include_router(fullauth.profile_router, prefix="/api/v1/auth")
-# skip verify, admin, oauth
+fullauth.init_middleware(app)
 ```
 
 | Router | Routes |
@@ -105,7 +111,7 @@ app.include_router(fullauth.profile_router, prefix="/api/v1/auth")
 | `admin_router` | assign/remove roles and permissions (superuser) |
 | `oauth_router` | OAuth provider routes (only if configured) |
 
-`fullauth.init_app(app)` includes all of them.
+`fullauth.init_app(app)` includes all of them. Use `exclude_routers` or individual routers for granular control.
 
 ## Routes
 
