@@ -96,12 +96,10 @@ Or wire routers manually for full control:
 
 ```python
 app = FastAPI()
-app.state.fullauth = fullauth
+fullauth.bind(app)  # required for dependencies to work
 
 app.include_router(fullauth.auth_router, prefix="/api/v1/auth")
 app.include_router(fullauth.profile_router, prefix="/api/v1/auth")
-
-# still get middleware from config
 fullauth.init_middleware(app)
 ```
 

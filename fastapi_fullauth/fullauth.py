@@ -10,7 +10,7 @@ from fastapi_fullauth.core.tokens import TokenEngine, create_blacklist
 from fastapi_fullauth.hooks import EventHooks
 from fastapi_fullauth.oauth.base import OAuthProvider
 from fastapi_fullauth.protection.lockout import create_lockout
-from fastapi_fullauth.protection.ratelimit import RateLimiter, RedisRateLimiter, create_rate_limiter
+from fastapi_fullauth.protection.ratelimit import AuthRateLimiter, create_rate_limiter
 from fastapi_fullauth.types import (
     CreateUserSchemaType,
     RouterName,
@@ -53,19 +53,7 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
         self.backends = backends or [BearerBackend()]
         self.token_engine = TokenEngine(config=config, blacklist=create_blacklist(config))
         self.lockout = create_lockout(config)
-
-        self.auth_rate_limiters: dict[str, RateLimiter | RedisRateLimiter] = {}
-        if config.AUTH_RATE_LIMIT_ENABLED:
-            window = config.AUTH_RATE_LIMIT_WINDOW_SECONDS
-            self.auth_rate_limiters["login"] = create_rate_limiter(
-                config, config.AUTH_RATE_LIMIT_LOGIN, window
-            )
-            self.auth_rate_limiters["register"] = create_rate_limiter(
-                config, config.AUTH_RATE_LIMIT_REGISTER, window
-            )
-            self.auth_rate_limiters["password-reset"] = create_rate_limiter(
-                config, config.AUTH_RATE_LIMIT_PASSWORD_RESET, window
-            )
+        self.auth_rate_limiter = AuthRateLimiter(config)
 
         self.password_validator = password_validator or PasswordValidator(
             min_length=config.PASSWORD_MIN_LENGTH
@@ -102,12 +90,7 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
         return claims
 
     async def check_auth_rate_limit(self, route_name: str, client_ip: str) -> None:
-        limiter = self.auth_rate_limiters.get(route_name)
-        if limiter and not await limiter.is_allowed(client_ip):
-            from fastapi import HTTPException
-
-            logger.warning("Auth rate limit exceeded: route=%s, ip=%s", route_name, client_ip)
-            raise HTTPException(status_code=429, detail="Too many requests. Try again later.")
+        await self.auth_rate_limiter.check(route_name, client_ip)
 
     # ── composable routers ──────────────────────────────────────────
 
@@ -183,8 +166,22 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
             self._router = self._build_router()
         return self._router
 
+    def bind(self, app: FastAPI) -> None:
+        """Bind this FullAuth instance to a FastAPI app.
+
+        Required when using composable routers without init_app().
+        Sets app.state.fullauth so dependencies can resolve.
+        Called automatically by init_app() and init_middleware().
+        """
+        app.state.fullauth = self
+
     def init_middleware(self, app: FastAPI) -> None:
-        """Wire up middleware (CSRF, rate limiting, security headers) from config."""
+        """Wire up middleware (CSRF, rate limiting, security headers) from config.
+
+        Also binds the FullAuth instance to app.state if not already done.
+        """
+        if not hasattr(app.state, "fullauth") or app.state.fullauth is None:
+            self.bind(app)
         if self.config.CSRF_ENABLED:
             from fastapi_fullauth.middleware.csrf import CSRFMiddleware
 
@@ -220,7 +217,7 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
         auto_middleware: bool = True,
         exclude_routers: list[RouterName] | None = None,
     ) -> None:
-        app.state.fullauth = self
+        self.bind(app)
 
         if exclude_routers:
             unknown = set(exclude_routers) - self._ROUTER_NAMES

@@ -104,14 +104,13 @@ For full manual control, wire routers and middleware yourself:
 
 ```python
 app = FastAPI(lifespan=lifespan)
-app.state.fullauth = fullauth
+fullauth.bind(app)  # required for dependencies to work
 
-# only auth + profile, no verification/admin/oauth
 app.include_router(fullauth.auth_router, prefix="/api/v1/auth")
 app.include_router(fullauth.profile_router, prefix="/api/v1/auth")
 
-# still get middleware from config
-fullauth.init_middleware(app)
+# optionally wire middleware from config
+fullauth.init_middleware(app)  # also calls bind() if not done
 ```
 
 | Router | Routes |

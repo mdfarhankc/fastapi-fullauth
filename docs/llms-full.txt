@@ -108,7 +108,7 @@ Or wire routers manually for full control:
 
 ```python
 app = FastAPI()
-app.state.fullauth = fullauth
+fullauth.bind(app)  # required for dependencies to work
 
 app.include_router(fullauth.auth_router, prefix="/api/v1/auth")
 app.include_router(fullauth.profile_router, prefix="/api/v1/auth")
@@ -428,7 +428,7 @@ For full manual control, wire routers and middleware yourself:
 
 ```python
 app = FastAPI(lifespan=lifespan)
-app.state.fullauth = fullauth
+fullauth.bind(app)  # required for dependencies to work
 
 app.include_router(fullauth.auth_router, prefix="/api/v1/auth")
 app.include_router(fullauth.profile_router, prefix="/api/v1/auth")
@@ -1602,6 +1602,27 @@ fullauth = FullAuth(
 
 The in-memory backend is per-process. Redis shares state across all workers/servers.
 
+## Custom backends
+
+Register your own lockout or rate limiter backend:
+
+```python
+from fastapi_fullauth.protection.lockout import LockoutManager, register_lockout_backend
+
+class DatabaseLockoutManager(LockoutManager):
+    def __init__(self, max_attempts, lockout_seconds, **kwargs):
+        super().__init__(max_attempts, lockout_seconds)
+
+    async def is_locked(self, key: str) -> bool: ...
+    async def record_failure(self, key: str) -> None: ...
+    async def clear(self, key: str) -> None: ...
+
+register_lockout_backend("database", DatabaseLockoutManager)
+# Then set LOCKOUT_BACKEND="database" in config
+```
+
+Same pattern for rate limiters with `register_rate_limiter_backend()`.
+
 ## Manual middleware setup
 
 If you need more control, disable auto-middleware and add it yourself:
@@ -1953,7 +1974,8 @@ fullauth = FullAuth(
 | Method | Description |
 |--------|-------------|
 | `init_app(app, *, auto_middleware=True, exclude_routers=None)` | Mount routes and middleware on a FastAPI app. Pass `exclude_routers=["admin"]` to skip specific routers. |
-| `init_middleware(app)` | Wire up middleware only (CSRF, rate limiting, security headers) from config. Useful with composable routers. |
+| `bind(app)` | Bind FullAuth to a FastAPI app (sets `app.state.fullauth`). Required when using composable routers without `init_app()`. |
+| `init_middleware(app)` | Wire up middleware from config. Also calls `bind()` if not already done. |
 | `hooks.on(event, callback)` | Register an event hook |
 
 ### Properties
