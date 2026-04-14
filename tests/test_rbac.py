@@ -10,7 +10,7 @@ from sqlmodel import SQLModel
 from fastapi_fullauth import FullAuth, FullAuthConfig
 from fastapi_fullauth.adapters.sqlmodel import SQLModelAdapter
 from fastapi_fullauth.dependencies import require_permission, require_role
-from tests.conftest import User
+from tests.conftest import User, UserSchemaWithRoles
 
 
 async def _make_db():
@@ -23,7 +23,9 @@ async def _make_db():
 
 async def _make_app():
     engine, session_maker = await _make_db()
-    adapter = SQLModelAdapter(session_maker=session_maker, user_model=User)
+    adapter = SQLModelAdapter(
+        session_maker=session_maker, user_model=User, user_schema=UserSchemaWithRoles
+    )
     fullauth = FullAuth(
         config=FullAuthConfig(
             SECRET_KEY="test-secret-key-that-is-long-enough-32b",
@@ -85,7 +87,9 @@ async def _make_superuser(client, adapter, email="admin@test.com"):
 @pytest.mark.asyncio
 async def test_adapter_permission_crud():
     engine, session_maker = await _make_db()
-    adapter = SQLModelAdapter(session_maker=session_maker, user_model=User)
+    adapter = SQLModelAdapter(
+        session_maker=session_maker, user_model=User, user_schema=UserSchemaWithRoles
+    )
 
     # initially empty
     perms = await adapter.get_role_permissions("editor")
@@ -118,7 +122,9 @@ async def test_adapter_permission_crud():
 @pytest.mark.asyncio
 async def test_adapter_get_user_permissions():
     engine, session_maker = await _make_db()
-    adapter = SQLModelAdapter(session_maker=session_maker, user_model=User)
+    adapter = SQLModelAdapter(
+        session_maker=session_maker, user_model=User, user_schema=UserSchemaWithRoles
+    )
 
     # create user with role
     from fastapi_fullauth.core.crypto import hash_password

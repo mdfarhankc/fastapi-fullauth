@@ -18,6 +18,7 @@ from fastapi_fullauth.adapters.sqlalchemy import (
 from fastapi_fullauth.core.crypto import hash_password
 from fastapi_fullauth.dependencies import current_user, require_permission, require_role
 from fastapi_fullauth.types import CreateUserSchema
+from tests.conftest import UserSchemaWithRoles
 
 # ── Models ──────────────────────────────────────────────────────────
 
@@ -45,7 +46,7 @@ async def db():
 
 @pytest.fixture
 def adapter(db):
-    return SQLAlchemyAdapter(session_maker=db, user_model=User)
+    return SQLAlchemyAdapter(session_maker=db, user_model=User, user_schema=UserSchemaWithRoles)
 
 
 @pytest.fixture

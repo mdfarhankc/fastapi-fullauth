@@ -16,24 +16,34 @@ Adapters are the database layer for fastapi-fullauth. They implement `AbstractUs
 
 ## Custom adapters
 
-You can implement your own adapter for any database by subclassing `AbstractUserAdapter`:
+Subclass `AbstractUserAdapter` for core auth. Add mixins for roles, permissions, or OAuth:
 
 ```python
-from fastapi_fullauth.adapters.base import AbstractUserAdapter
-from fastapi_fullauth.types import CreateUserSchema, RefreshToken, UserSchema
+from fastapi_fullauth.adapters.base import (
+    AbstractUserAdapter,
+    RoleAdapterMixin,
+    PermissionAdapterMixin,
+    OAuthAdapterMixin,
+)
 
-class MongoAdapter(AbstractUserAdapter):
-    async def get_user_by_id(self, user_id: str) -> UserSchema | None:
-        ...
+# Minimal — just auth
+class MyAdapter(AbstractUserAdapter):
+    async def get_user_by_id(self, user_id): ...
+    async def get_user_by_email(self, email): ...
+    async def create_user(self, data, hashed_password): ...
+    # ... core methods only
 
-    async def get_user_by_email(self, email: str) -> UserSchema | None:
-        ...
-
-    async def create_user(self, data: CreateUserSchema, hashed_password: str) -> UserSchema:
-        ...
-
-    # ... implement all abstract methods
+# With roles and permissions
+class MyFullAdapter(AbstractUserAdapter, RoleAdapterMixin, PermissionAdapterMixin):
+    # ... core + role + permission methods
+    pass
 ```
+
+| Mixin | Methods | When to use |
+|-------|---------|-------------|
+| `RoleAdapterMixin` | `assign_role`, `remove_role`, `get_user_roles` | Role management |
+| `PermissionAdapterMixin` | `get_role_permissions`, `assign_permission_to_role`, `remove_permission_from_role` | RBAC permissions |
+| `OAuthAdapterMixin` | `get_oauth_account`, `create_oauth_account`, `update_oauth_account`, `delete_oauth_account`, `get_user_oauth_accounts` | OAuth providers |
 
 See the [source of AbstractUserAdapter](https://github.com/mdfarhankc/fastapi-fullauth/blob/main/fastapi_fullauth/adapters/base.py) for the full interface.
 
@@ -56,4 +66,11 @@ adapter = SQLModelAdapter(
     user_schema=MyUserSchema,
     create_user_schema=MyCreateSchema,
 )
+```
+
+If your app uses roles, add `roles` to your custom schema:
+
+```python
+class MyUserSchema(UserSchema):
+    roles: list[str] = Field(default_factory=list)
 ```

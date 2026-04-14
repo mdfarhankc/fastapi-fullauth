@@ -4,7 +4,7 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlmodel import Field, Relationship, SQLModel
 
-from fastapi_fullauth import FullAuth, FullAuthConfig
+from fastapi_fullauth import FullAuth, FullAuthConfig, UserSchema
 from fastapi_fullauth.adapters.sqlmodel import (
     RefreshTokenRecord,
     Role,
@@ -13,6 +13,12 @@ from fastapi_fullauth.adapters.sqlmodel import (
     UserRoleLink,
 )
 from fastapi_fullauth.dependencies import current_user
+
+
+class UserSchemaWithRoles(UserSchema):
+    roles: list[str] = Field(default_factory=list)
+
+    PROTECTED_FIELDS = UserSchema.PROTECTED_FIELDS | {"roles"}
 
 
 class User(UserBase, table=True):
@@ -46,7 +52,7 @@ def config():
 
 @pytest.fixture
 def adapter(db):
-    return SQLModelAdapter(session_maker=db, user_model=User)
+    return SQLModelAdapter(session_maker=db, user_model=User, user_schema=UserSchemaWithRoles)
 
 
 @pytest.fixture

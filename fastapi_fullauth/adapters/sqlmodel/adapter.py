@@ -6,7 +6,12 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 from sqlalchemy.orm import selectinload
 from sqlmodel.ext.asyncio.session import AsyncSession as SMAsyncSession
 
-from fastapi_fullauth.adapters.base import AbstractUserAdapter
+from fastapi_fullauth.adapters.base import (
+    AbstractUserAdapter,
+    OAuthAdapterMixin,
+    PermissionAdapterMixin,
+    RoleAdapterMixin,
+)
 from fastapi_fullauth.adapters.sqlmodel.models.base import RefreshTokenRecord, UserBase
 from fastapi_fullauth.types import (
     CreateUserSchema,
@@ -19,7 +24,12 @@ from fastapi_fullauth.types import (
 )
 
 
-class SQLModelAdapter(AbstractUserAdapter[UserSchemaType, CreateUserSchemaType]):
+class SQLModelAdapter(
+    AbstractUserAdapter[UserSchemaType, CreateUserSchemaType],
+    RoleAdapterMixin,
+    PermissionAdapterMixin,
+    OAuthAdapterMixin,
+):
     def __init__(
         self,
         session_maker: async_sessionmaker[SMAsyncSession | SAAsyncSession],
@@ -33,7 +43,10 @@ class SQLModelAdapter(AbstractUserAdapter[UserSchemaType, CreateUserSchemaType])
         self._create_user_schema = create_user_schema
 
     def _user_query(self):
-        return select(self._user_model).options(selectinload(self._user_model.roles))  # type: ignore[arg-type]
+        query = select(self._user_model)
+        if hasattr(self._user_model, "roles"):
+            query = query.options(selectinload(self._user_model.roles))  # type: ignore[arg-type]
+        return query
 
     def _to_schema(self, user) -> UserSchemaType:
         # convert Role objects to role name strings before validation
@@ -104,6 +117,8 @@ class SQLModelAdapter(AbstractUserAdapter[UserSchemaType, CreateUserSchemaType])
                 await session.commit()
 
     async def get_user_roles(self, user_id: UserID) -> list[str]:
+        if not hasattr(self._user_model, "roles"):
+            return []
         async with self._session_maker() as session:
             result = await session.execute(self._user_query().where(self._user_model.id == user_id))
             user = result.scalars().first()

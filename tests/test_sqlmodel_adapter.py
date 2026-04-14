@@ -11,7 +11,7 @@ from fastapi_fullauth.adapters.sqlmodel import SQLModelAdapter
 from fastapi_fullauth.core.crypto import hash_password
 from fastapi_fullauth.dependencies import current_user, require_permission, require_role
 from fastapi_fullauth.types import CreateUserSchema
-from tests.conftest import User
+from tests.conftest import User, UserSchemaWithRoles
 
 # ── Fixtures ────────────────────────────────────────────────────────
 
@@ -28,7 +28,7 @@ async def db():
 
 @pytest.fixture
 def adapter(db):
-    return SQLModelAdapter(session_maker=db, user_model=User)
+    return SQLModelAdapter(session_maker=db, user_model=User, user_schema=UserSchemaWithRoles)
 
 
 @pytest.fixture

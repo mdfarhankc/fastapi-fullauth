@@ -4,7 +4,12 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import selectinload
 
-from fastapi_fullauth.adapters.base import AbstractUserAdapter
+from fastapi_fullauth.adapters.base import (
+    AbstractUserAdapter,
+    OAuthAdapterMixin,
+    PermissionAdapterMixin,
+    RoleAdapterMixin,
+)
 from fastapi_fullauth.adapters.sqlalchemy.models.base import RefreshTokenModel, UserBase
 from fastapi_fullauth.types import (
     CreateUserSchema,
@@ -17,7 +22,12 @@ from fastapi_fullauth.types import (
 )
 
 
-class SQLAlchemyAdapter(AbstractUserAdapter[UserSchemaType, CreateUserSchemaType]):
+class SQLAlchemyAdapter(
+    AbstractUserAdapter[UserSchemaType, CreateUserSchemaType],
+    RoleAdapterMixin,
+    PermissionAdapterMixin,
+    OAuthAdapterMixin,
+):
     def __init__(
         self,
         session_maker: async_sessionmaker[AsyncSession],
@@ -98,6 +108,8 @@ class SQLAlchemyAdapter(AbstractUserAdapter[UserSchemaType, CreateUserSchemaType
                 await session.commit()
 
     async def get_user_roles(self, user_id: UserID) -> list[str]:
+        if not hasattr(self._user_model, "roles"):
+            return []
         async with self._session_maker() as session:
             result = await session.execute(
                 select(self._user_model).where(self._user_model.id == user_id)

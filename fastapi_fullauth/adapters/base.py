@@ -11,10 +11,10 @@ from fastapi_fullauth.types import (
 
 
 class AbstractUserAdapter(ABC, Generic[UserSchemaType, CreateUserSchemaType]):
-    """Interface that every database adapter must implement.
+    """Core adapter interface. Implement this for your ORM/database.
 
-
-    Implement this for your ORM/database to plug into fastapi-fullauth.
+    Provides user CRUD, passwords, refresh tokens, and verification.
+    For roles, permissions, or OAuth, also inherit the corresponding mixin.
     """
 
     _user_schema: type[UserSchemaType]
@@ -46,9 +46,6 @@ class AbstractUserAdapter(ABC, Generic[UserSchemaType, CreateUserSchemaType]):
     async def delete_user(self, user_id: UserID) -> None: ...
 
     @abstractmethod
-    async def get_user_roles(self, user_id: UserID) -> list[str]: ...
-
-    @abstractmethod
     async def get_hashed_password(self, user_id: UserID) -> str | None: ...
 
     @abstractmethod
@@ -72,46 +69,63 @@ class AbstractUserAdapter(ABC, Generic[UserSchemaType, CreateUserSchemaType]):
     @abstractmethod
     async def set_user_verified(self, user_id: UserID) -> None: ...
 
+    async def get_user_roles(self, user_id: UserID) -> list[str]:
+        """Get user's roles. Returns [] by default. Override or use RoleAdapterMixin."""
+        return []
+
+
+class RoleAdapterMixin(ABC):
+    """Mixin for role management. Inherit alongside AbstractUserAdapter."""
+
+    @abstractmethod
+    async def get_user_roles(self, user_id: UserID) -> list[str]: ...
+
     @abstractmethod
     async def assign_role(self, user_id: UserID, role_name: str) -> None: ...
 
     @abstractmethod
     async def remove_role(self, user_id: UserID, role_name: str) -> None: ...
 
-    # ── Permissions (optional — override when using RBAC permissions) ──
 
-    async def get_role_permissions(self, role_name: str) -> list[str]:
-        return []
+class PermissionAdapterMixin(ABC):
+    """Mixin for RBAC permissions. Inherit alongside AbstractUserAdapter."""
+
+    @abstractmethod
+    async def get_role_permissions(self, role_name: str) -> list[str]: ...
 
     async def get_user_permissions(self, user_id: UserID) -> list[str]:
         """Resolve permissions through the user's roles. Deduplicated."""
-        roles = await self.get_user_roles(user_id)
+        roles = await self.get_user_roles(user_id)  # type: ignore[attr-defined]
         perms: set[str] = set()
         for role in roles:
             perms.update(await self.get_role_permissions(role))
         return list(perms)
 
-    async def assign_permission_to_role(self, role_name: str, permission: str) -> None:
-        raise NotImplementedError("Implement permission methods to use RBAC permissions")
+    @abstractmethod
+    async def assign_permission_to_role(self, role_name: str, permission: str) -> None: ...
 
-    async def remove_permission_from_role(self, role_name: str, permission: str) -> None:
-        raise NotImplementedError("Implement permission methods to use RBAC permissions")
+    @abstractmethod
+    async def remove_permission_from_role(self, role_name: str, permission: str) -> None: ...
 
-    # ── OAuth (optional — override when using OAuth) ─────────────────
 
-    async def get_oauth_account(self, provider: str, provider_user_id: str) -> OAuthAccount | None:
-        raise NotImplementedError("Implement OAuth adapter methods to use OAuth")
+class OAuthAdapterMixin(ABC):
+    """Mixin for OAuth account management. Inherit alongside AbstractUserAdapter."""
 
-    async def get_user_oauth_accounts(self, user_id: UserID) -> list[OAuthAccount]:
-        raise NotImplementedError("Implement OAuth adapter methods to use OAuth")
+    @abstractmethod
+    async def get_oauth_account(
+        self, provider: str, provider_user_id: str
+    ) -> OAuthAccount | None: ...
 
-    async def create_oauth_account(self, data: OAuthAccount) -> OAuthAccount:
-        raise NotImplementedError("Implement OAuth adapter methods to use OAuth")
+    @abstractmethod
+    async def get_user_oauth_accounts(self, user_id: UserID) -> list[OAuthAccount]: ...
 
+    @abstractmethod
+    async def create_oauth_account(self, data: OAuthAccount) -> OAuthAccount: ...
+
+    @abstractmethod
     async def update_oauth_account(
         self, provider: str, provider_user_id: str, data: dict[str, Any]
-    ) -> OAuthAccount | None:
-        raise NotImplementedError("Implement OAuth adapter methods to use OAuth")
+    ) -> OAuthAccount | None: ...
 
-    async def delete_oauth_account(self, provider: str, provider_user_id: str) -> None:
-        raise NotImplementedError("Implement OAuth adapter methods to use OAuth")
+    @abstractmethod
+    async def delete_oauth_account(self, provider: str, provider_user_id: str) -> None: ...

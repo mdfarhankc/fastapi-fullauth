@@ -132,4 +132,4 @@ If you don't pass custom schemas, the base `UserSchema` and `CreateUserSchema` a
 
 ## OAuth support
 
-The SQLModel adapter includes full OAuth support. The `OAuthAccountRecord` model is included and the adapter implements all OAuth methods from `AbstractUserAdapter`.
+The SQLModel adapter implements `OAuthAdapterMixin`. Import `OAuthAccountRecord` from `models.oauth` to register the table.
