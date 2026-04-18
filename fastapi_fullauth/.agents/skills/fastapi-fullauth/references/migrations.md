@@ -1,0 +1,117 @@
+# Migrations with Alembic
+
+The library doesn't own your `alembic/` directory — you run Alembic, the library gives you a helper to import only the model groups you use.
+
+## Install
+
+```bash
+uv add 'fastapi-fullauth[sqlmodel]'   # or [sqlalchemy] — either includes alembic
+alembic init alembic
+```
+
+## The helper
+
+`fastapi_fullauth.migrations.include_fullauth_models(adapter_type, include=[...])` imports the model submodules you list. Unlisted modules stay unimported, so their tables never register with `MetaData` and `autogenerate` never generates them.
+
+```python
+# alembic/env.py
+
+from sqlmodel import SQLModel
+from fastapi_fullauth.migrations import include_fullauth_models
+from myapp.models import User  # noqa: F401 — your own models
+
+# Pull in only the fullauth model groups you use
+include_fullauth_models("sqlmodel", include=["base", "role", "permission", "oauth"])
+
+target_metadata = SQLModel.metadata
+```
+
+Valid `include` entries: `"base"` (always needed), `"role"`, `"permission"`, `"oauth"`, `"passkey"`. `"base"` registers `UserBase` + `RefreshTokenRecord`; the others register their respective tables.
+
+For SQLAlchemy:
+
+```python
+from fastapi_fullauth.adapters.sqlalchemy.models.base import FullAuthBase
+
+include_fullauth_models("sqlalchemy", include=["base", "oauth"])
+
+target_metadata = FullAuthBase.metadata
+```
+
+## Why include only what you use
+
+Two reasons:
+
+1. **Autogenerate only diffs registered tables.** If you don't use OAuth, don't include `"oauth"` — otherwise the first autogenerate will emit a `CREATE TABLE fullauth_oauth_accounts` op for a feature you're not wiring up.
+2. **Later opt-in is additive.** Add `"oauth"` to `include` later, run autogenerate, and you get a clean `CREATE TABLE` migration for just that table. No retroactive drift.
+
+## First migration
+
+```bash
+# After defining your User model and setting include_fullauth_models
+alembic revision --autogenerate -m "initial"
+alembic upgrade head
+```
+
+Open the generated file and sanity-check:
+
+- `fullauth_users` is created (plus anything you add in `class User(UserBase)`)
+- `fullauth_refresh_tokens` is created
+- Each opt-in group you included gets its tables
+- Your own tables are there too
+
+## Recurring: keeping migrations honest
+
+Whenever you:
+
+- Add a fullauth submodule to `include=[...]` (opt in to a new feature)
+- Upgrade fastapi-fullauth to a version that changed schema
+- Change your own `User` subclass
+
+...run `alembic revision --autogenerate -m "..."` and review the output before `upgrade head`.
+
+## Version-bump schema changes
+
+### ≤ 0.7.0 → 0.8.0
+
+If you were using OAuth on 0.7.0:
+
+```bash
+alembic revision --autogenerate -m "oauth composite unique constraint"
+```
+
+The diff should add `UniqueConstraint('provider', 'provider_user_id', name='uq_oauth_provider_user')` on `fullauth_oauth_accounts`. Apply before deploy — without it, concurrent OAuth callbacks could have created duplicate-identity rows.
+
+## SQLite quirks
+
+SQLite doesn't support `ALTER TABLE ADD CONSTRAINT` or `ALTER TABLE DROP COLUMN`. Alembic works around it with "batch mode":
+
+```python
+# env.py
+def run_migrations_online():
+    ...
+    with connectable.connect() as connection:
+        context.configure(
+            connection=connection,
+            target_metadata=target_metadata,
+            render_as_batch=True,       # required for SQLite ALTER support
+        )
+```
+
+With `render_as_batch=True`, Alembic wraps each table-altering op in a rename/copy/drop cycle. Generated migrations are portable to Postgres/MySQL too — batch ops are no-ops on those DBs.
+
+If you're using SQLite only for tests and Postgres in production, you don't need batch mode in prod — but enabling it universally keeps dev and prod on the same migration code path.
+
+## Data migrations
+
+Alembic's `op.execute(...)` is the standard escape hatch. For large tables, prefer writing a separate management script over blocking the migration. This library doesn't ship data migrations — your schema is always forward-compatible, so migrating is just schema work.
+
+## Async-vs-sync engine
+
+Alembic runs synchronously. Your app runs async. Have Alembic use a sync engine (`postgresql://...` or `sqlite:///...`) even if the app uses `postgresql+asyncpg://...`. `env.py`'s default scaffold already does this — just make sure the sync URL is in `alembic.ini`'s `sqlalchemy.url` and points at the same database.
+
+## Don't do this
+
+- **Don't run `SQLModel.metadata.create_all(engine)` in production.** It works for tests and local dev, but it can't track drift and doesn't do upgrades. Alembic-only from day one in anything that will live past prototype.
+- **Don't import fullauth submodules you don't use just because.** Each one registers tables that then show up in autogenerate. `include_fullauth_models` exists so you can be deliberate about this.
+- **Don't use `alembic --autogenerate` blindly on a feature opt-in without reviewing the diff.** Occasionally it wants to drop-and-recreate constraints in ways that aren't what you want. The output is a review target, not a final answer.
