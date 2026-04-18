@@ -43,6 +43,7 @@
 - `TokenClaimsBuilder` and `RouterName` moved to `types.py`
 - `init_app()` and `init_middleware()` are now idempotent. Calling either twice on the same FastAPI app emits a `UserWarning` and is a no-op. Previously a second call (e.g. `init_app(app)` followed by a stray `init_middleware(app)`) doubled the middleware stack — duplicate security headers, two rate-limiter instances halving the effective limit, and a CSRF layer validating another CSRF layer's cookies.
 - JWT decode now tolerates clock drift between services via `JWT_LEEWAY_SECONDS` (default 30). Eliminates sporadic 401s caused by ±30 s skew between client and server clocks or across load-balanced instances.
+- `FullAuthConfig` reads `.env` in the current working directory by default (`env_file=".env"`), and ignores unknown `FULLAUTH_*` vars instead of erroring (`extra="ignore"`). Local dev "just works" without passing `_env_file=".env"` explicitly. Cloud deployments are unaffected — pydantic-settings' precedence is init kwargs → `os.environ` → `.env` → defaults, so platform-injected env vars always win, and a missing `.env` is a silent no-op. Use `FullAuthConfig(_env_file="…")` or a `SettingsConfigDict` subclass to read a different file.
 
 ## 0.7.0
 

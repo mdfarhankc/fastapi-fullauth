@@ -35,6 +35,60 @@ Pass config inline or as an object:
     fullauth = FullAuth(adapter=adapter)
     ```
 
+## Reading from a `.env` file
+
+`FullAuthConfig` reads a `.env` file in the current working directory by default (via pydantic-settings). Drop a `.env` next to your app entry point:
+
+```bash
+# .env
+FULLAUTH_SECRET_KEY=replace-me-with-32-random-bytes
+FULLAUTH_ACCESS_TOKEN_EXPIRE_MINUTES=15
+FULLAUTH_BLACKLIST_BACKEND=redis
+FULLAUTH_REDIS_URL=redis://localhost:6379/0
+```
+
+Then `FullAuthConfig()` picks it up — no extra wiring needed.
+
+### Precedence
+
+pydantic-settings resolves values in this order, first wins:
+
+1. Init kwargs — `FullAuthConfig(SECRET_KEY="...")`
+2. Process environment — `os.environ["FULLAUTH_SECRET_KEY"]`
+3. `.env` file
+4. Field defaults
+
+So anything you export in your shell, in `uvicorn --env-file`, or in Docker `env_file:` overrides the dotfile. The dotfile is only read if the variable isn't already in `os.environ`.
+
+### Using a different file
+
+Pass `_env_file` at construction:
+
+```python
+FullAuthConfig(_env_file=".env.production")
+```
+
+Or subclass once in your app:
+
+```python
+from fastapi_fullauth import FullAuthConfig
+from pydantic_settings import SettingsConfigDict
+
+class AppFullAuthConfig(FullAuthConfig):
+    model_config = SettingsConfigDict(
+        env_prefix="FULLAUTH_",
+        case_sensitive=True,
+        env_file=".env.local",
+        extra="ignore",
+    )
+```
+
+### Cloud / container deployments
+
+You don't need to change anything. Managed platforms (FastAPI Cloud, Fly, Railway, Render), Docker, and Kubernetes inject config as real environment variables — those end up in `os.environ` inside the container. The `.env` default simply doesn't find a file to read and falls through to the process env. No overhead, no surprises.
+
+If you want to be defensively explicit that no file is ever read, pass `FullAuthConfig(_env_file=None)` — but it's not required.
+
 ## Reference
 
 ### Core

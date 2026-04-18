@@ -6,7 +6,13 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class FullAuthConfig(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="FULLAUTH_", case_sensitive=True)
+    model_config = SettingsConfigDict(
+        env_prefix="FULLAUTH_",
+        case_sensitive=True,
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
 
     SECRET_KEY: str | None = None
     ALGORITHM: str = "HS256"
