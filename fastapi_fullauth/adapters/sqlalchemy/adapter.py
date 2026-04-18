@@ -479,18 +479,33 @@ class SQLAlchemyAdapter(
             await session.commit()
             return data
 
-    async def update_passkey_sign_count(self, credential_id: str, sign_count: int) -> None:
+    async def update_passkey_sign_count(self, credential_id: str, sign_count: int) -> bool:
         from datetime import datetime, timezone
 
         from fastapi_fullauth.adapters.sqlalchemy.models.passkey import PasskeyModel
 
+        now = datetime.now(timezone.utc)
         async with self._session_maker() as session:
-            await session.execute(
+            result = await session.execute(
                 update(PasskeyModel)
                 .where(PasskeyModel.credential_id == credential_id)
-                .values(sign_count=sign_count, last_used_at=datetime.now(timezone.utc))
+                .where(PasskeyModel.sign_count < sign_count)
+                .values(sign_count=sign_count, last_used_at=now)
             )
+            if result.rowcount == 0:
+                # Counter did not advance. Either the authenticator doesn't maintain a
+                # counter (both stored and new are 0) or a concurrent writer already wrote
+                # a value ≥ ours. Touch last_used_at for the no-counter case; caller
+                # decides whether to reject based on the new_sign_count value.
+                await session.execute(
+                    update(PasskeyModel)
+                    .where(PasskeyModel.credential_id == credential_id)
+                    .values(last_used_at=now)
+                )
+                await session.commit()
+                return False
             await session.commit()
+            return True
 
     async def delete_passkey(self, passkey_id: UserID) -> None:
         from fastapi_fullauth.adapters.sqlalchemy.models.passkey import PasskeyModel

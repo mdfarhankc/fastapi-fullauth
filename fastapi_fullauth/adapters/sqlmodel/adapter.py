@@ -472,18 +472,29 @@ class SQLModelAdapter(
             await session.commit()
             return data
 
-    async def update_passkey_sign_count(self, credential_id: str, sign_count: int) -> None:
+    async def update_passkey_sign_count(self, credential_id: str, sign_count: int) -> bool:
         from datetime import datetime, timezone
 
         from fastapi_fullauth.adapters.sqlmodel.models.passkey import PasskeyRecord
 
+        now = datetime.now(timezone.utc)
         async with self._session_maker() as session:
-            await session.execute(
+            result = await session.execute(
                 update(PasskeyRecord)
                 .where(PasskeyRecord.credential_id == credential_id)
-                .values(sign_count=sign_count, last_used_at=datetime.now(timezone.utc))
+                .where(PasskeyRecord.sign_count < sign_count)
+                .values(sign_count=sign_count, last_used_at=now)
             )
+            if result.rowcount == 0:
+                await session.execute(
+                    update(PasskeyRecord)
+                    .where(PasskeyRecord.credential_id == credential_id)
+                    .values(last_used_at=now)
+                )
+                await session.commit()
+                return False
             await session.commit()
+            return True
 
     async def delete_passkey(self, passkey_id: UserID) -> None:
         from fastapi_fullauth.adapters.sqlmodel.models.passkey import PasskeyRecord

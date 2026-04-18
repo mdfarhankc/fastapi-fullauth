@@ -153,7 +153,12 @@ class PasskeyAdapterMixin(ABC):
     async def store_passkey(self, data: PasskeyCredential) -> PasskeyCredential: ...
 
     @abstractmethod
-    async def update_passkey_sign_count(self, credential_id: str, sign_count: int) -> None: ...
+    async def update_passkey_sign_count(self, credential_id: str, sign_count: int) -> bool:
+        """Conditionally advance sign_count. Returns True if the new value was strictly
+        greater than the stored value and the row was updated; False if the condition
+        failed (stale read / concurrent write / authenticator doesn't maintain a counter).
+        """
+        ...
 
     @abstractmethod
     async def delete_passkey(self, passkey_id: UserID) -> None: ...

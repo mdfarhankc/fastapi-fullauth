@@ -211,9 +211,15 @@ async def complete_authentication(
         require_user_verification=require_user_verification,
     )
 
-    await passkey_adapter.update_passkey_sign_count(
+    # Compare-and-swap: the adapter only advances sign_count when the new value is
+    # strictly greater than what's stored. If the CAS fails AND the authenticator
+    # reported a non-zero counter, treat it as a clone/race and reject. A returned
+    # counter of 0 means the authenticator doesn't maintain one (e.g. synced passkeys).
+    advanced = await passkey_adapter.update_passkey_sign_count(
         stored.credential_id, verification.new_sign_count
     )
+    if not advanced and verification.new_sign_count > 0:
+        raise ValueError("Invalid passkey credential")
 
     user = await adapter.get_user_by_id(stored.user_id)
     if user is None or not user.is_active:
