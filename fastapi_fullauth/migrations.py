@@ -23,15 +23,16 @@ from typing import Literal
 from sqlalchemy import MetaData
 
 AdapterType = Literal["sqlalchemy", "sqlmodel"]
-ModelGroup = Literal["base", "role", "permission", "oauth"]
+ModelGroup = Literal["base", "role", "permission", "oauth", "passkey"]
 
-_ALL_MODEL_GROUPS: list[ModelGroup] = ["base", "role", "permission", "oauth"]
+_ALL_MODEL_GROUPS: list[ModelGroup] = ["base", "role", "permission", "oauth", "passkey"]
 
 _SQLMODEL_IMPORTS: dict[ModelGroup, str] = {
     "base": "fastapi_fullauth.adapters.sqlmodel.models.base",
     "role": "fastapi_fullauth.adapters.sqlmodel.models.role",
     "permission": "fastapi_fullauth.adapters.sqlmodel.models.permission",
     "oauth": "fastapi_fullauth.adapters.sqlmodel.models.oauth",
+    "passkey": "fastapi_fullauth.adapters.sqlmodel.models.passkey",
 }
 
 _SQLALCHEMY_IMPORTS: dict[ModelGroup, str] = {
@@ -39,6 +40,7 @@ _SQLALCHEMY_IMPORTS: dict[ModelGroup, str] = {
     "role": "fastapi_fullauth.adapters.sqlalchemy.models.role",
     "permission": "fastapi_fullauth.adapters.sqlalchemy.models.permission",
     "oauth": "fastapi_fullauth.adapters.sqlalchemy.models.oauth",
+    "passkey": "fastapi_fullauth.adapters.sqlalchemy.models.passkey",
 }
 
 

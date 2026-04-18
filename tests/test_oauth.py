@@ -8,6 +8,7 @@ from sqlmodel import SQLModel
 
 from fastapi_fullauth import FullAuth, FullAuthConfig
 from fastapi_fullauth.adapters.sqlmodel import SQLModelAdapter
+from fastapi_fullauth.adapters.sqlmodel.models.oauth import OAuthAccountRecord  # noqa: F401
 from fastapi_fullauth.flows.oauth import generate_oauth_state, oauth_callback, verify_oauth_state
 from fastapi_fullauth.oauth.base import OAuthProvider
 from fastapi_fullauth.types import OAuthUserInfo
@@ -135,7 +136,7 @@ async def test_oauth_creates_new_user(adapter, config):
     provider = MockOAuthProvider()
     state = generate_oauth_state(engine)
 
-    token_pair, user, is_new = await oauth_callback(
+    token_pair, user, is_new, info = await oauth_callback(
         adapter=adapter,
         token_engine=engine,
         provider=provider,
@@ -165,7 +166,7 @@ async def test_oauth_links_existing_user(adapter, config):
     provider = MockOAuthProvider()
     state = generate_oauth_state(engine)
 
-    token_pair, user, is_new = await oauth_callback(
+    token_pair, user, is_new, info = await oauth_callback(
         adapter=adapter,
         token_engine=engine,
         provider=provider,
@@ -191,7 +192,7 @@ async def test_oauth_returning_user(adapter, config):
 
     # first login — creates user
     state1 = generate_oauth_state(engine)
-    _, user1, is_new1 = await oauth_callback(
+    _, user1, is_new1, _ = await oauth_callback(
         adapter=adapter,
         token_engine=engine,
         provider=provider,
@@ -202,7 +203,7 @@ async def test_oauth_returning_user(adapter, config):
 
     # second login — returning user
     state2 = generate_oauth_state(engine)
-    _, user2, is_new2 = await oauth_callback(
+    _, user2, is_new2, _ = await oauth_callback(
         adapter=adapter,
         token_engine=engine,
         provider=provider,

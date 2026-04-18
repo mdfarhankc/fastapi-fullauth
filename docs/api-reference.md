@@ -40,6 +40,7 @@ fullauth = FullAuth(
 | `verify_router` | `APIRouter` | Email verification and password reset routes |
 | `admin_router` | `APIRouter` | Role/permission management routes (superuser) |
 | `oauth_router` | `APIRouter` | OAuth provider routes |
+| `passkey_router` | `APIRouter` | Passkey WebAuthn routes |
 
 ## FullAuthConfig
 

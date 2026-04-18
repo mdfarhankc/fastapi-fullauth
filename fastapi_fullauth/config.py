@@ -55,6 +55,13 @@ class FullAuthConfig(BaseSettings):
     OAUTH_STATE_EXPIRE_SECONDS: int = 300
     OAUTH_AUTO_LINK_BY_EMAIL: bool = True
 
+    PASSKEY_ENABLED: bool = False
+    PASSKEY_RP_ID: str | None = None
+    PASSKEY_RP_NAME: str | None = None
+    PASSKEY_ORIGINS: list[str] = []
+    PASSKEY_CHALLENGE_BACKEND: Literal["memory", "redis"] = "memory"
+    PASSKEY_CHALLENGE_TTL: int = 60
+
     API_PREFIX: str = "/api/v1"
     AUTH_ROUTER_PREFIX: str = "/auth"
     ROUTER_TAGS: list[str] = ["Auth"]

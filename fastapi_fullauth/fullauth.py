@@ -3,7 +3,12 @@ from typing import Generic
 
 from fastapi import APIRouter, FastAPI
 
-from fastapi_fullauth.adapters.base import AbstractUserAdapter, OAuthAdapterMixin, RoleAdapterMixin
+from fastapi_fullauth.adapters.base import (
+    AbstractUserAdapter,
+    OAuthAdapterMixin,
+    PasskeyAdapterMixin,
+    RoleAdapterMixin,
+)
 from fastapi_fullauth.backends import AbstractBackend, BearerBackend
 from fastapi_fullauth.config import FullAuthConfig
 from fastapi_fullauth.core.tokens import TokenEngine, create_blacklist
@@ -55,6 +60,12 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
         self.lockout = create_lockout(config)
         self.auth_rate_limiter = AuthRateLimiter(config)
 
+        self.challenge_store = None
+        if config.PASSKEY_ENABLED:
+            from fastapi_fullauth.core.challenges import create_challenge_store
+
+            self.challenge_store = create_challenge_store(config)
+
         self.password_validator = password_validator or PasswordValidator(
             min_length=config.PASSWORD_MIN_LENGTH
         )
@@ -66,6 +77,7 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
         self._profile_router: APIRouter | None = None
         self._verify_router: APIRouter | None = None
         self._admin_router: APIRouter | None = None
+        self._passkey_router: APIRouter | None = None
         self._router: APIRouter | None = None
 
     _RESERVED_CLAIM_KEYS = frozenset(
@@ -140,7 +152,19 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
 
         return create_oauth_router(user_schema=self.adapter._user_schema)
 
-    _ROUTER_NAMES: set[RouterName] = {"auth", "profile", "verify", "admin", "oauth"}
+    @property
+    def passkey_router(self) -> APIRouter | None:
+        if not self.config.PASSKEY_ENABLED:
+            return None
+        if self._passkey_router is None:
+            from fastapi_fullauth.router.passkey import create_passkey_router
+
+            self._passkey_router = create_passkey_router(
+                user_schema=self.adapter._user_schema,
+            )
+        return self._passkey_router
+
+    _ROUTER_NAMES: set[RouterName] = {"auth", "profile", "verify", "admin", "oauth", "passkey"}
 
     def _build_router(self, exclude: set[str] | None = None) -> APIRouter:
         """Build combined router, optionally excluding named sub-routers."""
@@ -161,6 +185,12 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
             and self.oauth_router is not None
         ):
             router.include_router(self.oauth_router)
+        if (
+            "passkey" not in exclude
+            and isinstance(self.adapter, PasskeyAdapterMixin)
+            and self.passkey_router is not None
+        ):
+            router.include_router(self.passkey_router)
         return router
 
     @property

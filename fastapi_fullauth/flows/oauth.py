@@ -98,6 +98,7 @@ async def link_or_create_user(
         user = await adapter.create_user(
             data, hashed_password=hash_password(random_password, algorithm=hash_algorithm)
         )
+        await adapter.update_user(user.id, {"has_usable_password": False})
 
         if info.email_verified:
             await adapter.set_user_verified(user.id)
@@ -155,7 +156,7 @@ async def oauth_callback(
     state: str,
     auto_link_by_email: bool = True,
     hash_algorithm: str = "argon2id",
-) -> tuple[TokenPair, UserSchema, bool]:
+) -> tuple[TokenPair, UserSchema, bool, OAuthUserInfo]:
     """Full OAuth callback flow. Delegates to smaller functions."""
     provider_tokens, info = await exchange_oauth_code(provider, token_engine, code, state)
 
@@ -170,4 +171,4 @@ async def oauth_callback(
 
     token_pair = await issue_oauth_tokens(adapter, token_engine, user)
 
-    return token_pair, user, is_new_user
+    return token_pair, user, is_new_user, info

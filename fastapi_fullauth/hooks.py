@@ -1,7 +1,7 @@
 from collections.abc import Awaitable, Callable
 from typing import Any, Literal, Protocol, overload
 
-from fastapi_fullauth.types import UserID, UserSchema
+from fastapi_fullauth.types import OAuthUserInfo, UserID, UserSchema
 
 
 class AfterUserHook(Protocol):
@@ -14,6 +14,14 @@ class AfterLogoutHook(Protocol):
 
 class EmailHook(Protocol):
     async def __call__(self, email: str, token: str) -> Any: ...
+
+
+class AfterOAuthLoginHook(Protocol):
+    async def __call__(self, user: UserSchema, provider: str, is_new_user: bool) -> Any: ...
+
+
+class AfterOAuthRegisterHook(Protocol):
+    async def __call__(self, user: UserSchema, user_info: OAuthUserInfo) -> Any: ...
 
 
 EventHook = Callable[..., Awaitable[Any]]
@@ -35,6 +43,12 @@ class EventHooks:
     def on(self, event: Literal["after_password_reset"], callback: AfterUserHook) -> None: ...
     @overload
     def on(self, event: Literal["after_email_verify"], callback: AfterUserHook) -> None: ...
+    @overload
+    def on(self, event: Literal["after_oauth_login"], callback: AfterOAuthLoginHook) -> None: ...
+    @overload
+    def on(
+        self, event: Literal["after_oauth_register"], callback: AfterOAuthRegisterHook
+    ) -> None: ...
     @overload
     def on(self, event: Literal["send_verification_email"], callback: EmailHook) -> None: ...
     @overload

@@ -8,6 +8,11 @@ from sqlmodel import SQLModel
 
 from fastapi_fullauth import FullAuth, FullAuthConfig
 from fastapi_fullauth.adapters.sqlmodel import SQLModelAdapter
+from fastapi_fullauth.adapters.sqlmodel.models.oauth import OAuthAccountRecord  # noqa: F401
+from fastapi_fullauth.adapters.sqlmodel.models.permission import (  # noqa: F401
+    Permission,
+    RolePermissionLink,
+)
 from fastapi_fullauth.core.crypto import hash_password
 from fastapi_fullauth.dependencies import current_user, require_permission, require_role
 from fastapi_fullauth.types import CreateUserSchema

@@ -8,13 +8,18 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from fastapi_fullauth import FullAuth, FullAuthConfig
-from fastapi_fullauth.adapters.sqlalchemy import (
+from fastapi_fullauth.adapters.sqlalchemy import SQLAlchemyAdapter
+from fastapi_fullauth.adapters.sqlalchemy.models.base import (
     FullAuthBase,
     RefreshTokenModel,
-    RoleModel,
-    SQLAlchemyAdapter,
     UserBase,
 )
+from fastapi_fullauth.adapters.sqlalchemy.models.oauth import OAuthAccountModel  # noqa: F401
+from fastapi_fullauth.adapters.sqlalchemy.models.permission import (  # noqa: F401
+    PermissionModel,
+    RolePermissionModel,
+)
+from fastapi_fullauth.adapters.sqlalchemy.models.role import RoleModel, UserRoleModel  # noqa: F401
 from fastapi_fullauth.core.crypto import hash_password
 from fastapi_fullauth.dependencies import current_user, require_permission, require_role
 from fastapi_fullauth.types import CreateUserSchema

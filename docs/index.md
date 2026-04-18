@@ -110,6 +110,7 @@ fullauth.init_middleware(app)
 | `verify_router` | email verification, password reset |
 | `admin_router` | assign/remove roles and permissions (superuser) |
 | `oauth_router` | OAuth provider routes (only if configured) |
+| `passkey_router` | Passkey register, authenticate, list, delete (only if enabled) |
 
 `fullauth.init_app(app)` includes all of them. Use `exclude_routers` or individual routers for granular control.
 

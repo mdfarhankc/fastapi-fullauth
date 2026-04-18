@@ -9,6 +9,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession as SMAsyncSession
 from fastapi_fullauth.adapters.base import (
     AbstractUserAdapter,
     OAuthAdapterMixin,
+    PasskeyAdapterMixin,
     PermissionAdapterMixin,
     RoleAdapterMixin,
 )
@@ -17,6 +18,7 @@ from fastapi_fullauth.types import (
     CreateUserSchema,
     CreateUserSchemaType,
     OAuthAccount,
+    PasskeyCredential,
     RefreshToken,
     UserID,
     UserSchema,
@@ -29,6 +31,7 @@ class SQLModelAdapter(
     RoleAdapterMixin,
     PermissionAdapterMixin,
     OAuthAdapterMixin,
+    PasskeyAdapterMixin,
 ):
     def __init__(
         self,
@@ -235,6 +238,22 @@ class SQLModelAdapter(
 
     # ── Permissions ──────────────────────────────────────────────────
 
+    async def get_permissions_for_roles(self, role_names: list[str]) -> list[str]:
+        from fastapi_fullauth.adapters.sqlmodel.models.permission import (
+            Permission,
+            RolePermissionLink,
+        )
+        from fastapi_fullauth.adapters.sqlmodel.models.role import Role
+
+        async with self._session_maker() as session:
+            result = await session.execute(
+                select(Permission.name)
+                .join(RolePermissionLink, Permission.id == RolePermissionLink.permission_id)
+                .join(Role, Role.id == RolePermissionLink.role_id)
+                .where(Role.name.in_(role_names))
+            )
+            return list(set(result.scalars().all()))
+
     async def get_role_permissions(self, role_name: str) -> list[str]:
         from fastapi_fullauth.adapters.sqlmodel.models.permission import (
             Permission,
@@ -393,6 +412,85 @@ class SQLModelAdapter(
                     OAuthAccountRecord.provider == provider,
                     OAuthAccountRecord.provider_user_id == provider_user_id,
                 )
+            )
+            row = result.scalars().first()
+            if row:
+                await session.delete(row)
+                await session.commit()
+
+    # ── Passkeys ────────────────────────────────────────────────────
+
+    def _to_passkey(self, row) -> PasskeyCredential:
+
+        return PasskeyCredential(
+            id=row.id,
+            user_id=row.user_id,
+            credential_id=row.credential_id,
+            public_key=row.public_key,
+            sign_count=row.sign_count,
+            device_name=row.device_name,
+            transports=row.transports.split(",") if row.transports else [],
+            backed_up=row.backed_up,
+            created_at=row.created_at,
+            last_used_at=row.last_used_at,
+        )
+
+    async def get_passkey_by_credential_id(self, credential_id: str) -> PasskeyCredential | None:
+        from fastapi_fullauth.adapters.sqlmodel.models.passkey import PasskeyRecord
+
+        async with self._session_maker() as session:
+            result = await session.execute(
+                select(PasskeyRecord).where(PasskeyRecord.credential_id == credential_id)
+            )
+            row = result.scalars().first()
+            return self._to_passkey(row) if row else None
+
+    async def get_user_passkeys(self, user_id: UserID) -> list[PasskeyCredential]:
+        from fastapi_fullauth.adapters.sqlmodel.models.passkey import PasskeyRecord
+
+        async with self._session_maker() as session:
+            result = await session.execute(
+                select(PasskeyRecord).where(PasskeyRecord.user_id == user_id)
+            )
+            return [self._to_passkey(row) for row in result.scalars().all()]
+
+    async def store_passkey(self, data: PasskeyCredential) -> PasskeyCredential:
+        from fastapi_fullauth.adapters.sqlmodel.models.passkey import PasskeyRecord
+
+        async with self._session_maker() as session:
+            record = PasskeyRecord(
+                id=data.id,
+                user_id=data.user_id,
+                credential_id=data.credential_id,
+                public_key=data.public_key,
+                sign_count=data.sign_count,
+                device_name=data.device_name,
+                transports=",".join(data.transports),
+                backed_up=data.backed_up,
+            )
+            session.add(record)
+            await session.commit()
+            return data
+
+    async def update_passkey_sign_count(self, credential_id: str, sign_count: int) -> None:
+        from datetime import datetime, timezone
+
+        from fastapi_fullauth.adapters.sqlmodel.models.passkey import PasskeyRecord
+
+        async with self._session_maker() as session:
+            await session.execute(
+                update(PasskeyRecord)
+                .where(PasskeyRecord.credential_id == credential_id)
+                .values(sign_count=sign_count, last_used_at=datetime.now(timezone.utc))
+            )
+            await session.commit()
+
+    async def delete_passkey(self, passkey_id: UserID) -> None:
+        from fastapi_fullauth.adapters.sqlmodel.models.passkey import PasskeyRecord
+
+        async with self._session_maker() as session:
+            result = await session.execute(
+                select(PasskeyRecord).where(PasskeyRecord.id == passkey_id)
             )
             row = result.scalars().first()
             if row:

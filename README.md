@@ -32,6 +32,7 @@ Add a complete authentication and authorization system to your **FastAPI** proje
 - **Refresh token rotation** with reuse detection — revokes entire session family on replay
 - **Password hashing** via Argon2id (default) or bcrypt, with transparent rehashing
 - **Email verification** and **password reset** flows with event hooks
+- **Passkey (WebAuthn)** — passwordless login with fingerprint, Face ID, security keys
 - **OAuth2 social login** — Google and GitHub, with multi-redirect-URI support
 - **Role-based access control** — `CurrentUser`, `VerifiedUser`, `SuperUser`, `require_role()`
 - **Rate limiting** — per-route auth limits + global middleware (memory or Redis)
@@ -59,6 +60,9 @@ pip install fastapi-fullauth[sqlmodel,redis]
 
 # with OAuth2 social login
 pip install fastapi-fullauth[sqlmodel,oauth]
+
+# with passkey/WebAuthn
+pip install fastapi-fullauth[sqlmodel,passkey]
 
 # everything
 pip install fastapi-fullauth[all]
@@ -110,6 +114,7 @@ fullauth.init_middleware(app)
 | `verify_router` | email verification, password reset |
 | `admin_router` | assign/remove roles and permissions (superuser) |
 | `oauth_router` | OAuth provider routes (only if configured) |
+| `passkey_router` | Passkey register, authenticate, list, delete (only if enabled) |
 
 `fullauth.init_app(app)` includes all of them. Use individual routers for granular control.
 

@@ -128,3 +128,14 @@ Pass config inline or as an object:
 | `API_PREFIX` | `str` | `"/api/v1"` | URL prefix for all routes. |
 | `AUTH_ROUTER_PREFIX` | `str` | `"/auth"` | Auth router sub-prefix. |
 | `ROUTER_TAGS` | `list[str]` | `["Auth"]` | OpenAPI tags for auth routes. |
+
+### Passkeys
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `PASSKEY_ENABLED` | `bool` | `False` | Enable passkey (WebAuthn) routes. |
+| `PASSKEY_RP_ID` | `str \| None` | `None` | Relying Party ID (your domain, e.g. `"example.com"`). |
+| `PASSKEY_RP_NAME` | `str \| None` | `None` | Relying Party display name (e.g. `"My App"`). |
+| `PASSKEY_ORIGINS` | `list[str]` | `[]` | Allowed origins (e.g. `["https://example.com", "https://m.example.com"]`). |
+| `PASSKEY_CHALLENGE_BACKEND` | `"memory" \| "redis"` | `"memory"` | Challenge store backend. |
+| `PASSKEY_CHALLENGE_TTL` | `int` | `60` | Challenge expiry in seconds. |
