@@ -24,6 +24,8 @@ keywords = [
     "refresh-token",
     "password-hashing",
     "role-based-access-control",
+    "passkey",
+    "webauthn",
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -53,12 +55,14 @@ sqlalchemy = ["sqlalchemy[asyncio]>=2.0", "alembic>=1.13"]
 sqlmodel = ["sqlmodel>=0.0.16", "alembic>=1.13"]
 redis = ["redis>=5.0"]
 oauth = ["httpx>=0.25"]
+passkey = ["webauthn>=2.0"]
 all = [
     "sqlalchemy[asyncio]>=2.0",
     "alembic>=1.13",
     "sqlmodel>=0.0.16",
     "redis>=5.0",
     "httpx>=0.25",
+    "webauthn>=2.0",
 ]
 
 [project.urls]
@@ -89,6 +93,9 @@ warn_unused_configs = true
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+filterwarnings = [
+    "ignore:In-memory backends in use:UserWarning",
+]
 
 [dependency-groups]
 dev = [

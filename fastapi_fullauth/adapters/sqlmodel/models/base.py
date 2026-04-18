@@ -20,6 +20,7 @@ class UserBase(SQLModel):
     id: UUID = Field(default_factory=uuid7, primary_key=True)
     email: str = Field(unique=True, index=True, max_length=320)
     hashed_password: str
+    has_usable_password: bool = Field(default=True)
     is_active: bool = Field(default=True)
     is_verified: bool = Field(default=False)
     is_superuser: bool = Field(default=False)

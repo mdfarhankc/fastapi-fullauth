@@ -47,6 +47,10 @@ class ChangePasswordRequest(BaseModel):
     new_password: str
 
 
+class SetPasswordRequest(BaseModel):
+    new_password: str
+
+
 class RoleAssignment(BaseModel):
     user_id: UUID
     role: str

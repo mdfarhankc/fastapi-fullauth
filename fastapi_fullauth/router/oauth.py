@@ -103,7 +103,7 @@ def create_oauth_router(
             )
 
         try:
-            token_pair, user, is_new_user = await oauth_callback(
+            token_pair, user, is_new_user, user_info = await oauth_callback(
                 adapter=fullauth.adapter,
                 token_engine=fullauth.token_engine,
                 provider=oauth_provider,
@@ -123,6 +123,7 @@ def create_oauth_router(
         )
         if is_new_user:
             await fullauth.hooks.emit("after_register", user=user)
+            await fullauth.hooks.emit("after_oauth_register", user=user, user_info=user_info)
 
         if fullauth.config.INCLUDE_USER_IN_LOGIN and user:
             return LoginResponse(

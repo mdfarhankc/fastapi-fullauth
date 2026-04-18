@@ -95,6 +95,7 @@ Models are split into groups. Import only what you need:
 | `role` | `fullauth_roles`, `fullauth_user_roles` | When using roles |
 | `permission` | `fullauth_permissions`, `fullauth_role_permissions` | When using RBAC permissions |
 | `oauth` | `fullauth_oauth_accounts` | When using OAuth providers |
+| `passkey` | `fullauth_passkeys` | When using passkey/WebAuthn authentication |
 
 ## Helper functions
 

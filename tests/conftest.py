@@ -5,13 +5,9 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlmodel import Field, Relationship, SQLModel
 
 from fastapi_fullauth import FullAuth, FullAuthConfig, UserSchema
-from fastapi_fullauth.adapters.sqlmodel import (
-    RefreshTokenRecord,
-    Role,
-    SQLModelAdapter,
-    UserBase,
-    UserRoleLink,
-)
+from fastapi_fullauth.adapters.sqlmodel import SQLModelAdapter
+from fastapi_fullauth.adapters.sqlmodel.models.base import RefreshTokenRecord, UserBase
+from fastapi_fullauth.adapters.sqlmodel.models.role import Role, UserRoleLink
 from fastapi_fullauth.dependencies import current_user
 
 

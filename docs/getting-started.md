@@ -120,6 +120,7 @@ fullauth.init_middleware(app)  # also calls bind() if not done
 | `verify_router` | email verification, password reset |
 | `admin_router` | assign/remove roles and permissions (superuser) |
 | `oauth_router` | OAuth provider routes (only if configured) |
+| `passkey_router` | Passkey register, authenticate, list, delete (only if enabled) |
 
 ## 5. Try it out
 

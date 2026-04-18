@@ -122,6 +122,7 @@ fullauth.init_middleware(app)
 | `verify_router` | email verification, password reset |
 | `admin_router` | assign/remove roles and permissions (superuser) |
 | `oauth_router` | OAuth provider routes (only if configured) |
+| `passkey_router` | Passkey register, authenticate, list, delete (only if enabled) |
 
 `fullauth.init_app(app)` includes all of them. Use `exclude_routers` or individual routers for granular control.
 
@@ -337,9 +338,8 @@ pip install fastapi-fullauth[sqlmodel]
 ```python
 # models.py
 from sqlmodel import Field, Relationship
-from fastapi_fullauth.adapters.sqlmodel import (
-    UserBase, Role, UserRoleLink, RefreshTokenRecord,
-)
+from fastapi_fullauth.adapters.sqlmodel.models.base import UserBase, RefreshTokenRecord
+from fastapi_fullauth.adapters.sqlmodel.models.role import Role, UserRoleLink
 
 class User(UserBase, table=True):
     __tablename__ = "fullauth_users"
@@ -442,6 +442,7 @@ fullauth.init_middleware(app)
 | `verify_router` | email verification, password reset |
 | `admin_router` | assign/remove roles and permissions (superuser) |
 | `oauth_router` | OAuth provider routes (only if configured) |
+| `passkey_router` | Passkey register, authenticate, list, delete (only if enabled) |
 
 ## 5. Try it out
 
@@ -590,7 +591,7 @@ Pass config inline or as an object:
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `RATE_LIMIT_ENABLED` | `bool` | `False` | Enable global rate limit middleware. |
-| `RATE_LIMIT_BACKEND` | `"memory" \| "redis"` | `"memory"` | Rate limiter storage backend. |
+| `RATE_LIMIT_BACKEND` | `"memory" \| "redis"` | `"memory"` | Rate limiter storage backend. Use `"redis"` in production — `"memory"` is per-process. |
 | `TRUSTED_PROXY_HEADERS` | `list[str]` | `[]` | Headers to read real client IP from (e.g. `["X-Forwarded-For"]`). |
 | `AUTH_RATE_LIMIT_ENABLED` | `bool` | `True` | Enable per-route auth rate limits. |
 | `AUTH_RATE_LIMIT_LOGIN` | `int` | `5` | Max login attempts per window. |
@@ -609,7 +610,7 @@ Pass config inline or as an object:
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `BLACKLIST_ENABLED` | `bool` | `True` | Check blacklist on token decode. |
-| `BLACKLIST_BACKEND` | `"memory" \| "redis"` | `"memory"` | Blacklist storage backend. |
+| `BLACKLIST_BACKEND` | `"memory" \| "redis"` | `"memory"` | Blacklist storage backend. Use `"redis"` in production — `"memory"` is per-process, so revoked tokens stay valid on other workers. |
 
 ### Middleware
 
@@ -643,6 +644,18 @@ Pass config inline or as an object:
 | `API_PREFIX` | `str` | `"/api/v1"` | URL prefix for all routes. |
 | `AUTH_ROUTER_PREFIX` | `str` | `"/auth"` | Auth router sub-prefix. |
 | `ROUTER_TAGS` | `list[str]` | `["Auth"]` | OpenAPI tags for auth routes. |
+
+### Passkeys
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `PASSKEY_ENABLED` | `bool` | `False` | Enable passkey (WebAuthn) routes. |
+| `PASSKEY_RP_ID` | `str \| None` | `None` | Relying Party ID (your domain). |
+| `PASSKEY_RP_NAME` | `str \| None` | `None` | Relying Party display name. |
+| `PASSKEY_ORIGINS` | `list[str]` | `[]` | Allowed origins (e.g. `["https://example.com", "https://m.example.com"]`). |
+| `PASSKEY_CHALLENGE_BACKEND` | `"memory" \| "redis"` | `"memory"` | Challenge store backend. Use `"redis"` in production — `"memory"` is per-process and breaks under multi-worker deployments. |
+| `PASSKEY_CHALLENGE_TTL` | `int` | `60` | Challenge expiry in seconds. |
+| `PASSKEY_REQUIRE_USER_VERIFICATION` | `bool` | `True` | Require user verification (PIN/biometric) on register and authenticate. |
 
 ---
 
@@ -744,9 +757,8 @@ pip install fastapi-fullauth[sqlmodel]
 
 ```python
 from sqlmodel import Field, Relationship
-from fastapi_fullauth.adapters.sqlmodel import (
-    UserBase, Role, UserRoleLink, RefreshTokenRecord,
-)
+from fastapi_fullauth.adapters.sqlmodel.models.base import UserBase, RefreshTokenRecord
+from fastapi_fullauth.adapters.sqlmodel.models.role import Role, UserRoleLink
 
 class User(UserBase, table=True):
     __tablename__ = "fullauth_users"
@@ -1934,6 +1946,7 @@ Models are split into groups. Import only what you need:
 | `role` | `fullauth_roles`, `fullauth_user_roles` | When using roles |
 | `permission` | `fullauth_permissions`, `fullauth_role_permissions` | When using RBAC permissions |
 | `oauth` | `fullauth_oauth_accounts` | When using OAuth providers |
+| `passkey` | `fullauth_passkeys` | When using passkey/WebAuthn authentication |
 
 ## Helper functions
 
@@ -2006,6 +2019,7 @@ fullauth = FullAuth(
 | `verify_router` | `APIRouter` | Email verification and password reset routes |
 | `admin_router` | `APIRouter` | Role/permission management routes (superuser) |
 | `oauth_router` | `APIRouter` | OAuth provider routes |
+| `passkey_router` | `APIRouter` | Passkey WebAuthn routes |
 
 ## FullAuthConfig
 

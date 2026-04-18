@@ -34,6 +34,7 @@ class FullAuthConfig(BaseSettings):
     AUTH_RATE_LIMIT_LOGIN: int = 5
     AUTH_RATE_LIMIT_REGISTER: int = 3
     AUTH_RATE_LIMIT_PASSWORD_RESET: int = 3
+    AUTH_RATE_LIMIT_PASSKEY_AUTH: int = 10
     AUTH_RATE_LIMIT_WINDOW_SECONDS: int = 60
 
     REDIS_URL: str | None = None
@@ -54,6 +55,14 @@ class FullAuthConfig(BaseSettings):
 
     OAUTH_STATE_EXPIRE_SECONDS: int = 300
     OAUTH_AUTO_LINK_BY_EMAIL: bool = True
+
+    PASSKEY_ENABLED: bool = False
+    PASSKEY_RP_ID: str | None = None
+    PASSKEY_RP_NAME: str | None = None
+    PASSKEY_ORIGINS: list[str] = []
+    PASSKEY_CHALLENGE_BACKEND: Literal["memory", "redis"] = "memory"
+    PASSKEY_CHALLENGE_TTL: int = 60
+    PASSKEY_REQUIRE_USER_VERIFICATION: bool = True
 
     API_PREFIX: str = "/api/v1"
     AUTH_ROUTER_PREFIX: str = "/auth"

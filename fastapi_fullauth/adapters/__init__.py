@@ -1,6 +1,7 @@
 from fastapi_fullauth.adapters.base import (
     AbstractUserAdapter,
     OAuthAdapterMixin,
+    PasskeyAdapterMixin,
     PermissionAdapterMixin,
     RoleAdapterMixin,
 )
@@ -8,6 +9,7 @@ from fastapi_fullauth.adapters.base import (
 __all__ = [
     "AbstractUserAdapter",
     "OAuthAdapterMixin",
+    "PasskeyAdapterMixin",
     "PermissionAdapterMixin",
     "RoleAdapterMixin",
 ]
@@ -21,16 +23,8 @@ def __getattr__(name: str):
         from fastapi_fullauth.adapters.sqlalchemy import SQLAlchemyAdapter
 
         return SQLAlchemyAdapter
-    if name in ("FullAuthBase", "UserModel", "RoleModel"):
-        from fastapi_fullauth.adapters import sqlalchemy as sa
-
-        return getattr(sa, name)
     if name == "SQLModelAdapter":
         from fastapi_fullauth.adapters.sqlmodel import SQLModelAdapter
 
         return SQLModelAdapter
-    if name in ("User", "Role", "UserBase"):
-        from fastapi_fullauth.adapters import sqlmodel as sm
-
-        return getattr(sm, name)
     raise AttributeError(f"module 'fastapi_fullauth.adapters' has no attribute {name!r}")

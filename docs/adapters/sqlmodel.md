@@ -105,6 +105,7 @@ Tables are created based on which model groups you import:
 | Roles | `fullauth_roles`, `fullauth_user_roles` | `models.role` |
 | Permissions | `fullauth_permissions`, `fullauth_role_permissions` | `models.permission` |
 | OAuth | `fullauth_oauth_accounts` | `models.oauth` |
+| Passkeys | `fullauth_passkeys` | `models.passkey` |
 
 ## Custom schemas
 

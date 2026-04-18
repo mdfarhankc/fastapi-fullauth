@@ -52,5 +52,4 @@ async def verify_email(
     await token_engine.blacklist_token(payload.jti)
 
     logger.info("Email verified: user_id=%s", user.id)
-    # re-fetch to get updated is_verified
-    return await adapter.get_user_by_id(UUID(payload.sub))
+    return user.model_copy(update={"is_verified": True})

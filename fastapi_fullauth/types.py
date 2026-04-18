@@ -22,6 +22,7 @@ class UserSchema(BaseModel):
         "id",
         "email",
         "hashed_password",
+        "has_usable_password",
         "is_active",
         "is_verified",
         "is_superuser",
@@ -97,5 +98,20 @@ class TokenPayload(BaseModel):
     family_id: str | None = None
 
 
-RouterName = Literal["auth", "profile", "verify", "admin", "oauth"]
+class PasskeyCredential(BaseModel):
+    id: UUID
+    user_id: UUID
+    credential_id: str
+    public_key: str
+    sign_count: int = 0
+    device_name: str = ""
+    transports: list[str] = Field(default_factory=list)
+    backed_up: bool = False
+    created_at: datetime | None = None
+    last_used_at: datetime | None = None
+
+    model_config = {"from_attributes": True}
+
+
+RouterName = Literal["auth", "profile", "verify", "admin", "oauth", "passkey"]
 TokenClaimsBuilder = Callable[[UserSchema], Awaitable[dict[str, Any]]]

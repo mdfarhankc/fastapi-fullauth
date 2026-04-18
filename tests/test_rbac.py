@@ -9,6 +9,10 @@ from sqlmodel import SQLModel
 
 from fastapi_fullauth import FullAuth, FullAuthConfig
 from fastapi_fullauth.adapters.sqlmodel import SQLModelAdapter
+from fastapi_fullauth.adapters.sqlmodel.models.permission import (  # noqa: F401
+    Permission,
+    RolePermissionLink,
+)
 from fastapi_fullauth.dependencies import require_permission, require_role
 from tests.conftest import User, UserSchemaWithRoles
 
