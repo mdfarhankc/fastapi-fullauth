@@ -82,7 +82,22 @@ async def link_or_create_user(
     # new provider link — check if email already has an account
     user = None
     if info.email and auto_link_by_email:
-        user = await adapter.get_user_by_email(info.email)
+        existing = await adapter.get_user_by_email(info.email)
+        if existing is not None:
+            # Only auto-link when the provider confirms email ownership — otherwise
+            # anyone who signs up at the provider with a victim's email takes the account.
+            if not info.email_verified:
+                logger.warning(
+                    "oauth auto-link refused: unverified email on existing account "
+                    "(provider=%s, provider_user_id=%s)",
+                    info.provider,
+                    info.provider_user_id,
+                )
+                raise OAuthProviderError(
+                    "This email is already registered. Sign in with your existing "
+                    "credentials and link your OAuth account from account settings."
+                )
+            user = existing
 
     if user is None:
         from fastapi_fullauth.types import CreateUserSchema

@@ -184,6 +184,42 @@ async def test_oauth_links_existing_user(adapter, config):
 
 
 @pytest.mark.asyncio
+async def test_oauth_unverified_email_refuses_link_to_existing_account(adapter, config):
+    from fastapi_fullauth.core.crypto import hash_password
+    from fastapi_fullauth.core.tokens import TokenEngine
+    from fastapi_fullauth.exceptions import OAuthProviderError
+    from fastapi_fullauth.types import CreateUserSchema, OAuthUserInfo
+
+    engine = TokenEngine(config=config)
+
+    data = CreateUserSchema(email="victim@example.com", password="existing-pass")
+    await adapter.create_user(data, hashed_password=hash_password("existing-pass"))
+
+    provider = MockOAuthProvider(
+        user_info=OAuthUserInfo(
+            provider="mock",
+            provider_user_id="attacker-42",
+            email="victim@example.com",
+            email_verified=False,
+            name="Attacker",
+        )
+    )
+    state = generate_oauth_state(engine)
+
+    with pytest.raises(OAuthProviderError):
+        await oauth_callback(
+            adapter=adapter,
+            token_engine=engine,
+            provider=provider,
+            code="c",
+            state=state,
+        )
+
+    # no OAuth account created, existing user not hijacked
+    assert await adapter.get_oauth_account("mock", "attacker-42") is None
+
+
+@pytest.mark.asyncio
 async def test_oauth_returning_user(adapter, config):
     from fastapi_fullauth.core.tokens import TokenEngine
 

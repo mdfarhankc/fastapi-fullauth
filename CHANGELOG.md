@@ -1,14 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.8.0
 
 ### Security
 
-- Passkey register and authenticate now enforce `require_user_verification=True` server-side. New `PASSKEY_REQUIRE_USER_VERIFICATION` setting (default `True`) gates UV enforcement so a non-UV credential is rejected instead of silently accepted.
-- Passkey authentication now validates the authenticator's returned `userHandle` against the stored credential's user_id. Prevents logging in the wrong account if the credential→user mapping in the DB is ever inconsistent with the authenticator's internal binding (data-import bugs, credential row tampering, discoverable-credential confusion).
-- Passkey sign-count updates are now compare-and-swap: the adapter advances the stored counter only if the new value is strictly greater, and authentication rejects when a concurrent update already wrote a ≥ value. Closes a race where two concurrent assertions could both pass the library's counter check (read stale, both write) and let a cloned authenticator slip past the anti-clone protection. `PasskeyAdapterMixin.update_passkey_sign_count` now returns `bool` (custom adapters should honour the CAS semantics).
-
-## 0.8.0
+- OAuth auto-link-by-email now requires `info.email_verified=True` from the provider when an account with that email already exists. Without this gate, any provider that returns an unverified email (e.g. GitHub secondary addresses) could be used to hijack an existing account by registering the provider with the victim's email.
 
 ### Breaking changes
 
