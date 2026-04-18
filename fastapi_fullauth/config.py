@@ -61,6 +61,7 @@ class FullAuthConfig(BaseSettings):
     PASSKEY_ORIGINS: list[str] = []
     PASSKEY_CHALLENGE_BACKEND: Literal["memory", "redis"] = "memory"
     PASSKEY_CHALLENGE_TTL: int = 60
+    PASSKEY_REQUIRE_USER_VERIFICATION: bool = True
 
     API_PREFIX: str = "/api/v1"
     AUTH_ROUTER_PREFIX: str = "/auth"

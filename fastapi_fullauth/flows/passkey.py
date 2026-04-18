@@ -30,6 +30,7 @@ async def begin_registration(
     challenge_store: ChallengeStore,
     adapter: PasskeyAdapterMixin,
     challenge_ttl: int = 60,
+    require_user_verification: bool = True,
 ) -> dict:
     """Generate WebAuthn registration options for a logged-in user."""
     from webauthn import generate_registration_options, options_to_json
@@ -45,6 +46,11 @@ async def begin_registration(
         PublicKeyCredentialDescriptor(id=_b64_decode(pk.credential_id)) for pk in existing
     ]
 
+    uv = (
+        UserVerificationRequirement.REQUIRED
+        if require_user_verification
+        else UserVerificationRequirement.PREFERRED
+    )
     options = generate_registration_options(
         rp_id=rp_id,
         rp_name=rp_name,
@@ -53,7 +59,7 @@ async def begin_registration(
         exclude_credentials=exclude_credentials,
         authenticator_selection=AuthenticatorSelectionCriteria(
             resident_key=ResidentKeyRequirement.PREFERRED,
-            user_verification=UserVerificationRequirement.PREFERRED,
+            user_verification=uv,
         ),
     )
 
@@ -76,6 +82,7 @@ async def complete_registration(
     expected_origin: str | list[str],
     challenge_store: ChallengeStore,
     adapter: PasskeyAdapterMixin,
+    require_user_verification: bool = True,
 ) -> PasskeyCredential:
     """Verify WebAuthn registration response and store the credential."""
     from webauthn import verify_registration_response
@@ -91,6 +98,7 @@ async def complete_registration(
         expected_challenge=expected_challenge,
         expected_rp_id=rp_id,
         expected_origin=expected_origin,
+        require_user_verification=require_user_verification,
     )
 
     transports = []
@@ -163,6 +171,7 @@ async def complete_authentication(
     adapter: AbstractUserAdapter,
     passkey_adapter: PasskeyAdapterMixin,
     token_engine,
+    require_user_verification: bool = True,
 ) -> tuple[TokenPair, UserSchema]:
     """Verify WebAuthn authentication response and issue JWT tokens."""
     from webauthn import verify_authentication_response
@@ -187,6 +196,7 @@ async def complete_authentication(
         expected_origin=expected_origin,
         credential_public_key=_b64_decode(stored.public_key),
         credential_current_sign_count=stored.sign_count,
+        require_user_verification=require_user_verification,
     )
 
     await passkey_adapter.update_passkey_sign_count(

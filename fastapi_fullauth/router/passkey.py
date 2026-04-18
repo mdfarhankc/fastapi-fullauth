@@ -70,6 +70,7 @@ def create_passkey_router(
             challenge_store=fullauth.challenge_store,
             adapter=fullauth.adapter,
             challenge_ttl=fullauth.config.PASSKEY_CHALLENGE_TTL,
+            require_user_verification=fullauth.config.PASSKEY_REQUIRE_USER_VERIFICATION,
         )
 
     @router.post(
@@ -101,6 +102,7 @@ def create_passkey_router(
                 expected_origin=origins,
                 challenge_store=fullauth.challenge_store,
                 adapter=fullauth.adapter,
+                require_user_verification=fullauth.config.PASSKEY_REQUIRE_USER_VERIFICATION,
             )
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
@@ -177,6 +179,7 @@ def create_passkey_router(
                 adapter=fullauth.adapter,
                 passkey_adapter=fullauth.adapter,
                 token_engine=fullauth.token_engine,
+                require_user_verification=fullauth.config.PASSKEY_REQUIRE_USER_VERIFICATION,
             )
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
