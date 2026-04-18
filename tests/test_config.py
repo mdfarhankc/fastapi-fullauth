@@ -602,3 +602,86 @@ async def test_explicit_schemas_on_adapter():
         assert r.json()["display_name"] == "tester"
 
     await engine.dispose()
+
+
+# ===========================================================================
+# Init idempotency
+# ===========================================================================
+
+
+@pytest.mark.asyncio
+async def test_init_app_twice_is_a_noop_with_warning():
+    """Calling init_app a second time must warn and not duplicate routes/middleware."""
+    engine, session_maker = await _make_db()
+    adapter = SQLModelAdapter(session_maker=session_maker, user_model=User)
+    fullauth = FullAuth(
+        adapter=adapter,
+        config=FullAuthConfig(SECRET_KEY="test-key-32b-long-enough-here!!!"),
+    )
+    app = FastAPI()
+
+    fullauth.init_app(app)
+    routes_before = len(app.routes)
+    middleware_before = len(app.user_middleware)
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        fullauth.init_app(app)
+    assert any("init_app() called more than once" in str(w.message) for w in caught)
+
+    assert len(app.routes) == routes_before
+    assert len(app.user_middleware) == middleware_before
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_init_middleware_twice_is_a_noop_with_warning():
+    engine, session_maker = await _make_db()
+    adapter = SQLModelAdapter(session_maker=session_maker, user_model=User)
+    fullauth = FullAuth(
+        adapter=adapter,
+        config=FullAuthConfig(
+            SECRET_KEY="test-key-32b-long-enough-here!!!",
+            CSRF_ENABLED=True,
+        ),
+    )
+    app = FastAPI()
+
+    fullauth.init_middleware(app)
+    middleware_before = len(app.user_middleware)
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        fullauth.init_middleware(app)
+    assert any("init_middleware() called more than once" in str(w.message) for w in caught)
+    assert len(app.user_middleware) == middleware_before
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_init_app_then_init_middleware_does_not_double_wire():
+    """init_app(auto_middleware=True) already wires middleware; an extra
+    init_middleware() call must be a warning-only no-op."""
+    engine, session_maker = await _make_db()
+    adapter = SQLModelAdapter(session_maker=session_maker, user_model=User)
+    fullauth = FullAuth(
+        adapter=adapter,
+        config=FullAuthConfig(
+            SECRET_KEY="test-key-32b-long-enough-here!!!",
+            CSRF_ENABLED=True,
+        ),
+    )
+    app = FastAPI()
+
+    fullauth.init_app(app)
+    middleware_after_init_app = len(app.user_middleware)
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        fullauth.init_middleware(app)
+    assert any("init_middleware() called more than once" in str(w.message) for w in caught)
+    assert len(app.user_middleware) == middleware_after_init_app
+
+    await engine.dispose()

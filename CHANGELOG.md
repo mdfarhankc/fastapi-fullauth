@@ -40,6 +40,7 @@
 - Rate limiting extracted from FullAuth `__init__` into `AuthRateLimiter`
 - SQLModelAdapter `session_maker` type hint accepts both session types cleanly
 - `TokenClaimsBuilder` and `RouterName` moved to `types.py`
+- `init_app()` and `init_middleware()` are now idempotent. Calling either twice on the same FastAPI app emits a `UserWarning` and is a no-op. Previously a second call (e.g. `init_app(app)` followed by a stray `init_middleware(app)`) doubled the middleware stack — duplicate security headers, two rate-limiter instances halving the effective limit, and a CSRF layer validating another CSRF layer's cookies.
 
 ## 0.7.0
 
