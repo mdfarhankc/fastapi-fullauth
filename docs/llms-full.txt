@@ -591,7 +591,7 @@ Pass config inline or as an object:
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `RATE_LIMIT_ENABLED` | `bool` | `False` | Enable global rate limit middleware. |
-| `RATE_LIMIT_BACKEND` | `"memory" \| "redis"` | `"memory"` | Rate limiter storage backend. |
+| `RATE_LIMIT_BACKEND` | `"memory" \| "redis"` | `"memory"` | Rate limiter storage backend. Use `"redis"` in production — `"memory"` is per-process. |
 | `TRUSTED_PROXY_HEADERS` | `list[str]` | `[]` | Headers to read real client IP from (e.g. `["X-Forwarded-For"]`). |
 | `AUTH_RATE_LIMIT_ENABLED` | `bool` | `True` | Enable per-route auth rate limits. |
 | `AUTH_RATE_LIMIT_LOGIN` | `int` | `5` | Max login attempts per window. |
@@ -610,7 +610,7 @@ Pass config inline or as an object:
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `BLACKLIST_ENABLED` | `bool` | `True` | Check blacklist on token decode. |
-| `BLACKLIST_BACKEND` | `"memory" \| "redis"` | `"memory"` | Blacklist storage backend. |
+| `BLACKLIST_BACKEND` | `"memory" \| "redis"` | `"memory"` | Blacklist storage backend. Use `"redis"` in production — `"memory"` is per-process, so revoked tokens stay valid on other workers. |
 
 ### Middleware
 
@@ -653,7 +653,7 @@ Pass config inline or as an object:
 | `PASSKEY_RP_ID` | `str \| None` | `None` | Relying Party ID (your domain). |
 | `PASSKEY_RP_NAME` | `str \| None` | `None` | Relying Party display name. |
 | `PASSKEY_ORIGINS` | `list[str]` | `[]` | Allowed origins (e.g. `["https://example.com", "https://m.example.com"]`). |
-| `PASSKEY_CHALLENGE_BACKEND` | `"memory" \| "redis"` | `"memory"` | Challenge store backend. |
+| `PASSKEY_CHALLENGE_BACKEND` | `"memory" \| "redis"` | `"memory"` | Challenge store backend. Use `"redis"` in production — `"memory"` is per-process and breaks under multi-worker deployments. |
 | `PASSKEY_CHALLENGE_TTL` | `int` | `60` | Challenge expiry in seconds. |
 | `PASSKEY_REQUIRE_USER_VERIFICATION` | `bool` | `True` | Require user verification (PIN/biometric) on register and authenticate. |
 

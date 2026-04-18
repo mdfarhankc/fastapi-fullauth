@@ -191,6 +191,9 @@ class AuthRateLimiter:
         self._limiters["password-reset"] = create_rate_limiter(
             config, config.AUTH_RATE_LIMIT_PASSWORD_RESET, window
         )
+        self._limiters["passkey-authenticate"] = create_rate_limiter(
+            config, config.AUTH_RATE_LIMIT_PASSKEY_AUTH, window
+        )
 
     async def check(self, route_name: str, client_ip: str) -> None:
         limiter = self._limiters.get(route_name)

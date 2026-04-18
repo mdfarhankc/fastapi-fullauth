@@ -2,13 +2,14 @@ import logging
 from typing import TYPE_CHECKING
 from uuid import UUID
 
-from fastapi import APIRouter, Body, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from fastapi_fullauth.adapters.base import PasskeyAdapterMixin
 from fastapi_fullauth.dependencies.current_user import CurrentUser, _get_fullauth
 from fastapi_fullauth.router._models import build_login_response_model
 from fastapi_fullauth.types import TokenPair, UserSchema, UserSchemaType
+from fastapi_fullauth.utils import get_client_ip
 
 logger = logging.getLogger("fastapi_fullauth.router.passkey")
 
@@ -125,6 +126,7 @@ def create_passkey_router(
         description="Begin passkey authentication. Returns WebAuthn request options.",
     )
     async def authenticate_begin(
+        request: Request,
         data: AuthenticateBeginRequest = Body(AuthenticateBeginRequest()),
         fullauth: "FullAuth" = Depends(_get_fullauth),
     ) -> dict:
@@ -135,6 +137,9 @@ def create_passkey_router(
 
         if not isinstance(fullauth.adapter, PasskeyAdapterMixin):
             raise HTTPException(status_code=501, detail="Adapter does not support passkeys")
+
+        client_ip = get_client_ip(request, fullauth.config.TRUSTED_PROXY_HEADERS)
+        await fullauth.check_auth_rate_limit("passkey-authenticate", client_ip)
 
         user_id = None
         if data.email:

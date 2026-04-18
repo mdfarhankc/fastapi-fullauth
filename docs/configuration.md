@@ -75,12 +75,13 @@ Pass config inline or as an object:
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `RATE_LIMIT_ENABLED` | `bool` | `False` | Enable global rate limit middleware. |
-| `RATE_LIMIT_BACKEND` | `"memory" \| "redis"` | `"memory"` | Rate limiter storage backend. |
+| `RATE_LIMIT_BACKEND` | `"memory" \| "redis"` | `"memory"` | Rate limiter storage backend. Use `"redis"` in production — `"memory"` is per-process, so the effective limit is multiplied by the worker count. |
 | `TRUSTED_PROXY_HEADERS` | `list[str]` | `[]` | Headers to read real client IP from (e.g. `["X-Forwarded-For"]`). |
 | `AUTH_RATE_LIMIT_ENABLED` | `bool` | `True` | Enable per-route auth rate limits. |
 | `AUTH_RATE_LIMIT_LOGIN` | `int` | `5` | Max login attempts per window. |
 | `AUTH_RATE_LIMIT_REGISTER` | `int` | `3` | Max registrations per window. |
 | `AUTH_RATE_LIMIT_PASSWORD_RESET` | `int` | `3` | Max password reset requests per window. |
+| `AUTH_RATE_LIMIT_PASSKEY_AUTH` | `int` | `10` | Max passkey authenticate/begin requests per window. |
 | `AUTH_RATE_LIMIT_WINDOW_SECONDS` | `int` | `60` | Rate limit window in seconds. |
 
 ### Redis
@@ -94,7 +95,7 @@ Pass config inline or as an object:
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `BLACKLIST_ENABLED` | `bool` | `True` | Check blacklist on token decode. |
-| `BLACKLIST_BACKEND` | `"memory" \| "redis"` | `"memory"` | Blacklist storage backend. |
+| `BLACKLIST_BACKEND` | `"memory" \| "redis"` | `"memory"` | Blacklist storage backend. Use `"redis"` in production — `"memory"` is per-process, so a token revoked on one worker remains usable on others (logout won't actually revoke). |
 
 ### Middleware
 
@@ -137,6 +138,6 @@ Pass config inline or as an object:
 | `PASSKEY_RP_ID` | `str \| None` | `None` | Relying Party ID (your domain, e.g. `"example.com"`). |
 | `PASSKEY_RP_NAME` | `str \| None` | `None` | Relying Party display name (e.g. `"My App"`). |
 | `PASSKEY_ORIGINS` | `list[str]` | `[]` | Allowed origins (e.g. `["https://example.com", "https://m.example.com"]`). |
-| `PASSKEY_CHALLENGE_BACKEND` | `"memory" \| "redis"` | `"memory"` | Challenge store backend. |
+| `PASSKEY_CHALLENGE_BACKEND` | `"memory" \| "redis"` | `"memory"` | Challenge store backend. Use `"redis"` in production — `"memory"` is per-process and breaks under `uvicorn --workers N` (begin and complete can land on different workers). |
 | `PASSKEY_CHALLENGE_TTL` | `int` | `60` | Challenge expiry in seconds. |
 | `PASSKEY_REQUIRE_USER_VERIFICATION` | `bool` | `True` | Require user verification (PIN/biometric) on register and authenticate. Set `False` only if you need to allow silent authenticators. |

@@ -6,6 +6,7 @@ signs it with the user's private key. The server verifies the signature
 and deletes the challenge.
 """
 
+import asyncio
 import logging
 import time
 from abc import ABC, abstractmethod
@@ -26,16 +27,20 @@ class ChallengeStore(ABC):
 
 
 class InMemoryChallengeStore(ChallengeStore):
-    """In-memory challenge store. Single-process only."""
+    """In-memory challenge store. Single-process only — use Redis for multi-worker."""
 
     def __init__(self) -> None:
         self._store: dict[str, tuple[str, float]] = {}
+        self._lock = asyncio.Lock()
 
     async def store(self, key: str, challenge: str, ttl: int = 60) -> None:
         self._store[key] = (challenge, time.monotonic() + ttl)
 
     async def pop(self, key: str) -> str | None:
-        entry = self._store.pop(key, None)
+        # Lock the pop+expiry-check as one atomic section so two concurrent pops
+        # for the same key can't both see the same challenge.
+        async with self._lock:
+            entry = self._store.pop(key, None)
         if entry is None:
             return None
         challenge, expires_at = entry

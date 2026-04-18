@@ -1,4 +1,5 @@
 import logging
+import warnings
 from typing import Generic
 
 from fastapi import APIRouter, FastAPI
@@ -66,6 +67,8 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
 
             self.challenge_store = create_challenge_store(config)
 
+        self._warn_memory_backends(config)
+
         self.password_validator = password_validator or PasswordValidator(
             min_length=config.PASSWORD_MIN_LENGTH
         )
@@ -83,6 +86,34 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
     _RESERVED_CLAIM_KEYS = frozenset(
         {"sub", "exp", "iat", "jti", "type", "roles", "extra", "family_id"}
     )
+
+    @staticmethod
+    def _warn_memory_backends(config: FullAuthConfig) -> None:
+        # Each of these stores per-process state. Under `uvicorn --workers N`
+        # state isn't shared between workers: blacklisted tokens stay valid on
+        # other workers, lockouts and rate limits reset per worker, and passkey
+        # begin/complete can land on different workers and break the flow.
+        offenders: list[str] = []
+        if config.BLACKLIST_ENABLED and config.BLACKLIST_BACKEND == "memory":
+            offenders.append("BLACKLIST_BACKEND")
+        if config.LOCKOUT_ENABLED and config.LOCKOUT_BACKEND == "memory":
+            offenders.append("LOCKOUT_BACKEND")
+        if (
+            config.RATE_LIMIT_ENABLED or config.AUTH_RATE_LIMIT_ENABLED
+        ) and config.RATE_LIMIT_BACKEND == "memory":
+            offenders.append("RATE_LIMIT_BACKEND")
+        if config.PASSKEY_ENABLED and config.PASSKEY_CHALLENGE_BACKEND == "memory":
+            offenders.append("PASSKEY_CHALLENGE_BACKEND")
+
+        if offenders:
+            warnings.warn(
+                f"In-memory backends in use: {', '.join(offenders)}. "
+                "State is per-process — logout/revocation, lockouts, rate limits, and "
+                "passkey flows will behave inconsistently under multi-worker deployments. "
+                "Set these to 'redis' (and configure REDIS_URL) in production.",
+                UserWarning,
+                stacklevel=3,
+            )
 
     async def get_custom_claims(self, user: UserSchema) -> dict:
         if not self.on_create_token_claims:

@@ -34,6 +34,7 @@ class FullAuthConfig(BaseSettings):
     AUTH_RATE_LIMIT_LOGIN: int = 5
     AUTH_RATE_LIMIT_REGISTER: int = 3
     AUTH_RATE_LIMIT_PASSWORD_RESET: int = 3
+    AUTH_RATE_LIMIT_PASSKEY_AUTH: int = 10
     AUTH_RATE_LIMIT_WINDOW_SECONDS: int = 60
 
     REDIS_URL: str | None = None
