@@ -5,6 +5,7 @@
 ### Security
 
 - Passkey register and authenticate now enforce `require_user_verification=True` server-side. New `PASSKEY_REQUIRE_USER_VERIFICATION` setting (default `True`) gates UV enforcement so a non-UV credential is rejected instead of silently accepted.
+- Passkey authentication now validates the authenticator's returned `userHandle` against the stored credential's user_id. Prevents logging in the wrong account if the credential→user mapping in the DB is ever inconsistent with the authenticator's internal binding (data-import bugs, credential row tampering, discoverable-credential confusion).
 
 ## 0.8.0
 

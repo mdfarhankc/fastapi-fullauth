@@ -189,6 +189,18 @@ async def complete_authentication(
     if stored is None:
         raise ValueError("Unknown passkey credential")
 
+    # If the authenticator returned a userHandle (discoverable credentials always do),
+    # it must match the user the credential is stored against. This is the server-side
+    # check that the credential and account binding agree — not just our DB mapping.
+    user_handle_b64 = (credential.get("response") or {}).get("userHandle")
+    if user_handle_b64:
+        try:
+            user_handle = _b64_decode(user_handle_b64)
+        except Exception as e:
+            raise ValueError("Invalid passkey credential") from e
+        if user_handle != str(stored.user_id).encode():
+            raise ValueError("Invalid passkey credential")
+
     verification = verify_authentication_response(
         credential=credential,
         expected_challenge=expected_challenge,
