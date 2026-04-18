@@ -551,6 +551,22 @@ Pass config inline or as an object:
     fullauth = FullAuth(adapter=adapter)
     ```
 
+## Reading from a `.env` file
+
+`FullAuthConfig` reads a `.env` file in the current working directory by default. Drop one next to your app entry point:
+
+```bash
+# .env
+FULLAUTH_SECRET_KEY=replace-me-with-32-random-bytes
+FULLAUTH_ACCESS_TOKEN_EXPIRE_MINUTES=15
+FULLAUTH_BLACKLIST_BACKEND=redis
+FULLAUTH_REDIS_URL=redis://localhost:6379/0
+```
+
+Precedence is init kwargs → process env → `.env` file → field defaults. So `uvicorn --env-file` / Docker `env_file:` / `export` all win over the dotfile.
+
+Use a different file via `FullAuthConfig(_env_file=".env.production")` or by subclassing with a custom `SettingsConfigDict`. Cloud deployments (FastAPI Cloud, Docker, Kubernetes, Fly, Railway) need no changes — their env vars land in `os.environ` and the library's `.env` default is a silent no-op when no file exists.
+
 ## Reference
 
 ### Core

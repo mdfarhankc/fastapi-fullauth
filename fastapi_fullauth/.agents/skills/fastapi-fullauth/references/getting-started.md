@@ -63,7 +63,9 @@ app = FastAPI()
 fullauth.init_app(app)
 ```
 
-`FullAuthConfig()` reads settings from environment variables with the `FULLAUTH_` prefix (via pydantic-settings). At minimum set `FULLAUTH_SECRET_KEY` — a 32+ char random string.
+`FullAuthConfig()` reads settings from environment variables with the `FULLAUTH_` prefix, plus a `.env` file in the current working directory if present. At minimum set `FULLAUTH_SECRET_KEY` — a 32+ char random string.
+
+Precedence: init kwargs → `os.environ` → `.env` → field defaults. Read a different file via `FullAuthConfig(_env_file=".env.local")`. On cloud platforms (FastAPI Cloud, Docker, Kubernetes) you don't need to do anything — their env vars go into `os.environ` and the `.env` default is a no-op when the file isn't in the container.
 
 ## 4. Routes you get for free
 
