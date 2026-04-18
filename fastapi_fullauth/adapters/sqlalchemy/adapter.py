@@ -1,6 +1,7 @@
 from typing import Any
 
 from sqlalchemy import select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import selectinload
 
@@ -12,6 +13,7 @@ from fastapi_fullauth.adapters.base import (
     RoleAdapterMixin,
 )
 from fastapi_fullauth.adapters.sqlalchemy.models.base import RefreshTokenModel, UserBase
+from fastapi_fullauth.exceptions import UserAlreadyExistsError
 from fastapi_fullauth.types import (
     CreateUserSchema,
     CreateUserSchemaType,
@@ -82,7 +84,11 @@ class SQLAlchemyAdapter(
                 **extra,
             )
             session.add(user)
-            await session.commit()
+            try:
+                await session.commit()
+            except IntegrityError as e:
+                await session.rollback()
+                raise UserAlreadyExistsError(f"User with email {data.email} already exists") from e
             await session.refresh(user)
             return self._to_schema(user)
 

@@ -1,6 +1,7 @@
 from typing import Any
 
 from sqlalchemy import select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession as SAAsyncSession
 from sqlalchemy.ext.asyncio import async_sessionmaker
 from sqlalchemy.orm import selectinload
@@ -14,6 +15,7 @@ from fastapi_fullauth.adapters.base import (
     RoleAdapterMixin,
 )
 from fastapi_fullauth.adapters.sqlmodel.models.base import RefreshTokenRecord, UserBase
+from fastapi_fullauth.exceptions import UserAlreadyExistsError
 from fastapi_fullauth.types import (
     CreateUserSchema,
     CreateUserSchemaType,
@@ -90,7 +92,11 @@ class SQLModelAdapter(
                 **extra,
             )
             session.add(user)
-            await session.commit()
+            try:
+                await session.commit()
+            except IntegrityError as e:
+                await session.rollback()
+                raise UserAlreadyExistsError(f"User with email {data.email} already exists") from e
             # re-fetch with roles loaded
             result = await session.execute(self._user_query().where(self._user_model.id == user.id))
             user = result.scalars().first()

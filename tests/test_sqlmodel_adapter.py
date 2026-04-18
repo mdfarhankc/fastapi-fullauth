@@ -103,6 +103,17 @@ async def test_get_user_by_email(adapter):
 
 
 @pytest.mark.asyncio
+async def test_create_user_duplicate_email_raises(adapter):
+    from fastapi_fullauth.exceptions import UserAlreadyExistsError
+
+    data = CreateUserSchema(email="dup@test.com", password="pass123")
+    await adapter.create_user(data, hashed_password=hash_password("pass123"))
+
+    with pytest.raises(UserAlreadyExistsError):
+        await adapter.create_user(data, hashed_password=hash_password("pass123"))
+
+
+@pytest.mark.asyncio
 async def test_get_user_by_field(adapter):
     data = CreateUserSchema(email="field@test.com", password="pass123")
     await adapter.create_user(data, hashed_password=hash_password("pass123"))
