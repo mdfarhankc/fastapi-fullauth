@@ -391,7 +391,22 @@ class SQLModelAdapter(
                 expires_at=data.expires_at,
             )
             session.add(record)
-            await session.commit()
+            try:
+                await session.commit()
+            except IntegrityError:
+                # Concurrent OAuth callback for the same (provider, provider_user_id)
+                # won the insert. Return the existing row.
+                await session.rollback()
+                result = await session.execute(
+                    select(OAuthAccountRecord).where(
+                        OAuthAccountRecord.provider == data.provider,
+                        OAuthAccountRecord.provider_user_id == data.provider_user_id,
+                    )
+                )
+                existing = result.scalars().first()
+                if existing is not None:
+                    return self._to_oauth_account(existing)
+                raise
             return data
 
     async def update_oauth_account(

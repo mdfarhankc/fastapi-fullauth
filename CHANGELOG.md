@@ -5,10 +5,17 @@
 ### Security
 
 - OAuth auto-link-by-email now requires `info.email_verified=True` from the provider when an account with that email already exists. Without this gate, any provider that returns an unverified email (e.g. GitHub secondary addresses) could be used to hijack an existing account by registering the provider with the victim's email.
+- Cookie backend's `delete_token` now matches the same `secure`/`samesite`/`path`/`domain` attributes used on set. Browsers ignore (or reject, for `SameSite=None`) a deletion that doesn't match — logout previously left the cookie in place on some setups.
+- Refresh-token revocation is now an atomic compare-and-swap (`UPDATE ... WHERE revoked=false`). Two concurrent refresh calls with the same token can no longer both succeed by racing the old stored-state check. `AbstractUserAdapter.revoke_refresh_token` now returns `bool` — custom adapters should honour the CAS semantics.
+- `create_user` catches `IntegrityError` from duplicate-email races and raises `UserAlreadyExistsError`. The register flow's pre-check only guards the common case; concurrent signups used to surface as 500s.
+- OAuth account table now has a composite unique constraint on `(provider, provider_user_id)`. Existing SQL users should autogenerate an Alembic migration to add it. `create_oauth_account` now returns the existing row on concurrent-insert collisions instead of erroring.
 
 ### Breaking changes
 
 - **Models split into packages** — `adapters/sqlmodel/models.py` and `adapters/sqlalchemy/models.py` are now `models/` directories with `base.py`, `role.py`, `permission.py`, `oauth.py`. Old import paths (`from fastapi_fullauth.adapters.sqlmodel.models import ...`) still work via `__init__.py` re-exports. New selective imports: `from fastapi_fullauth.adapters.sqlmodel.models.base import UserBase, RefreshTokenRecord`.
+- **`roles` removed from default `UserSchema`** — apps that use roles should extend `UserSchema` with `roles: list[str] = Field(default_factory=list)`. Apps without roles are unaffected.
+- **Admin router auto-skipped** when adapter doesn't implement `RoleAdapterMixin`. OAuth/passkey routers auto-skipped similarly.
+- **`AbstractUserAdapter.revoke_refresh_token` now returns `bool`** — custom adapters need to return `True` only when the token actually transitioned from not-revoked to revoked (CAS semantics).
 
 ### Added
 
@@ -26,11 +33,6 @@
 - **`ChallengeStore`** — abstract challenge store with InMemory and Redis backends for WebAuthn flows.
 - **`PasskeyAdapterMixin`** — adapter mixin for passkey credential persistence.
 - **Adapter mixins** — `AbstractUserAdapter` split into composable interfaces: `RoleAdapterMixin`, `PermissionAdapterMixin`, `OAuthAdapterMixin`, `PasskeyAdapterMixin`. Custom adapters implement only what they need. Built-in adapters inherit all mixins (backward compatible).
-
-### Breaking changes
-
-- **`roles` removed from default `UserSchema`** — apps that use roles should extend `UserSchema` with `roles: list[str] = Field(default_factory=list)`. Apps without roles are unaffected.
-- **Admin router auto-skipped** when adapter doesn't implement `RoleAdapterMixin`. OAuth/passkey routers auto-skipped similarly.
 
 ### Changed
 

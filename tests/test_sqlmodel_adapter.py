@@ -289,6 +289,32 @@ async def test_user_permissions_through_roles(adapter):
 
 
 @pytest.mark.asyncio
+async def test_oauth_account_duplicate_identity_is_idempotent(adapter):
+    """Composite unique constraint on (provider, provider_user_id): a second insert
+    for the same identity returns the existing row instead of erroring."""
+    from fastapi_fullauth.types import OAuthAccount
+
+    u1 = await adapter.create_user(
+        CreateUserSchema(email="u1@test.com", password="p"),
+        hashed_password=hash_password("p"),
+    )
+    u2 = await adapter.create_user(
+        CreateUserSchema(email="u2@test.com", password="p"),
+        hashed_password=hash_password("p"),
+    )
+
+    first = await adapter.create_oauth_account(
+        OAuthAccount(provider="github", provider_user_id="gh-1", user_id=u1.id)
+    )
+
+    second = await adapter.create_oauth_account(
+        OAuthAccount(provider="github", provider_user_id="gh-1", user_id=u2.id)
+    )
+    assert second.user_id == first.user_id
+    assert second.user_id == u1.id
+
+
+@pytest.mark.asyncio
 async def test_oauth_account_crud(adapter):
     from fastapi_fullauth.types import OAuthAccount
 

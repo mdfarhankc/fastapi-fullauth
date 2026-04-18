@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from uuid import UUID
 
-from sqlalchemy import DateTime, ForeignKey, String, Text, Uuid
+from sqlalchemy import DateTime, ForeignKey, String, Text, UniqueConstraint, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 from uuid_utils import uuid7
 
@@ -10,10 +10,13 @@ from fastapi_fullauth.adapters.sqlalchemy.models.base import FullAuthBase
 
 class OAuthAccountModel(FullAuthBase):
     __tablename__ = "fullauth_oauth_accounts"
+    __table_args__ = (
+        UniqueConstraint("provider", "provider_user_id", name="uq_oauth_provider_user"),
+    )
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid7)
-    provider: Mapped[str] = mapped_column(String(50), index=True, nullable=False)
-    provider_user_id: Mapped[str] = mapped_column(String(320), index=True, nullable=False)
+    provider: Mapped[str] = mapped_column(String(50), nullable=False)
+    provider_user_id: Mapped[str] = mapped_column(String(320), nullable=False)
     user_id: Mapped[UUID] = mapped_column(
         Uuid, ForeignKey("fullauth_users.id", ondelete="CASCADE"), nullable=False
     )
