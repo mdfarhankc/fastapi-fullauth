@@ -218,9 +218,15 @@ async def test_refresh_token_crud(adapter):
     assert stored.family_id == "family-1"
     assert stored.revoked is False
 
-    await adapter.revoke_refresh_token("test-token-123")
+    assert await adapter.revoke_refresh_token("test-token-123") is True
     stored = await adapter.get_refresh_token("test-token-123")
     assert stored.revoked is True
+
+    # second revoke returns False — already revoked (the CAS signal)
+    assert await adapter.revoke_refresh_token("test-token-123") is False
+
+    # revoking an unknown token also returns False
+    assert await adapter.revoke_refresh_token("does-not-exist") is False
 
 
 @pytest.mark.asyncio

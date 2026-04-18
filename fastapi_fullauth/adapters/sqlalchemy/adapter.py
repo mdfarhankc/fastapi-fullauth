@@ -172,14 +172,16 @@ class SQLAlchemyAdapter(
                 revoked=row.revoked,
             )
 
-    async def revoke_refresh_token(self, token_str: str) -> None:
+    async def revoke_refresh_token(self, token_str: str) -> bool:
         async with self._session_maker() as session:
-            await session.execute(
+            result = await session.execute(
                 update(RefreshTokenModel)
                 .where(RefreshTokenModel.token == token_str)
+                .where(RefreshTokenModel.revoked.is_(False))
                 .values(revoked=True)
             )
             await session.commit()
+            return result.rowcount == 1
 
     async def revoke_refresh_token_family(self, family_id: str) -> None:
         async with self._session_maker() as session:

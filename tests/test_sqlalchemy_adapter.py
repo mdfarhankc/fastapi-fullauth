@@ -221,9 +221,13 @@ async def test_refresh_token_crud(adapter):
     assert stored is not None
     assert stored.revoked is False
 
-    await adapter.revoke_refresh_token("sa-test-token-123")
+    assert await adapter.revoke_refresh_token("sa-test-token-123") is True
     stored = await adapter.get_refresh_token("sa-test-token-123")
     assert stored.revoked is True
+
+    # second revoke returns False (already revoked) — the CAS signal
+    assert await adapter.revoke_refresh_token("sa-test-token-123") is False
+    assert await adapter.revoke_refresh_token("missing") is False
 
 
 # ── Permission tests ────────────────────────────────────────────────

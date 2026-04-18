@@ -59,7 +59,13 @@ class AbstractUserAdapter(ABC, Generic[UserSchemaType, CreateUserSchemaType]):
     async def get_refresh_token(self, token_str: str) -> RefreshToken | None: ...
 
     @abstractmethod
-    async def revoke_refresh_token(self, token_str: str) -> None: ...
+    async def revoke_refresh_token(self, token_str: str) -> bool:
+        """Atomically flip the token row from not-revoked to revoked. Returns True
+        if the caller won the transition (token was present and was not yet revoked),
+        False if the token was missing or already revoked. Callers treat False as
+        the reuse/concurrent-use signal — the token family should be revoked.
+        """
+        ...
 
     @abstractmethod
     async def revoke_refresh_token_family(self, family_id: str) -> None: ...
