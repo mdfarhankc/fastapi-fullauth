@@ -5,10 +5,18 @@
 ### Security
 
 - OAuth auto-link-by-email now requires `info.email_verified=True` from the provider when an account with that email already exists. Without this gate, any provider that returns an unverified email (e.g. GitHub secondary addresses) could be used to hijack an existing account by registering the provider with the victim's email.
+- Cookie backend's `delete_token` now matches the same `secure`/`samesite`/`path`/`domain` attributes used on set. Browsers ignore (or reject, for `SameSite=None`) a deletion that doesn't match — logout previously left the cookie in place on some setups.
+- Refresh-token revocation is now an atomic compare-and-swap (`UPDATE ... WHERE revoked=false`). Two concurrent refresh calls with the same token can no longer both succeed by racing the old stored-state check. `AbstractUserAdapter.revoke_refresh_token` now returns `bool` — custom adapters should honour the CAS semantics.
+- `create_user` catches `IntegrityError` from duplicate-email races and raises `UserAlreadyExistsError`. The register flow's pre-check only guards the common case; concurrent signups used to surface as 500s.
+- OAuth account table now has a composite unique constraint on `(provider, provider_user_id)`. Existing SQL users should autogenerate an Alembic migration to add it. `create_oauth_account` now returns the existing row on concurrent-insert collisions instead of erroring.
+- Password-reset and email-verification tokens now use their own TTLs (`PASSWORD_RESET_EXPIRE_MINUTES`, default 15; `EMAIL_VERIFY_EXPIRE_MINUTES`, default 1440) instead of inheriting `ACCESS_TOKEN_EXPIRE_MINUTES`. A production tweak to access-token lifetime for mobile clients no longer silently extends the window in which a stolen password-reset email grants an account takeover.
 
 ### Breaking changes
 
 - **Models split into packages** — `adapters/sqlmodel/models.py` and `adapters/sqlalchemy/models.py` are now `models/` directories with `base.py`, `role.py`, `permission.py`, `oauth.py`. Old import paths (`from fastapi_fullauth.adapters.sqlmodel.models import ...`) still work via `__init__.py` re-exports. New selective imports: `from fastapi_fullauth.adapters.sqlmodel.models.base import UserBase, RefreshTokenRecord`.
+- **`roles` removed from default `UserSchema`** — apps that use roles should extend `UserSchema` with `roles: list[str] = Field(default_factory=list)`. Apps without roles are unaffected.
+- **Admin router auto-skipped** when adapter doesn't implement `RoleAdapterMixin`. OAuth/passkey routers auto-skipped similarly.
+- **`AbstractUserAdapter.revoke_refresh_token` now returns `bool`** — custom adapters need to return `True` only when the token actually transitioned from not-revoked to revoked (CAS semantics).
 
 ### Added
 
@@ -27,17 +35,14 @@
 - **`PasskeyAdapterMixin`** — adapter mixin for passkey credential persistence.
 - **Adapter mixins** — `AbstractUserAdapter` split into composable interfaces: `RoleAdapterMixin`, `PermissionAdapterMixin`, `OAuthAdapterMixin`, `PasskeyAdapterMixin`. Custom adapters implement only what they need. Built-in adapters inherit all mixins (backward compatible).
 
-### Breaking changes
-
-- **`roles` removed from default `UserSchema`** — apps that use roles should extend `UserSchema` with `roles: list[str] = Field(default_factory=list)`. Apps without roles are unaffected.
-- **Admin router auto-skipped** when adapter doesn't implement `RoleAdapterMixin`. OAuth/passkey routers auto-skipped similarly.
-
 ### Changed
 
 - Adapter model imports are lazy — importing the adapter no longer registers role/permission/oauth tables
 - Rate limiting extracted from FullAuth `__init__` into `AuthRateLimiter`
 - SQLModelAdapter `session_maker` type hint accepts both session types cleanly
 - `TokenClaimsBuilder` and `RouterName` moved to `types.py`
+- `init_app()` and `init_middleware()` are now idempotent. Calling either twice on the same FastAPI app emits a `UserWarning` and is a no-op. Previously a second call (e.g. `init_app(app)` followed by a stray `init_middleware(app)`) doubled the middleware stack — duplicate security headers, two rate-limiter instances halving the effective limit, and a CSRF layer validating another CSRF layer's cookies.
+- JWT decode now tolerates clock drift between services via `JWT_LEEWAY_SECONDS` (default 30). Eliminates sporadic 401s caused by ±30 s skew between client and server clocks or across load-balanced instances.
 
 ## 0.7.0
 

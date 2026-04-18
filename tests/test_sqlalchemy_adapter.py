@@ -118,6 +118,17 @@ async def test_get_user_by_email(adapter):
 
 
 @pytest.mark.asyncio
+async def test_create_user_duplicate_email_raises(adapter):
+    from fastapi_fullauth.exceptions import UserAlreadyExistsError
+
+    data = CreateUserSchema(email="dup@test.com", password="pass123")
+    await adapter.create_user(data, hashed_password=hash_password("pass123"))
+
+    with pytest.raises(UserAlreadyExistsError):
+        await adapter.create_user(data, hashed_password=hash_password("pass123"))
+
+
+@pytest.mark.asyncio
 async def test_update_user(adapter):
     data = CreateUserSchema(email="upd@test.com", password="pass123")
     user = await adapter.create_user(data, hashed_password=hash_password("pass123"))
@@ -210,9 +221,13 @@ async def test_refresh_token_crud(adapter):
     assert stored is not None
     assert stored.revoked is False
 
-    await adapter.revoke_refresh_token("sa-test-token-123")
+    assert await adapter.revoke_refresh_token("sa-test-token-123") is True
     stored = await adapter.get_refresh_token("sa-test-token-123")
     assert stored.revoked is True
+
+    # second revoke returns False (already revoked) — the CAS signal
+    assert await adapter.revoke_refresh_token("sa-test-token-123") is False
+    assert await adapter.revoke_refresh_token("missing") is False
 
 
 # ── Permission tests ────────────────────────────────────────────────

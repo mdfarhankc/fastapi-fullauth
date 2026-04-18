@@ -154,34 +154,29 @@ def create_auth_router(
             raise CREDENTIALS_EXCEPTION
 
         stored = await fullauth.adapter.get_refresh_token(data.refresh_token)
-        if stored is not None and stored.revoked:
-            logger.error(
-                "Refresh token reuse detected — revoking family: %s",
-                stored.family_id,
-            )
-            await fullauth.adapter.revoke_refresh_token_family(stored.family_id)
-            raise CREDENTIALS_EXCEPTION
 
         roles = await fullauth.adapter.get_user_roles(user.id)
         extra_claims = await fullauth.get_custom_claims(user)
         uid = str(user.id)
 
         if fullauth.config.REFRESH_TOKEN_ROTATION:
-            already_blacklisted = await fullauth.token_engine.blacklist.is_blacklisted(payload.jti)
-            if already_blacklisted:
-                logger.warning(
-                    "Concurrent refresh token use detected: jti=%s",
-                    payload.jti,
-                )
-                if stored is not None:
+            # Compare-and-swap: exactly one concurrent caller flips the token
+            # from not-revoked → revoked. The loser sees rowcount=0 — that's
+            # either a reuse attack or a lost concurrency race. Either way,
+            # burn the family.
+            if stored is not None:
+                won = await fullauth.adapter.revoke_refresh_token(data.refresh_token)
+                if not won:
+                    logger.error(
+                        "refresh token reuse/concurrent use — revoking family: %s",
+                        stored.family_id,
+                    )
                     await fullauth.adapter.revoke_refresh_token_family(stored.family_id)
-                raise CREDENTIALS_EXCEPTION
+                    raise CREDENTIALS_EXCEPTION
             await fullauth.token_engine.blacklist_token(
                 payload.jti,
                 ttl_seconds=fullauth.config.REFRESH_TOKEN_EXPIRE_DAYS * 86400,
             )
-            if stored is not None:
-                await fullauth.adapter.revoke_refresh_token(data.refresh_token)
 
             access, refresh_meta = fullauth.token_engine.create_token_pair(
                 user_id=uid,
@@ -200,6 +195,8 @@ def create_auth_router(
             )
             refresh_token = refresh_meta.token
         else:
+            if stored is not None and stored.revoked:
+                raise CREDENTIALS_EXCEPTION
             access = fullauth.token_engine.create_access_token(
                 user_id=uid,
                 roles=roles,

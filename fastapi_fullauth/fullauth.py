@@ -244,7 +244,20 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
         """Wire up middleware (CSRF, rate limiting, security headers) from config.
 
         Also binds the FullAuth instance to app.state if not already done.
+        Safe to call twice — subsequent calls warn and return without duplicating
+        middleware.
         """
+        if getattr(app.state, "_fullauth_middleware_wired", False):
+            warnings.warn(
+                "init_middleware() called more than once on the same app — ignoring. "
+                "init_app(auto_middleware=True) already wires middleware; drop the "
+                "redundant call.",
+                UserWarning,
+                stacklevel=2,
+            )
+            return
+        app.state._fullauth_middleware_wired = True
+
         if not hasattr(app.state, "fullauth") or app.state.fullauth is None:
             self.bind(app)
         if self.config.CSRF_ENABLED:
@@ -282,6 +295,16 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
         auto_middleware: bool = True,
         exclude_routers: list[RouterName] | None = None,
     ) -> None:
+        if getattr(app.state, "_fullauth_app_wired", False):
+            warnings.warn(
+                "init_app() called more than once on the same app — ignoring. "
+                "Routers and middleware are already wired.",
+                UserWarning,
+                stacklevel=2,
+            )
+            return
+        app.state._fullauth_app_wired = True
+
         self.bind(app)
 
         if exclude_routers:

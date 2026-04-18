@@ -4,7 +4,7 @@ import secrets
 from fastapi_fullauth.adapters.base import AbstractUserAdapter
 from fastapi_fullauth.core.crypto import hash_password
 from fastapi_fullauth.core.tokens import TokenEngine
-from fastapi_fullauth.exceptions import OAuthProviderError
+from fastapi_fullauth.exceptions import OAuthProviderError, UserAlreadyExistsError
 from fastapi_fullauth.oauth.base import OAuthProvider
 from fastapi_fullauth.types import OAuthAccount, OAuthUserInfo, RefreshToken, TokenPair, UserSchema
 
@@ -110,9 +110,18 @@ async def link_or_create_user(
 
         random_password = secrets.token_urlsafe(32)
         data = CreateUserSchema(email=info.email, password=random_password)
-        user = await adapter.create_user(
-            data, hashed_password=hash_password(random_password, algorithm=hash_algorithm)
-        )
+        try:
+            user = await adapter.create_user(
+                data, hashed_password=hash_password(random_password, algorithm=hash_algorithm)
+            )
+        except UserAlreadyExistsError as e:
+            # Lost a race against a concurrent local signup (or another OAuth flow).
+            # Ask the user to retry — the next attempt will find the now-existing account.
+            logger.warning(
+                "oauth signup lost a race to concurrent registration (provider=%s)",
+                info.provider,
+            )
+            raise OAuthProviderError("Please retry signing in.") from e
         await adapter.update_user(user.id, {"has_usable_password": False})
 
         if info.email_verified:

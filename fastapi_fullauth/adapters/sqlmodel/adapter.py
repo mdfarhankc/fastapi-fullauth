@@ -1,6 +1,7 @@
 from typing import Any
 
 from sqlalchemy import select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession as SAAsyncSession
 from sqlalchemy.ext.asyncio import async_sessionmaker
 from sqlalchemy.orm import selectinload
@@ -14,6 +15,7 @@ from fastapi_fullauth.adapters.base import (
     RoleAdapterMixin,
 )
 from fastapi_fullauth.adapters.sqlmodel.models.base import RefreshTokenRecord, UserBase
+from fastapi_fullauth.exceptions import UserAlreadyExistsError
 from fastapi_fullauth.types import (
     CreateUserSchema,
     CreateUserSchemaType,
@@ -90,7 +92,11 @@ class SQLModelAdapter(
                 **extra,
             )
             session.add(user)
-            await session.commit()
+            try:
+                await session.commit()
+            except IntegrityError as e:
+                await session.rollback()
+                raise UserAlreadyExistsError(f"User with email {data.email} already exists") from e
             # re-fetch with roles loaded
             result = await session.execute(self._user_query().where(self._user_model.id == user.id))
             user = result.scalars().first()
@@ -173,14 +179,16 @@ class SQLModelAdapter(
                 revoked=row.revoked,
             )
 
-    async def revoke_refresh_token(self, token_str: str) -> None:
+    async def revoke_refresh_token(self, token_str: str) -> bool:
         async with self._session_maker() as session:
-            await session.execute(
+            result = await session.execute(
                 update(RefreshTokenRecord)
                 .where(RefreshTokenRecord.token == token_str)
+                .where(RefreshTokenRecord.revoked.is_(False))
                 .values(revoked=True)
             )
             await session.commit()
+            return result.rowcount == 1
 
     async def revoke_refresh_token_family(self, family_id: str) -> None:
         async with self._session_maker() as session:
@@ -383,7 +391,22 @@ class SQLModelAdapter(
                 expires_at=data.expires_at,
             )
             session.add(record)
-            await session.commit()
+            try:
+                await session.commit()
+            except IntegrityError:
+                # Concurrent OAuth callback for the same (provider, provider_user_id)
+                # won the insert. Return the existing row.
+                await session.rollback()
+                result = await session.execute(
+                    select(OAuthAccountRecord).where(
+                        OAuthAccountRecord.provider == data.provider,
+                        OAuthAccountRecord.provider_user_id == data.provider_user_id,
+                    )
+                )
+                existing = result.scalars().first()
+                if existing is not None:
+                    return self._to_oauth_account(existing)
+                raise
             return data
 
     async def update_oauth_account(

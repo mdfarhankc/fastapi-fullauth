@@ -103,6 +103,17 @@ async def test_get_user_by_email(adapter):
 
 
 @pytest.mark.asyncio
+async def test_create_user_duplicate_email_raises(adapter):
+    from fastapi_fullauth.exceptions import UserAlreadyExistsError
+
+    data = CreateUserSchema(email="dup@test.com", password="pass123")
+    await adapter.create_user(data, hashed_password=hash_password("pass123"))
+
+    with pytest.raises(UserAlreadyExistsError):
+        await adapter.create_user(data, hashed_password=hash_password("pass123"))
+
+
+@pytest.mark.asyncio
 async def test_get_user_by_field(adapter):
     data = CreateUserSchema(email="field@test.com", password="pass123")
     await adapter.create_user(data, hashed_password=hash_password("pass123"))
@@ -207,9 +218,15 @@ async def test_refresh_token_crud(adapter):
     assert stored.family_id == "family-1"
     assert stored.revoked is False
 
-    await adapter.revoke_refresh_token("test-token-123")
+    assert await adapter.revoke_refresh_token("test-token-123") is True
     stored = await adapter.get_refresh_token("test-token-123")
     assert stored.revoked is True
+
+    # second revoke returns False — already revoked (the CAS signal)
+    assert await adapter.revoke_refresh_token("test-token-123") is False
+
+    # revoking an unknown token also returns False
+    assert await adapter.revoke_refresh_token("does-not-exist") is False
 
 
 @pytest.mark.asyncio
@@ -269,6 +286,32 @@ async def test_user_permissions_through_roles(adapter):
 
 
 # ── OAuth tests ─────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_oauth_account_duplicate_identity_is_idempotent(adapter):
+    """Composite unique constraint on (provider, provider_user_id): a second insert
+    for the same identity returns the existing row instead of erroring."""
+    from fastapi_fullauth.types import OAuthAccount
+
+    u1 = await adapter.create_user(
+        CreateUserSchema(email="u1@test.com", password="p"),
+        hashed_password=hash_password("p"),
+    )
+    u2 = await adapter.create_user(
+        CreateUserSchema(email="u2@test.com", password="p"),
+        hashed_password=hash_password("p"),
+    )
+
+    first = await adapter.create_oauth_account(
+        OAuthAccount(provider="github", provider_user_id="gh-1", user_id=u1.id)
+    )
+
+    second = await adapter.create_oauth_account(
+        OAuthAccount(provider="github", provider_user_id="gh-1", user_id=u2.id)
+    )
+    assert second.user_id == first.user_id
+    assert second.user_id == u1.id
 
 
 @pytest.mark.asyncio

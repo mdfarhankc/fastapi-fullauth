@@ -26,6 +26,7 @@ async def request_password_reset(
     token = token_engine.create_access_token(
         user_id=str(user.id),
         extra={"purpose": "password_reset"},
+        expire_seconds=token_engine.config.PASSWORD_RESET_EXPIRE_MINUTES * 60,
     )
     return token
 

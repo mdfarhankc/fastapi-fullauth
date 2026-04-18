@@ -22,6 +22,7 @@ async def create_email_verification_token(
     token = token_engine.create_access_token(
         user_id=str(user.id),
         extra={"purpose": "email_verify"},
+        expire_seconds=token_engine.config.EMAIL_VERIFY_EXPIRE_MINUTES * 60,
     )
     return token
 

@@ -15,15 +15,21 @@ class CookieBackend(AbstractBackend):
         response.set_cookie(
             key=self.config.COOKIE_NAME,
             value=token,
-            httponly=self.config.COOKIE_HTTPONLY,
-            secure=self.config.COOKIE_SECURE,
-            samesite=self.config.COOKIE_SAMESITE,
-            domain=self.config.COOKIE_DOMAIN,
             max_age=self.config.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+            **self._cookie_attrs(),
         )
 
     async def delete_token(self, response: Response) -> None:
-        response.delete_cookie(
-            key=self.config.COOKIE_NAME,
-            domain=self.config.COOKIE_DOMAIN,
-        )
+        # Browsers ignore the deletion unless the attributes (secure, samesite,
+        # path, domain) match the cookie being replaced — Chrome outright rejects
+        # a SameSite=None set-cookie without Secure.
+        response.delete_cookie(key=self.config.COOKIE_NAME, **self._cookie_attrs())
+
+    def _cookie_attrs(self) -> dict:
+        return {
+            "httponly": self.config.COOKIE_HTTPONLY,
+            "secure": self.config.COOKIE_SECURE,
+            "samesite": self.config.COOKIE_SAMESITE,
+            "domain": self.config.COOKIE_DOMAIN,
+            "path": "/",
+        }
