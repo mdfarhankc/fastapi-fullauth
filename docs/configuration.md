@@ -51,6 +51,9 @@ Pass config inline or as an object:
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | `int` | `30` | Access token lifetime. |
 | `REFRESH_TOKEN_EXPIRE_DAYS` | `int` | `30` | Refresh token lifetime. |
 | `REFRESH_TOKEN_ROTATION` | `bool` | `True` | Issue new refresh token on each refresh. |
+| `JWT_LEEWAY_SECONDS` | `int` | `30` | Tolerance (seconds) for clock drift between client and server when validating `exp`/`iat`. |
+| `PASSWORD_RESET_EXPIRE_MINUTES` | `int` | `15` | Password-reset token lifetime. Kept short — independent of `ACCESS_TOKEN_EXPIRE_MINUTES`. |
+| `EMAIL_VERIFY_EXPIRE_MINUTES` | `int` | `1440` | Email-verification token lifetime (24 h). |
 
 ### Passwords
 

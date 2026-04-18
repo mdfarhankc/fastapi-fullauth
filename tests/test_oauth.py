@@ -60,7 +60,10 @@ async def _make_db():
 
 @pytest.fixture
 def config():
-    return FullAuthConfig(SECRET_KEY="test-secret-key-that-is-long-enough-32b")
+    return FullAuthConfig(
+        SECRET_KEY="test-secret-key-that-is-long-enough-32b",
+        JWT_LEEWAY_SECONDS=0,
+    )
 
 
 @pytest.fixture

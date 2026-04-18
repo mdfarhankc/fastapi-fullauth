@@ -14,6 +14,10 @@ class FullAuthConfig(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 30
     REFRESH_TOKEN_ROTATION: bool = True
+    JWT_LEEWAY_SECONDS: int = 30
+
+    PASSWORD_RESET_EXPIRE_MINUTES: int = 15
+    EMAIL_VERIFY_EXPIRE_MINUTES: int = 1440
 
     PASSWORD_HASH_ALGORITHM: Literal["argon2id", "bcrypt"] = "argon2id"
     PASSWORD_MIN_LENGTH: int = 8

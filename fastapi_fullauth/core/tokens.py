@@ -87,7 +87,12 @@ class TokenEngine:
 
     async def decode_token(self, token: str) -> TokenPayload:
         try:
-            data = jwt.decode(token, self.config.SECRET_KEY, algorithms=[self.config.ALGORITHM])
+            data = jwt.decode(
+                token,
+                self.config.SECRET_KEY,
+                algorithms=[self.config.ALGORITHM],
+                leeway=self.config.JWT_LEEWAY_SECONDS,
+            )
         except jwt.ExpiredSignatureError:
             logger.debug("Token decode failed — expired")
             raise TokenExpiredError("Token has expired")
