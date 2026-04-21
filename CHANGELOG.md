@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Security
+
+- Emails are now normalised (stripped + lowercased) on create, update, and lookup in both built-in adapters. Previously `Alice@X.com` and `alice@X.com` could register as separate accounts on case-sensitive collations (MySQL default, SQL Server).
+- Login now returns the same generic `401 Could not validate credentials` response for a locked account as for a wrong password. Previously a `423 Locked` status let an attacker distinguish "email exists and is locked out" from "wrong password" — an enumeration signal once they'd exhausted the lockout counter on a target email. The `AccountLockedError` message no longer includes the identifier (cleaner logs too).
+- Opt-in `PREVENT_REGISTRATION_ENUMERATION` setting (default `False`). When `True`, `/register` always responds `202` + `{"detail": "If this email isn't already registered, a verification email has been sent."}` whether the email was taken or not — attackers can't probe the user table through the registration endpoint. Off by default to keep the `201` + user / `409` conflict shape that most client apps expect.
+
 ## 0.8.0
 
 ### Security

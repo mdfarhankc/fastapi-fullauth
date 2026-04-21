@@ -19,6 +19,7 @@ from fastapi_fullauth.flows.logout import logout
 from fastapi_fullauth.flows.register import register
 from fastapi_fullauth.router._models import (
     LogoutRequest,
+    MessageResponse,
     RefreshRequest,
     build_login_model,
     build_login_response_model,
@@ -51,16 +52,27 @@ def create_auth_router(
     @router.post(
         "/register",
         status_code=201,
-        response_model=user_schema,
-        description="Create a new user account.",
+        response_model=user_schema | MessageResponse,
+        description=(
+            "Create a new user account. Returns 201 + user by default. "
+            "Setting `PREVENT_REGISTRATION_ENUMERATION=True` makes it always "
+            "return 202 + a generic message so attackers can't probe whether "
+            "an email is registered."
+        ),
     )
     async def register_route(
         request: Request,
+        response: Response,
         fullauth: "FullAuth" = Depends(_get_fullauth),
         data: create_user_schema = Body(...),  # type: ignore[valid-type]
-    ) -> UserSchema:
+    ) -> UserSchema | MessageResponse:
         client_ip = get_client_ip(request, fullauth.config.TRUSTED_PROXY_HEADERS)
         await fullauth.check_auth_rate_limit("register", client_ip)
+
+        anti_enum = fullauth.config.PREVENT_REGISTRATION_ENUMERATION
+        generic = MessageResponse(
+            detail="If this email isn't already registered, a verification email has been sent."
+        )
 
         try:
             user = await register(
@@ -73,9 +85,16 @@ def create_auth_router(
         except InvalidPasswordError as e:
             raise HTTPException(status_code=422, detail=str(e))
         except UserAlreadyExistsError:
+            if anti_enum:
+                response.status_code = 202
+                return generic
             raise USER_EXISTS_EXCEPTION
 
         await fullauth.hooks.emit("after_register", user=user)
+
+        if anti_enum:
+            response.status_code = 202
+            return generic
         return user
 
     @router.post(

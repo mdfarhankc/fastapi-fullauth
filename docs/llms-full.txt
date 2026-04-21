@@ -655,6 +655,7 @@ Use a different file via `FullAuthConfig(_env_file=".env.production")` or by sub
 |--------|------|---------|-------------|
 | `OAUTH_STATE_EXPIRE_SECONDS` | `int` | `300` | OAuth state token TTL (5 min). |
 | `OAUTH_AUTO_LINK_BY_EMAIL` | `bool` | `True` | Auto-link OAuth accounts to existing users by email. |
+| `PREVENT_REGISTRATION_ENUMERATION` | `bool` | `False` | When `True`, `/register` returns `202` + generic message regardless of whether the email was already registered. Default stays with `201` + user / `409` conflict. |
 
 ### Routing
 

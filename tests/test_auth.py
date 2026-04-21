@@ -66,6 +66,42 @@ async def test_register_duplicate(client, registered_user):
 
 
 @pytest.mark.asyncio
+async def test_register_anti_enumeration_same_response_for_new_and_existing():
+    """Opt-in PREVENT_REGISTRATION_ENUMERATION=True: new and duplicate emails
+    produce identical 202 responses so the endpoint can't be used to probe
+    whether an email is registered."""
+    engine, session_maker = await _make_db()
+    adapter = SQLModelAdapter(session_maker=session_maker, user_model=User)
+    fullauth = FullAuth(
+        config=FullAuthConfig(
+            SECRET_KEY="test-secret-key-that-is-long-enough-32b",
+            INJECT_SECURITY_HEADERS=False,
+            PREVENT_REGISTRATION_ENUMERATION=True,
+        ),
+        adapter=adapter,
+    )
+    app = FastAPI()
+    fullauth.init_app(app, auto_middleware=False)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        first = await client.post(
+            "/api/v1/auth/register",
+            json={"email": "new@test.com", "password": "securepass123"},
+        )
+        second = await client.post(
+            "/api/v1/auth/register",
+            json={"email": "new@test.com", "password": "securepass123"},
+        )
+
+    assert first.status_code == 202
+    assert second.status_code == 202
+    assert first.json() == second.json()
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
 async def test_register_weak_password(client):
     r = await client.post(
         "/api/v1/auth/register",

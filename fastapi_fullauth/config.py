@@ -66,6 +66,8 @@ class FullAuthConfig(BaseSettings):
     OAUTH_STATE_EXPIRE_SECONDS: int = 300
     OAUTH_AUTO_LINK_BY_EMAIL: bool = True
 
+    PREVENT_REGISTRATION_ENUMERATION: bool = False
+
     PASSKEY_ENABLED: bool = False
     PASSKEY_RP_ID: str | None = None
     PASSKEY_RP_NAME: str | None = None
