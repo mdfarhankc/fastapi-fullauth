@@ -27,6 +27,10 @@ def generate_secret_key(length: int = 64) -> str:
     return secrets.token_urlsafe(length)
 
 
+def normalize_email(email: str) -> str:
+    return email.strip().lower()
+
+
 def get_client_ip(request: Request, trusted_headers: list[str] | None = None) -> str:
     """Extract the real client IP, checking trusted proxy headers first.
 

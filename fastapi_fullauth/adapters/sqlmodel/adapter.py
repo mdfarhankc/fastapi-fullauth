@@ -26,6 +26,7 @@ from fastapi_fullauth.types import (
     UserSchema,
     UserSchemaType,
 )
+from fastapi_fullauth.utils import normalize_email
 
 
 class SQLModelAdapter(
@@ -72,12 +73,14 @@ class SQLModelAdapter(
             return self._to_schema(user) if user else None
 
     async def get_user_by_email(self, email: str) -> UserSchemaType | None:
-        return await self.get_user_by_field("email", email)
+        return await self.get_user_by_field("email", normalize_email(email))
 
     async def get_user_by_field(self, field: str, value: str) -> UserSchemaType | None:
         column = getattr(self._user_model, field, None)
         if column is None:
             raise ValueError(f"Model has no field '{field}'")
+        if field == "email":
+            value = normalize_email(value)
         async with self._session_maker() as session:
             result = await session.execute(self._user_query().where(column == value))
             user = result.scalars().first()
@@ -86,8 +89,9 @@ class SQLModelAdapter(
     async def create_user(self, data: CreateUserSchemaType, hashed_password: str) -> UserSchemaType:
         async with self._session_maker() as session:
             extra = data.model_dump(exclude={"email", "password"})
+            email = normalize_email(data.email)
             user = self._user_model(
-                email=data.email,
+                email=email,
                 hashed_password=hashed_password,
                 **extra,
             )
@@ -96,7 +100,7 @@ class SQLModelAdapter(
                 await session.commit()
             except IntegrityError as e:
                 await session.rollback()
-                raise UserAlreadyExistsError(f"User with email {data.email} already exists") from e
+                raise UserAlreadyExistsError(f"User with email {email} already exists") from e
             # re-fetch with roles loaded
             result = await session.execute(self._user_query().where(self._user_model.id == user.id))
             user = result.scalars().first()
@@ -104,6 +108,8 @@ class SQLModelAdapter(
             return self._to_schema(user)
 
     async def update_user(self, user_id: UserID, data: dict[str, Any]) -> UserSchemaType:
+        if "email" in data and data["email"] is not None:
+            data = {**data, "email": normalize_email(data["email"])}
         async with self._session_maker() as session:
             await session.execute(
                 update(self._user_model).where(self._user_model.id == user_id).values(**data)

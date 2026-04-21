@@ -66,6 +66,42 @@ async def test_register_duplicate(client, registered_user):
 
 
 @pytest.mark.asyncio
+async def test_register_anti_enumeration_same_response_for_new_and_existing():
+    """Opt-in PREVENT_REGISTRATION_ENUMERATION=True: new and duplicate emails
+    produce identical 202 responses so the endpoint can't be used to probe
+    whether an email is registered."""
+    engine, session_maker = await _make_db()
+    adapter = SQLModelAdapter(session_maker=session_maker, user_model=User)
+    fullauth = FullAuth(
+        config=FullAuthConfig(
+            SECRET_KEY="test-secret-key-that-is-long-enough-32b",
+            INJECT_SECURITY_HEADERS=False,
+            PREVENT_REGISTRATION_ENUMERATION=True,
+        ),
+        adapter=adapter,
+    )
+    app = FastAPI()
+    fullauth.init_app(app, auto_middleware=False)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        first = await client.post(
+            "/api/v1/auth/register",
+            json={"email": "new@test.com", "password": "securepass123"},
+        )
+        second = await client.post(
+            "/api/v1/auth/register",
+            json={"email": "new@test.com", "password": "securepass123"},
+        )
+
+    assert first.status_code == 202
+    assert second.status_code == 202
+    assert first.json() == second.json()
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
 async def test_register_weak_password(client):
     r = await client.post(
         "/api/v1/auth/register",
@@ -103,6 +139,45 @@ async def test_login_nonexistent_user(client):
         json={"email": "nobody@test.com", "password": "whatever123"},
     )
     assert r.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_login_locked_account_returns_generic_credentials_error():
+    engine, session_maker = await _make_db()
+    adapter = SQLModelAdapter(session_maker=session_maker, user_model=User)
+    fullauth = FullAuth(
+        config=FullAuthConfig(
+            SECRET_KEY="test-secret-key-that-is-long-enough-32b",
+            INJECT_SECURITY_HEADERS=False,
+            MAX_LOGIN_ATTEMPTS=2,
+            AUTH_RATE_LIMIT_ENABLED=False,
+        ),
+        adapter=adapter,
+    )
+    app = FastAPI()
+    fullauth.init_app(app, auto_middleware=False)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        await client.post(
+            "/api/v1/auth/register",
+            json={"email": "locked@test.com", "password": "securepass123"},
+        )
+        for _ in range(2):
+            await client.post(
+                "/api/v1/auth/login",
+                json={"email": "locked@test.com", "password": "wrong"},
+            )
+        # account is now locked — even the correct password must look identical
+        # to "wrong password" (401 + generic detail), not 423 or a locked-specific body
+        r = await client.post(
+            "/api/v1/auth/login",
+            json={"email": "locked@test.com", "password": "securepass123"},
+        )
+        assert r.status_code == 401
+        assert r.json()["detail"] == "Could not validate credentials"
+
+    await engine.dispose()
 
 
 @pytest.mark.asyncio

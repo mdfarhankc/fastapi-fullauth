@@ -71,6 +71,9 @@ Built-in `SQLAlchemyAdapter` and `SQLModelAdapter` inherit all mixins. A custom 
 - **`references/hooks.md`** — `after_*` and `send_*` hook signatures, when each fires, gotchas.
 - **`references/migrations.md`** — Alembic `env.py` wiring, `include_fullauth_models` helper, v0.7 → v0.8 schema step.
 - **`references/production.md`** — deployment checklist: `SECRET_KEY`, Redis backends, cookie flags, rate-limit trust boundary, observability.
+- **`references/testing.md`** — pytest fixture stack, mocking email hooks, minting tokens, exercising passkey / OAuth flows.
+- **`references/troubleshooting.md`** — common errors and warnings, what they mean, what to change.
+- **`references/api-reference.md`** — single-page lookup: every public import, every config setting, every built-in route.
 - **Upstream docs** — full reference at the library's docs site. For LLMs, `docs/llms-full.txt` in the repo is a single-file concatenation of the docs.
 
 ## Conventions to preserve when editing this codebase
