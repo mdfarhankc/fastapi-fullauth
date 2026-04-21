@@ -114,6 +114,23 @@ async def test_create_user_duplicate_email_raises(adapter):
 
 
 @pytest.mark.asyncio
+async def test_email_is_normalized_on_create_and_lookup(adapter):
+    from fastapi_fullauth.exceptions import UserAlreadyExistsError
+
+    data = CreateUserSchema(email="  Alice@Example.com  ", password="pass123")
+    created = await adapter.create_user(data, hashed_password=hash_password("pass123"))
+    assert created.email == "alice@example.com"
+
+    assert (await adapter.get_user_by_email("alice@example.com")) is not None
+    assert (await adapter.get_user_by_email("ALICE@EXAMPLE.COM")) is not None
+    assert (await adapter.get_user_by_email("  alice@example.com  ")) is not None
+
+    dup = CreateUserSchema(email="ALICE@example.com", password="pass123")
+    with pytest.raises(UserAlreadyExistsError):
+        await adapter.create_user(dup, hashed_password=hash_password("pass123"))
+
+
+@pytest.mark.asyncio
 async def test_get_user_by_field(adapter):
     data = CreateUserSchema(email="field@test.com", password="pass123")
     await adapter.create_user(data, hashed_password=hash_password("pass123"))
