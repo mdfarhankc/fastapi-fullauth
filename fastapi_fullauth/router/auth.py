@@ -6,7 +6,6 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response
 
 from fastapi_fullauth.dependencies.current_user import _extract_token, _get_fullauth
 from fastapi_fullauth.exceptions import (
-    ACCOUNT_LOCKED_EXCEPTION,
     CREDENTIALS_EXCEPTION,
     USER_EXISTS_EXCEPTION,
     AccountLockedError,
@@ -110,9 +109,7 @@ def create_auth_router(
                 user=user,
                 hash_algorithm=fullauth.config.PASSWORD_HASH_ALGORITHM,
             )
-        except AccountLockedError:
-            raise ACCOUNT_LOCKED_EXCEPTION
-        except AuthenticationError:
+        except (AccountLockedError, AuthenticationError):
             raise CREDENTIALS_EXCEPTION
 
         for backend in fullauth.backends:

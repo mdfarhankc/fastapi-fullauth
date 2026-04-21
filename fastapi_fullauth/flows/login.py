@@ -23,7 +23,7 @@ async def login(
 ) -> TokenPair:
     if lockout and await lockout.is_locked(identifier):
         logger.warning("Login blocked — account locked: %s", identifier)
-        raise AccountLockedError(f"Account {identifier} is temporarily locked")
+        raise AccountLockedError("Account is temporarily locked")
 
     if user is None:
         user = await adapter.get_user_by_field(login_field, identifier)

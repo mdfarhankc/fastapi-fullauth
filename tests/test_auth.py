@@ -106,6 +106,45 @@ async def test_login_nonexistent_user(client):
 
 
 @pytest.mark.asyncio
+async def test_login_locked_account_returns_generic_credentials_error():
+    engine, session_maker = await _make_db()
+    adapter = SQLModelAdapter(session_maker=session_maker, user_model=User)
+    fullauth = FullAuth(
+        config=FullAuthConfig(
+            SECRET_KEY="test-secret-key-that-is-long-enough-32b",
+            INJECT_SECURITY_HEADERS=False,
+            MAX_LOGIN_ATTEMPTS=2,
+            AUTH_RATE_LIMIT_ENABLED=False,
+        ),
+        adapter=adapter,
+    )
+    app = FastAPI()
+    fullauth.init_app(app, auto_middleware=False)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        await client.post(
+            "/api/v1/auth/register",
+            json={"email": "locked@test.com", "password": "securepass123"},
+        )
+        for _ in range(2):
+            await client.post(
+                "/api/v1/auth/login",
+                json={"email": "locked@test.com", "password": "wrong"},
+            )
+        # account is now locked — even the correct password must look identical
+        # to "wrong password" (401 + generic detail), not 423 or a locked-specific body
+        r = await client.post(
+            "/api/v1/auth/login",
+            json={"email": "locked@test.com", "password": "securepass123"},
+        )
+        assert r.status_code == 401
+        assert r.json()["detail"] == "Could not validate credentials"
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
 async def test_me_authenticated(client, auth_headers):
     r = await client.get("/me", headers=auth_headers)
     assert r.status_code == 200
