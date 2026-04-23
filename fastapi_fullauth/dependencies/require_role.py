@@ -19,7 +19,9 @@ def require_role(*roles: str):
         if user.is_superuser:
             return user
 
-        user_roles = set(user.roles)
+        # getattr keeps this usable with a minimal UserSchema that has no
+        # roles field — caller gets a clean 403 instead of AttributeError.
+        user_roles = set(getattr(user, "roles", []) or [])
         if not user_roles.intersection(roles):
             raise FORBIDDEN_EXCEPTION
 

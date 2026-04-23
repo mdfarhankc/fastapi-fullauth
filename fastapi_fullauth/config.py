@@ -94,3 +94,30 @@ class FullAuthConfig(BaseSettings):
                 stacklevel=2,
             )
         return self
+
+    @model_validator(mode="after")
+    def _validate_passkey_config(self) -> "FullAuthConfig":
+        if not self.PASSKEY_ENABLED:
+            return self
+
+        if not self.PASSKEY_RP_ID:
+            raise ValueError("PASSKEY_RP_ID is required when PASSKEY_ENABLED=True")
+        if "://" in self.PASSKEY_RP_ID or "/" in self.PASSKEY_RP_ID:
+            raise ValueError(
+                f"PASSKEY_RP_ID must be a bare domain, got {self.PASSKEY_RP_ID!r}. "
+                "No scheme, no path (e.g. 'example.com', not 'https://example.com')."
+            )
+
+        if not self.PASSKEY_ORIGINS:
+            raise ValueError("PASSKEY_ORIGINS is required when PASSKEY_ENABLED=True")
+        for origin in self.PASSKEY_ORIGINS:
+            if "://" not in origin or origin.count("/") > 2:
+                raise ValueError(
+                    f"PASSKEY_ORIGINS entry {origin!r} must be a full origin "
+                    "(scheme://host[:port], no path)."
+                )
+
+        if self.PASSKEY_CHALLENGE_BACKEND == "redis" and not self.REDIS_URL:
+            raise ValueError("REDIS_URL must be set when PASSKEY_CHALLENGE_BACKEND='redis'")
+
+        return self
