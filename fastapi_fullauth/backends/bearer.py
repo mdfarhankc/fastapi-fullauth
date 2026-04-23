@@ -6,7 +6,7 @@ from fastapi_fullauth.backends.base import AbstractBackend
 class BearerBackend(AbstractBackend):
     async def read_token(self, request: Request) -> str | None:
         auth = request.headers.get("Authorization")
-        if auth and auth.startswith("Bearer "):
+        if auth and auth[:7].lower() == "bearer ":
             return auth[7:]
         return None
 

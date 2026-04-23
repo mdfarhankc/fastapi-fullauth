@@ -8,6 +8,14 @@
 - Login now returns the same generic `401 Could not validate credentials` response for a locked account as for a wrong password. Previously a `423 Locked` status let an attacker distinguish "email exists and is locked out" from "wrong password" — an enumeration signal once they'd exhausted the lockout counter on a target email. The `AccountLockedError` message no longer includes the identifier (cleaner logs too).
 - Opt-in `PREVENT_REGISTRATION_ENUMERATION` setting (default `False`). When `True`, `/register` always responds `202` + `{"detail": "If this email isn't already registered, a verification email has been sent."}` whether the email was taken or not — attackers can't probe the user table through the registration endpoint. Off by default to keep the `201` + user / `409` conflict shape that most client apps expect.
 
+### Fixed
+
+- `BearerBackend` accepts any case of the `Bearer` auth scheme (`Bearer`, `bearer`, `BEARER`, mixed) per RFC 7235. Clients that sent a lowercase scheme were previously rejected with a 401.
+- `require_role` tolerates a `UserSchema` subclass with no `roles` field — returns a clean `403` instead of `AttributeError` / `500`. The default schema doesn't ship with `roles`; apps using RBAC still need to add it to their custom schema.
+- `hash_password(..., algorithm="bcrypt")` rejects passwords over 72 UTF-8 bytes with `InvalidPasswordError` instead of silently truncating. bcrypt's built-in truncation would otherwise cause subtle lockouts if an app later migrated to argon2id.
+- SQLModel `UserBase.hashed_password` column is now `Text`. Argon2id hashes are ~97 characters; MySQL / MSSQL default `VARCHAR(255)` was still fine but the column type is explicit now, matching the SQLAlchemy adapter.
+- `FullAuthConfig` validates passkey settings at construction time when `PASSKEY_ENABLED=True` — empty `PASSKEY_RP_ID` / `PASSKEY_ORIGINS`, RP ID with scheme or path, origin without scheme, and Redis backend without `REDIS_URL` all raise at config creation instead of surfacing as 500s at first request.
+
 ## 0.8.0
 
 ### Security
