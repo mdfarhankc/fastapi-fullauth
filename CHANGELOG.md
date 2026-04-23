@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.9.1
+
+### Added
+
+- `py.typed` marker (PEP 561) ships with the package. Type annotations — including the generic `FullAuth[UserSchema, CreateUserSchema]` with PEP 696 defaults, the typed `CurrentUser` / `VerifiedUser` / `SuperUser` dependencies, and the adapter mixin surfaces — are now visible to mypy, pyright, and IDE language servers when the library is installed from PyPI. Previously the annotations existed internally but were treated as `Any` by consumers.
+- `mypy` added to the dev dependency group for contributors who want to type-check locally. Not yet enforced in CI — strict mode has a backlog of ~190 existing errors (mostly missing return annotations, mixin-method lookups through `AbstractUserAdapter`, and passkey-config narrowings) that will be cleaned up in a dedicated typed-hardening release.
+
 ## 0.9.0
 
 ### Breaking changes
