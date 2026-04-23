@@ -149,9 +149,9 @@ except IntegrityError:
     raise
 ```
 
-### Email lookup is case-sensitive today
+### Email normalisation
 
-The built-in adapters don't lower-case email on store or lookup. If you need case-insensitive semantics (usually yes), do it at your adapter boundary — normalise on create and on every lookup. The library does not do this for you.
+The built-in adapters lowercase + strip email on create, update, and lookup (as of v0.9.0). Custom adapters should do the same — `Alice@X.com` and `alice@X.com` must resolve to the same row on every backend, regardless of collation. If you're migrating from 0.8.0 on a case-sensitive collation (MySQL default, SQL Server), lowercase existing rows before deploy: `UPDATE fullauth_users SET email = LOWER(TRIM(email))`.
 
 ### `get_user_by_field` default only handles email
 

@@ -1,6 +1,11 @@
 # Changelog
 
-## Unreleased
+## 0.9.0
+
+### Breaking changes
+
+- **Lockout now returns `401`** instead of `423 Locked`. Clients that branched on `423` to render a "your account is locked" UI will silently fall into the generic credentials-error path. The change is deliberate — see Security below.
+- **Email lookup is now case-insensitive.** On case-sensitive database collations (MySQL default, SQL Server), rows registered with mixed-case emails (`Alice@X.com`) will stop matching logins submitted in a different case. Run a one-off `UPDATE fullauth_users SET email = LOWER(TRIM(email))` before upgrading. PostgreSQL/SQLite with default collations are unaffected.
 
 ### Security
 
