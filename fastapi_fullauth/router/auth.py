@@ -155,8 +155,12 @@ def create_auth_router(
     )
     async def refresh_route(
         data: RefreshRequest,
+        request: Request,
         fullauth: "FullAuth" = Depends(_get_fullauth),
     ) -> TokenPair:
+        client_ip = get_client_ip(request, fullauth.config.TRUSTED_PROXY_HEADERS)
+        await fullauth.check_auth_rate_limit("refresh", client_ip)
+
         try:
             payload = await fullauth.token_engine.decode_token(data.refresh_token)
         except TokenError:
@@ -204,7 +208,7 @@ def create_auth_router(
             await fullauth.adapter.store_refresh_token(
                 RefreshToken(
                     token=refresh_meta.token,
-                    user_id=uid,
+                    user_id=user.id,
                     expires_at=refresh_meta.expires_at,
                     family_id=refresh_meta.family_id,
                 )

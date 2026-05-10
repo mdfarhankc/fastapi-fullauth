@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.9.2
+
+### Security
+
+- `/auth/refresh` is now rate-limited via `AUTH_RATE_LIMIT_REFRESH` (default 30 req/min per IP). Without this, an attacker holding a stolen refresh token could hammer the endpoint for fresh access tokens, or use the response shape as a token-validation oracle. The default sits well above legitimate usage (a single user typically refreshes a handful of times per session) but caps abuse.
+
+### Fixed
+
+- `/auth/refresh` was passing `str(user.id)` to `RefreshToken(user_id=...)` which expects `UUID`. Pydantic v2 coerced silently so there was no runtime break, but the path now passes `user.id` directly — consistent with `flows/login.py` and clean under static type checking.
+- `LoginResponse` is now a real subclass of `TokenPair` with `user: UserSchema | None = None` instead of a dynamically created model with no static type. The dynamic factory still narrows the `user` field to the configured user schema for OpenAPI, but `LoginResponse(...)` calls now type-check cleanly in mypy/pyright.
+- `FullAuth.get_custom_claims` annotated as `-> dict[str, Any]` instead of bare `dict`.
+
+### Changed
+
+- `Development Status` classifier bumped from `3 - Alpha` to `4 - Beta`. Reflects 189 tests passing, multi-version CI on Python 3.10–3.14, OIDC-based PyPI publishing, the security hardening trail through 0.7.0–0.9.1, and `py.typed` shipped. Reserved `5 - Production/Stable` for v1.0.
+- Added `Operating System :: OS Independent` classifier (CI runs on Linux and Windows).
+- All dependency floors bumped to current stable versions: `fastapi>=0.136`, `pydantic[email]>=2.13`, `pydantic-settings>=2.14`, `pyjwt>=2.12`, `argon2-cffi>=25.1`, plus extras (`sqlalchemy>=2.0.49`, `alembic>=1.18`, `sqlmodel>=0.0.38`, `redis>=7.4`, `httpx>=0.28`, `webauthn>=2.7`).
+- Version is now read dynamically from `fastapi_fullauth/__init__.py` via `[tool.hatch.version]` so a bump only touches one file.
+- `[tool.pytest.ini_options]` migrated to `[tool.pytest]` (pytest 9 supports the flat key).
+- `pytest-cov` added to the dev dependency group so contributors can run `uv run pytest --cov=fastapi_fullauth` locally.
+
 ## 0.9.1
 
 ### Added
