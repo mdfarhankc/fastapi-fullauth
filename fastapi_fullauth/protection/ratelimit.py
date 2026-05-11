@@ -1,10 +1,15 @@
 import logging
 import time
 from collections import defaultdict, deque
+from typing import TYPE_CHECKING, Any
 
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
+from starlette.types import ASGIApp
+
+if TYPE_CHECKING:
+    from fastapi_fullauth.config import FullAuthConfig
 
 logger = logging.getLogger("fastapi_fullauth.ratelimit")
 
@@ -109,7 +114,7 @@ class RedisRateLimiter:
         pipe.zcard(redis_key)
         results = await pipe.execute()
 
-        count = results[1]
+        count: int = results[1]
         return max(0, self.max_requests - count)
 
     async def reset_time(self, key: str) -> float:
@@ -119,7 +124,8 @@ class RedisRateLimiter:
         oldest = await self._redis.zrange(redis_key, 0, 0, withscores=True)
         if not oldest:
             return 0.0
-        return max(0.0, self.window_seconds - (now - oldest[0][1]))
+        oldest_score: float = oldest[0][1]
+        return max(0.0, self.window_seconds - (now - oldest_score))
 
     async def reset(self, key: str) -> None:
         await self._redis.delete(f"{self._prefix}{key}")
@@ -149,7 +155,9 @@ def register_rate_limiter_backend(name: str, cls: type) -> None:
     _rate_limiter_registry[name] = cls
 
 
-def create_rate_limiter(config, max_requests: int, window_seconds: int):
+def create_rate_limiter(
+    config: "FullAuthConfig", max_requests: int, window_seconds: int
+) -> RateLimiter | RedisRateLimiter:
     """Create a rate limiter backend based on config.
 
     Args:
@@ -165,7 +173,7 @@ def create_rate_limiter(config, max_requests: int, window_seconds: int):
             f"Register custom backends with register_rate_limiter_backend()."
         )
 
-    kwargs: dict = {"max_requests": max_requests, "window_seconds": window_seconds}
+    kwargs: dict[str, Any] = {"max_requests": max_requests, "window_seconds": window_seconds}
     if config.RATE_LIMIT_BACKEND == "redis":
         if not config.REDIS_URL:
             raise ValueError("REDIS_URL must be set when RATE_LIMIT_BACKEND='redis'")
@@ -178,7 +186,7 @@ class AuthRateLimiter:
     """Per-route auth rate limiter. Wraps individual RateLimiter instances
     for login, register, and password-reset routes."""
 
-    def __init__(self, config) -> None:
+    def __init__(self, config: "FullAuthConfig") -> None:
         self._limiters: dict[str, RateLimiter | RedisRateLimiter] = {}
         if not config.AUTH_RATE_LIMIT_ENABLED:
             return
@@ -210,7 +218,7 @@ class AuthRateLimiter:
 class RateLimitMiddleware(BaseHTTPMiddleware):
     def __init__(
         self,
-        app,  # noqa: ANN001
+        app: ASGIApp,
         limiter: RateLimiter | RedisRateLimiter | None = None,
         max_requests: int = 60,
         window_seconds: int = 60,

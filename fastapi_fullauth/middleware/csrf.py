@@ -2,10 +2,12 @@ import hashlib
 import hmac
 import logging
 import secrets
+from typing import Literal
 
-from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
+from starlette.types import ASGIApp
 
 logger = logging.getLogger("fastapi_fullauth.csrf")
 
@@ -40,16 +42,16 @@ class CSRFMiddleware(BaseHTTPMiddleware):
 
     def __init__(
         self,
-        app,
+        app: ASGIApp,
         secret: str | None = None,
         cookie_name: str = "fullauth_csrf",
         exempt_paths: list[str] | None = None,
         cookie_secure: bool = True,
-        cookie_samesite: str = "lax",
+        cookie_samesite: Literal["lax", "strict", "none"] = "lax",
         cookie_httponly: bool = False,
         cookie_domain: str | None = None,
         header_name: str = "X-CSRF-Token",
-    ):
+    ) -> None:
         super().__init__(app)
 
         if secret is None:
@@ -69,12 +71,15 @@ class CSRFMiddleware(BaseHTTPMiddleware):
         from fastapi_fullauth.config import FullAuthConfig
 
         cfg = FullAuthConfig.model_validate({})
-        return cfg.CSRF_SECRET or cfg.SECRET_KEY
+        secret = cfg.CSRF_SECRET or cfg.SECRET_KEY
+        if secret is None:
+            raise RuntimeError("CSRF_SECRET or SECRET_KEY must be set for CSRF middleware")
+        return secret
 
     def _is_exempt(self, path: str) -> bool:
         return any(path.startswith(p) for p in self.exempt_paths)
 
-    async def dispatch(self, request: Request, call_next) -> Response:
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         method = request.method.upper()
         path = request.url.path
 

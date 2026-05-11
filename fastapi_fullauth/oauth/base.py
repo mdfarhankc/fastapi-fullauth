@@ -1,6 +1,10 @@
 from abc import ABC, abstractmethod
+from typing import TYPE_CHECKING, Any
 
 from fastapi_fullauth.types import OAuthUserInfo
+
+if TYPE_CHECKING:
+    import httpx
 
 
 class OAuthProvider(ABC):
@@ -28,13 +32,13 @@ class OAuthProvider(ABC):
     def get_authorization_url(self, state: str, redirect_uri: str) -> str: ...
 
     @abstractmethod
-    async def exchange_code(self, code: str, redirect_uri: str) -> dict: ...
+    async def exchange_code(self, code: str, redirect_uri: str) -> dict[str, Any]: ...
 
     @abstractmethod
-    async def get_user_info(self, tokens: dict) -> OAuthUserInfo: ...
+    async def get_user_info(self, tokens: dict[str, Any]) -> OAuthUserInfo: ...
 
     @staticmethod
-    def _get_http_client():
+    def _get_http_client() -> "httpx.AsyncClient":
         try:
             import httpx
         except ImportError:

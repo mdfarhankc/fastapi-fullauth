@@ -18,7 +18,7 @@ __all__ = [
 # when sqlalchemy/sqlmodel are not installed
 
 
-def __getattr__(name: str):
+def __getattr__(name: str) -> object:
     if name == "SQLAlchemyAdapter":
         from fastapi_fullauth.adapters.sqlalchemy import SQLAlchemyAdapter
 

@@ -1,3 +1,4 @@
+from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel, EmailStr
@@ -12,17 +13,20 @@ class LoginResponse(TokenPair):
 def build_login_model(login_field: str) -> type[BaseModel]:
     from pydantic import create_model
 
-    return create_model("LoginRequest", **{login_field: (str, ...), "password": (str, ...)})
+    fields: dict[str, Any] = {login_field: (str, ...), "password": (str, ...)}
+    model: type[BaseModel] = create_model("LoginRequest", **fields)
+    return model
 
 
 def build_login_response_model(user_schema: type[UserSchema] = UserSchema) -> type[LoginResponse]:
     from pydantic import create_model
 
-    return create_model(
+    model: type[LoginResponse] = create_model(
         "LoginResponse",
         __base__=LoginResponse,
         user=(user_schema | None, None),
     )
+    return model
 
 
 class PasswordResetRequest(BaseModel):

@@ -1,8 +1,9 @@
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 from uuid import UUID
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response
+from pydantic import BaseModel
 
 from fastapi_fullauth.dependencies.current_user import _extract_token, _get_fullauth
 from fastapi_fullauth.exceptions import (
@@ -112,7 +113,12 @@ def create_auth_router(
         client_ip = get_client_ip(request, fullauth.config.TRUSTED_PROXY_HEADERS)
         await fullauth.check_auth_rate_limit("login", client_ip)
 
-        identifier = getattr(data, login_field)
+        # LoginRequest is built dynamically via create_model from `login_field`
+        # and "password", so static type checkers can't see either field. Go
+        # through model_dump() (typed via the BaseModel cast) and pluck both.
+        fields = cast("BaseModel", data).model_dump()
+        identifier: str = fields[login_field]
+        password: str = fields["password"]
         user = await fullauth.adapter.get_user_by_field(login_field, identifier)
         extra_claims = await fullauth.get_custom_claims(user) if user else {}
 
@@ -121,7 +127,7 @@ def create_auth_router(
                 adapter=fullauth.adapter,
                 token_engine=fullauth.token_engine,
                 identifier=identifier,
-                password=data.password,
+                password=password,
                 login_field=login_field,
                 lockout=fullauth.lockout,
                 extra_claims=extra_claims,

@@ -1,8 +1,9 @@
-from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
 from starlette.responses import Response
+from starlette.types import ASGIApp
 
-DEFAULT_SECURITY_HEADERS = {
+DEFAULT_SECURITY_HEADERS: dict[str, str] = {
     "X-Content-Type-Options": "nosniff",
     "X-Frame-Options": "DENY",
     "X-XSS-Protection": "1; mode=block",
@@ -13,13 +14,13 @@ DEFAULT_SECURITY_HEADERS = {
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
-    def __init__(self, app, custom_headers: dict[str, str] | None = None):
+    def __init__(self, app: ASGIApp, custom_headers: dict[str, str] | None = None) -> None:
         super().__init__(app)
         self.headers = {**DEFAULT_SECURITY_HEADERS}
         if custom_headers:
             self.headers.update(custom_headers)
 
-    async def dispatch(self, request: Request, call_next) -> Response:
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         response = await call_next(request)
         for key, value in self.headers.items():
             response.headers[key] = value

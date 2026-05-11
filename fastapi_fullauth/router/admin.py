@@ -1,8 +1,9 @@
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from fastapi import APIRouter, Depends, HTTPException
 
+from fastapi_fullauth.adapters.base import PermissionAdapterMixin, RoleAdapterMixin
 from fastapi_fullauth.dependencies.current_user import SuperUser, _get_fullauth
 from fastapi_fullauth.router._models import MessageResponse, PermissionAssignment, RoleAssignment
 
@@ -30,7 +31,7 @@ def create_admin_router() -> APIRouter:
         if target is None:
             raise HTTPException(status_code=404, detail="User not found")
 
-        await fullauth.adapter.assign_role(data.user_id, data.role)
+        await cast("RoleAdapterMixin", fullauth.adapter).assign_role(data.user_id, data.role)
         logger.info("Role assigned: target=%s, role=%s, by=%s", data.user_id, data.role, caller.id)
         return MessageResponse(detail=f"Role '{data.role}' assigned to user {data.user_id}.")
 
@@ -45,7 +46,7 @@ def create_admin_router() -> APIRouter:
         caller: SuperUser,
         fullauth: "FullAuth" = Depends(_get_fullauth),
     ) -> MessageResponse:
-        await fullauth.adapter.remove_role(data.user_id, data.role)
+        await cast("RoleAdapterMixin", fullauth.adapter).remove_role(data.user_id, data.role)
         logger.info("Role removed: target=%s, role=%s, by=%s", data.user_id, data.role, caller.id)
         return MessageResponse(detail=f"Role '{data.role}' removed from user {data.user_id}.")
 
@@ -60,7 +61,9 @@ def create_admin_router() -> APIRouter:
         caller: SuperUser,
         fullauth: "FullAuth" = Depends(_get_fullauth),
     ) -> MessageResponse:
-        await fullauth.adapter.assign_permission_to_role(data.role, data.permission)
+        await cast("PermissionAdapterMixin", fullauth.adapter).assign_permission_to_role(
+            data.role, data.permission
+        )
         logger.info(
             "Permission assigned: role=%s, permission=%s, by=%s",
             data.role,
@@ -82,7 +85,9 @@ def create_admin_router() -> APIRouter:
         caller: SuperUser,
         fullauth: "FullAuth" = Depends(_get_fullauth),
     ) -> MessageResponse:
-        await fullauth.adapter.remove_permission_from_role(data.role, data.permission)
+        await cast("PermissionAdapterMixin", fullauth.adapter).remove_permission_from_role(
+            data.role, data.permission
+        )
         logger.info(
             "Permission removed: role=%s, permission=%s, by=%s",
             data.role,
@@ -103,6 +108,8 @@ def create_admin_router() -> APIRouter:
         caller: SuperUser,
         fullauth: "FullAuth" = Depends(_get_fullauth),
     ) -> list[str]:
-        return await fullauth.adapter.get_role_permissions(role_name)
+        return await cast("PermissionAdapterMixin", fullauth.adapter).get_role_permissions(
+            role_name
+        )
 
     return router

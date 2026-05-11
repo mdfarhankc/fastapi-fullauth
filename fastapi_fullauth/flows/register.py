@@ -1,4 +1,5 @@
 import logging
+from typing import Literal
 
 from fastapi_fullauth.adapters.base import AbstractUserAdapter
 from fastapi_fullauth.core.crypto import hash_password
@@ -13,7 +14,7 @@ async def register(
     adapter: AbstractUserAdapter,
     data: CreateUserSchema,
     login_field: str = "email",
-    hash_algorithm: str = "argon2id",
+    hash_algorithm: Literal["argon2id", "bcrypt"] = "argon2id",
     password_validator: PasswordValidator | None = None,
 ) -> UserSchema:
     if password_validator:

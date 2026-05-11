@@ -1,4 +1,5 @@
 import logging
+from typing import Literal
 
 from fastapi_fullauth.adapters.base import AbstractUserAdapter
 from fastapi_fullauth.core.crypto import hash_password, verify_password
@@ -14,7 +15,7 @@ async def change_password(
     user_id: UserID,
     current_password: str,
     new_password: str,
-    hash_algorithm: str = "argon2id",
+    hash_algorithm: Literal["argon2id", "bcrypt"] = "argon2id",
     password_validator: PasswordValidator | None = None,
 ) -> None:
     hashed = await adapter.get_hashed_password(user_id)

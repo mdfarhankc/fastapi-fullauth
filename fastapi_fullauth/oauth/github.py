@@ -1,4 +1,5 @@
 import logging
+from typing import Any
 from urllib.parse import urlencode
 
 from fastapi_fullauth.exceptions import OAuthProviderError
@@ -28,7 +29,7 @@ class GitHubOAuthProvider(OAuthProvider):
         }
         return f"{self.authorization_endpoint}?{urlencode(params)}"
 
-    async def exchange_code(self, code: str, redirect_uri: str) -> dict:
+    async def exchange_code(self, code: str, redirect_uri: str) -> dict[str, Any]:
         async with self._get_http_client() as client:
             resp = await client.post(
                 self.token_endpoint,
@@ -44,13 +45,13 @@ class GitHubOAuthProvider(OAuthProvider):
                     "GitHub token exchange failed (HTTP %s): %s", resp.status_code, resp.text
                 )
                 raise OAuthProviderError("GitHub token exchange failed")
-            data = resp.json()
+            data: dict[str, Any] = resp.json()
             if "error" in data:
                 logger.error("GitHub token error: %s", data.get("error_description", data["error"]))
                 raise OAuthProviderError("GitHub token exchange failed")
             return data
 
-    async def get_user_info(self, tokens: dict) -> OAuthUserInfo:
+    async def get_user_info(self, tokens: dict[str, Any]) -> OAuthUserInfo:
         access_token = tokens["access_token"]
         headers = {
             "Authorization": f"Bearer {access_token}",

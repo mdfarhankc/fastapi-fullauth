@@ -10,10 +10,15 @@
 
 - `/auth/refresh` was passing `str(user.id)` to `RefreshToken(user_id=...)` which expects `UUID`. Pydantic v2 coerced silently so there was no runtime break, but the path now passes `user.id` directly — consistent with `flows/login.py` and clean under static type checking.
 - `LoginResponse` is now a real subclass of `TokenPair` with `user: UserSchema | None = None` instead of a dynamically created model with no static type. The dynamic factory still narrows the `user` field to the configured user schema for OpenAPI, but `LoginResponse(...)` calls now type-check cleanly in mypy/pyright.
+- `DELETE /oauth/accounts/{provider}` was calling `delete_oauth_account(provider, user.id)` — passing the local user UUID where the provider's `provider_user_id` (e.g. a Google subject ID) was expected. The query never matched, so unlinking silently no-op'd. Now resolves the OAuth account for the current user first and passes the right `provider_user_id`. Returns `404` if the user doesn't have an account on that provider.
 - `FullAuth.get_custom_claims` annotated as `-> dict[str, Any]` instead of bare `dict`.
+- Passkey and OAuth flows now pass `user.id` (UUID) to `RefreshToken(user_id=...)` instead of `str(user.id)`, matching the password login path.
+- OAuth state without a stored `redirect_uri` now falls back to `provider.redirect_uris[0]` instead of passing `None` to `provider.exchange_code(...)`. Test mocks were unaffected; production callers always set it.
 
 ### Changed
 
+- **Strict mypy is now clean** across the entire codebase. The 184 strict-mode errors that had been parked for a future typed-hardening release are gone — `uv run mypy --strict fastapi_fullauth` passes 0/0. Mostly mechanical: missing `dict` type args, missing parameter/return annotations, `hash_password(algorithm=...)` Literal at call sites, ASGI middleware app/call_next types. Mixin-method calls through `AbstractUserAdapter` are now narrowed via `cast()` to the appropriate `RoleAdapterMixin` / `PermissionAdapterMixin` / `OAuthAdapterMixin` at each call site. SQLAlchemy 2.0 / SQLModel column-comparison stub limitations (`where(self.user_model.id == user_id)` types as `bool` instead of `ColumnElement[bool]`) are scoped to the two adapter modules via a focused `[[tool.mypy.overrides]]` block — the rest of the codebase stays strict.
+- CI now runs `mypy --strict` on every push and PR to keep the type surface clean.
 - `Development Status` classifier bumped from `3 - Alpha` to `4 - Beta`. Reflects 189 tests passing, multi-version CI on Python 3.10–3.14, OIDC-based PyPI publishing, the security hardening trail through 0.7.0–0.9.1, and `py.typed` shipped. Reserved `5 - Production/Stable` for v1.0.
 - Added `Operating System :: OS Independent` classifier (CI runs on Linux and Windows).
 - All dependency floors bumped to current stable versions: `fastapi>=0.136`, `pydantic[email]>=2.13`, `pydantic-settings>=2.14`, `pyjwt>=2.12`, `argon2-cffi>=25.1`, plus extras (`sqlalchemy>=2.0.49`, `alembic>=1.18`, `sqlmodel>=0.0.38`, `redis>=7.4`, `httpx>=0.28`, `webauthn>=2.7`).

@@ -1,4 +1,5 @@
 import logging
+from typing import Literal
 from uuid import UUID
 
 from fastapi_fullauth.adapters.base import AbstractUserAdapter
@@ -36,7 +37,7 @@ async def reset_password(
     token_engine: TokenEngine,
     token: str,
     new_password: str,
-    hash_algorithm: str = "argon2id",
+    hash_algorithm: Literal["argon2id", "bcrypt"] = "argon2id",
     password_validator: PasswordValidator | None = None,
 ) -> UserSchema | None:
     payload = await token_engine.decode_token(token)

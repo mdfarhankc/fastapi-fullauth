@@ -1,6 +1,10 @@
 import logging
 import time
 from abc import ABC, abstractmethod
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from fastapi_fullauth.config import FullAuthConfig
 
 logger = logging.getLogger("fastapi_fullauth.lockout")
 
@@ -130,7 +134,7 @@ def register_lockout_backend(name: str, cls: type[LockoutManager]) -> None:
     _lockout_registry[name] = cls
 
 
-def create_lockout(config) -> LockoutManager | None:
+def create_lockout(config: "FullAuthConfig") -> LockoutManager | None:
     """Create a lockout manager based on config. Returns None if disabled."""
     if not config.LOCKOUT_ENABLED:
         return None
@@ -143,7 +147,7 @@ def create_lockout(config) -> LockoutManager | None:
             f"Register custom backends with register_lockout_backend()."
         )
 
-    kwargs = {
+    kwargs: dict[str, Any] = {
         "max_attempts": config.MAX_LOGIN_ATTEMPTS,
         "lockout_seconds": config.LOCKOUT_DURATION_MINUTES * 60,
     }
