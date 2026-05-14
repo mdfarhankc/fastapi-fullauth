@@ -1,7 +1,8 @@
 import logging
 import secrets
+from typing import Any, Literal, cast
 
-from fastapi_fullauth.adapters.base import AbstractUserAdapter
+from fastapi_fullauth.adapters.base import AbstractUserAdapter, OAuthAdapterMixin
 from fastapi_fullauth.core.crypto import hash_password
 from fastapi_fullauth.core.tokens import TokenEngine
 from fastapi_fullauth.exceptions import OAuthProviderError, UserAlreadyExistsError
@@ -16,7 +17,7 @@ def generate_oauth_state(
     ttl_seconds: int = 300,
     redirect_uri: str | None = None,
 ) -> str:
-    extra: dict = {"purpose": "oauth_state", "nonce": secrets.token_hex(16)}
+    extra: dict[str, Any] = {"purpose": "oauth_state", "nonce": secrets.token_hex(16)}
     if redirect_uri:
         extra["redirect_uri"] = redirect_uri
     return token_engine.create_access_token(
@@ -29,7 +30,8 @@ async def verify_oauth_state(token_engine: TokenEngine, state: str) -> str | Non
     if payload.extra.get("purpose") != "oauth_state":
         logger.warning("Invalid OAuth state token (wrong purpose)")
         raise OAuthProviderError("Invalid OAuth state token")
-    return payload.extra.get("redirect_uri")
+    redirect_uri: str | None = payload.extra.get("redirect_uri")
+    return redirect_uri
 
 
 async def exchange_oauth_code(
@@ -37,9 +39,11 @@ async def exchange_oauth_code(
     token_engine: TokenEngine,
     code: str,
     state: str,
-) -> tuple[dict, OAuthUserInfo]:
+) -> tuple[dict[str, Any], OAuthUserInfo]:
     """Verify state and exchange authorization code for user info."""
     redirect_uri = await verify_oauth_state(token_engine, state)
+    if redirect_uri is None:
+        redirect_uri = provider.redirect_uris[0]
     tokens = await provider.exchange_code(code, redirect_uri)
     info: OAuthUserInfo = await provider.get_user_info(tokens)
     return tokens, info
@@ -48,15 +52,16 @@ async def exchange_oauth_code(
 async def link_or_create_user(
     adapter: AbstractUserAdapter,
     info: OAuthUserInfo,
-    provider_tokens: dict,
+    provider_tokens: dict[str, Any],
     auto_link_by_email: bool = True,
-    hash_algorithm: str = "argon2id",
+    hash_algorithm: Literal["argon2id", "bcrypt"] = "argon2id",
 ) -> tuple[UserSchema, bool]:
     """Link OAuth account to existing user or create a new one.
 
     Returns the user and whether a new account was created.
     """
-    existing_account = await adapter.get_oauth_account(info.provider, info.provider_user_id)
+    oauth_adapter = cast("OAuthAdapterMixin", adapter)
+    existing_account = await oauth_adapter.get_oauth_account(info.provider, info.provider_user_id)
 
     if existing_account:
         user = await adapter.get_user_by_id(existing_account.user_id)
@@ -68,7 +73,7 @@ async def link_or_create_user(
             )
             raise OAuthProviderError("Linked user no longer exists")
 
-        await adapter.update_oauth_account(
+        await oauth_adapter.update_oauth_account(
             info.provider,
             info.provider_user_id,
             {
@@ -132,7 +137,7 @@ async def link_or_create_user(
     else:
         is_new_user = False
 
-    await adapter.create_oauth_account(
+    await oauth_adapter.create_oauth_account(
         OAuthAccount(
             provider=info.provider,
             provider_user_id=info.provider_user_id,
@@ -152,14 +157,13 @@ async def issue_oauth_tokens(
     user: UserSchema,
 ) -> TokenPair:
     """Issue JWT token pair for an OAuth-authenticated user."""
-    uid = str(user.id)
     roles = await adapter.get_user_roles(user.id)
-    access, refresh_meta = token_engine.create_token_pair(user_id=uid, roles=roles)
+    access, refresh_meta = token_engine.create_token_pair(user_id=str(user.id), roles=roles)
 
     await adapter.store_refresh_token(
         RefreshToken(
             token=refresh_meta.token,
-            user_id=uid,
+            user_id=user.id,
             expires_at=refresh_meta.expires_at,
             family_id=refresh_meta.family_id,
         )
@@ -179,7 +183,7 @@ async def oauth_callback(
     code: str,
     state: str,
     auto_link_by_email: bool = True,
-    hash_algorithm: str = "argon2id",
+    hash_algorithm: Literal["argon2id", "bcrypt"] = "argon2id",
 ) -> tuple[TokenPair, UserSchema, bool, OAuthUserInfo]:
     """Full OAuth callback flow. Delegates to smaller functions."""
     provider_tokens, info = await exchange_oauth_code(provider, token_engine, code, state)

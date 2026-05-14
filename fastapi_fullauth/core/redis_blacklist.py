@@ -23,4 +23,4 @@ class RedisBlacklist(TokenBlacklist):
         )
 
     async def is_blacklisted(self, jti: str) -> bool:
-        return await self._redis.exists(f"{self._prefix}{jti}") > 0
+        return bool(await self._redis.exists(f"{self._prefix}{jti}") > 0)

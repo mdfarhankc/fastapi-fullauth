@@ -1,4 +1,5 @@
 import secrets
+from typing import Literal
 
 from starlette.requests import Request
 
@@ -12,7 +13,7 @@ async def create_superuser(
     adapter: AbstractUserAdapter,
     email: str,
     password: str,
-    hash_algorithm: str = "argon2id",
+    hash_algorithm: Literal["argon2id", "bcrypt"] = "argon2id",
 ) -> UserSchema:
     if await adapter.get_user_by_email(email) is not None:
         raise UserAlreadyExistsError(f"User with email {email} already exists")

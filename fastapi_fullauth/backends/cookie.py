@@ -1,3 +1,5 @@
+from typing import Any
+
 from fastapi import Request, Response
 
 from fastapi_fullauth.backends.base import AbstractBackend
@@ -25,7 +27,7 @@ class CookieBackend(AbstractBackend):
         # a SameSite=None set-cookie without Secure.
         response.delete_cookie(key=self.config.COOKIE_NAME, **self._cookie_attrs())
 
-    def _cookie_attrs(self) -> dict:
+    def _cookie_attrs(self) -> dict[str, Any]:
         return {
             "httponly": self.config.COOKIE_HTTPONLY,
             "secure": self.config.COOKIE_SECURE,

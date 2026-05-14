@@ -39,7 +39,7 @@ _LAZY_IMPORTS = {
 __all__ = list(_LAZY_IMPORTS.keys())
 
 
-def __getattr__(name: str):
+def __getattr__(name: str) -> object:
     module_path = _LAZY_IMPORTS.get(name)
     if module_path is not None:
         import importlib

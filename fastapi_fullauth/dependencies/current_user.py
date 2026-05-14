@@ -1,4 +1,5 @@
-from typing import TYPE_CHECKING, Annotated, cast
+from collections.abc import Callable, Coroutine
+from typing import TYPE_CHECKING, Annotated, Any, cast
 from uuid import UUID
 
 from fastapi import Depends, Request
@@ -87,7 +88,9 @@ VerifiedUser = Annotated[UserSchema, Depends(current_active_verified_user)]
 SuperUser = Annotated[UserSchema, Depends(current_superuser)]
 
 
-def get_current_user_dependency(user_type: type[UserSchemaType]):
+def get_current_user_dependency(
+    user_type: type[UserSchemaType],
+) -> Callable[..., Coroutine[Any, Any, UserSchemaType]]:
     """Create a typed current_user dependency for custom user schemas.
 
     Usage::
@@ -121,7 +124,9 @@ def get_current_user_dependency(user_type: type[UserSchemaType]):
     return _current_user
 
 
-def get_verified_user_dependency(user_type: type[UserSchemaType]):
+def get_verified_user_dependency(
+    user_type: type[UserSchemaType],
+) -> Callable[..., Coroutine[Any, Any, UserSchemaType]]:
     """Create a typed verified-user dependency for custom user schemas."""
     _current = get_current_user_dependency(user_type)
 
@@ -137,7 +142,9 @@ def get_verified_user_dependency(user_type: type[UserSchemaType]):
     return _dep
 
 
-def get_superuser_dependency(user_type: type[UserSchemaType]):
+def get_superuser_dependency(
+    user_type: type[UserSchemaType],
+) -> Callable[..., Coroutine[Any, Any, UserSchemaType]]:
     """Create a typed superuser dependency for custom user schemas."""
     _current = get_current_user_dependency(user_type)
 

@@ -1,9 +1,10 @@
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel
 
+from fastapi_fullauth.adapters.base import OAuthAdapterMixin
 from fastapi_fullauth.dependencies.current_user import CurrentUser, _get_fullauth
 from fastapi_fullauth.exceptions import (
     OAUTH_ERROR_EXCEPTION,
@@ -146,7 +147,8 @@ def create_oauth_router(
         user: CurrentUser,
         fullauth: "FullAuth" = Depends(_get_fullauth),
     ) -> list[OAuthAccountResponse]:
-        accounts = await fullauth.adapter.get_user_oauth_accounts(user.id)
+        adapter = cast("OAuthAdapterMixin", fullauth.adapter)
+        accounts = await adapter.get_user_oauth_accounts(user.id)
         return [
             OAuthAccountResponse(
                 provider=a.provider,
@@ -166,7 +168,8 @@ def create_oauth_router(
         user: CurrentUser,
         fullauth: "FullAuth" = Depends(_get_fullauth),
     ) -> None:
-        accounts = await fullauth.adapter.get_user_oauth_accounts(user.id)
+        oauth_adapter = cast("OAuthAdapterMixin", fullauth.adapter)
+        accounts = await oauth_adapter.get_user_oauth_accounts(user.id)
         has_password = await fullauth.adapter.get_hashed_password(user.id) is not None
         other_oauth = [a for a in accounts if a.provider != provider]
 
@@ -176,7 +179,11 @@ def create_oauth_router(
                 detail="Cannot unlink the only login method. Set a password first.",
             )
 
-        await fullauth.adapter.delete_oauth_account(provider, user.id)
+        target = next((a for a in accounts if a.provider == provider), None)
+        if target is None:
+            raise HTTPException(status_code=404, detail="OAuth account not found")
+
+        await oauth_adapter.delete_oauth_account(provider, target.provider_user_id)
         logger.info("OAuth account unlinked: user_id=%s, provider=%s", user.id, provider)
 
     return router

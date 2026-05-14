@@ -1,6 +1,7 @@
 """Set password for users who don't have a usable password (e.g. OAuth-only)."""
 
 import logging
+from typing import Literal
 
 from fastapi_fullauth.adapters.base import AbstractUserAdapter
 from fastapi_fullauth.core.crypto import hash_password
@@ -15,7 +16,7 @@ async def set_password(
     adapter: AbstractUserAdapter,
     user_id: UserID,
     new_password: str,
-    hash_algorithm: str = "argon2id",
+    hash_algorithm: Literal["argon2id", "bcrypt"] = "argon2id",
     password_validator: PasswordValidator | None = None,
 ) -> None:
     """Set a password for a user who doesn't have a usable one.

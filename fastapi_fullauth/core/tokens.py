@@ -2,6 +2,7 @@ import logging
 import time
 import uuid
 from datetime import datetime, timedelta, timezone
+from typing import Any
 
 import jwt
 
@@ -47,15 +48,17 @@ class TokenEngine:
         self,
         user_id: str,
         roles: list[str] | None = None,
-        extra: dict | None = None,
+        extra: dict[str, Any] | None = None,
         expire_seconds: int | None = None,
     ) -> str:
+        if self.config.SECRET_KEY is None:
+            raise RuntimeError("SECRET_KEY must be set to create tokens")
         now = datetime.now(timezone.utc)
         if expire_seconds is not None:
             expires = now + timedelta(seconds=expire_seconds)
         else:
             expires = now + timedelta(minutes=self.config.ACCESS_TOKEN_EXPIRE_MINUTES)
-        payload = {
+        payload: dict[str, Any] = {
             "sub": user_id,
             "exp": expires,
             "iat": now,
@@ -71,10 +74,12 @@ class TokenEngine:
         user_id: str,
         family_id: str | None = None,
     ) -> RefreshTokenMeta:
+        if self.config.SECRET_KEY is None:
+            raise RuntimeError("SECRET_KEY must be set to create tokens")
         now = datetime.now(timezone.utc)
         expires_at = now + timedelta(days=self.config.REFRESH_TOKEN_EXPIRE_DAYS)
         resolved_family_id = family_id or uuid.uuid4().hex
-        payload = {
+        payload: dict[str, Any] = {
             "sub": user_id,
             "exp": expires_at,
             "iat": now,
@@ -86,6 +91,8 @@ class TokenEngine:
         return RefreshTokenMeta(token=token, expires_at=expires_at, family_id=resolved_family_id)
 
     async def decode_token(self, token: str) -> TokenPayload:
+        if self.config.SECRET_KEY is None:
+            raise RuntimeError("SECRET_KEY must be set to decode tokens")
         try:
             data = jwt.decode(
                 token,
@@ -123,7 +130,7 @@ class TokenEngine:
         self,
         user_id: str,
         roles: list[str] | None = None,
-        extra: dict | None = None,
+        extra: dict[str, Any] | None = None,
         family_id: str | None = None,
     ) -> tuple[str, RefreshTokenMeta]:
         access = self.create_access_token(user_id, roles, extra)

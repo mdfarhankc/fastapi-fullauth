@@ -1,11 +1,12 @@
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 from uuid import UUID
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from fastapi_fullauth.adapters.base import PasskeyAdapterMixin
+from fastapi_fullauth.core.challenges import ChallengeStore
 from fastapi_fullauth.dependencies.current_user import CurrentUser, _get_fullauth
 from fastapi_fullauth.router._models import build_login_response_model
 from fastapi_fullauth.types import TokenPair, UserSchema, UserSchemaType
@@ -19,7 +20,7 @@ if TYPE_CHECKING:
 
 class RegisterCompleteRequest(BaseModel):
     challenge_key: str
-    credential: dict
+    credential: dict[str, Any]
     device_name: str = ""
 
 
@@ -29,7 +30,7 @@ class AuthenticateBeginRequest(BaseModel):
 
 class AuthenticateCompleteRequest(BaseModel):
     challenge_key: str
-    credential: dict
+    credential: dict[str, Any]
 
 
 class PasskeyResponse(BaseModel):
@@ -55,7 +56,7 @@ def create_passkey_router(
     async def register_begin(
         user: CurrentUser,
         fullauth: "FullAuth" = Depends(_get_fullauth),
-    ) -> dict:
+    ) -> dict[str, Any]:
         from fastapi_fullauth.flows.passkey import begin_registration
 
         if not fullauth.config.PASSKEY_ENABLED:
@@ -64,11 +65,16 @@ def create_passkey_router(
         if not isinstance(fullauth.adapter, PasskeyAdapterMixin):
             raise HTTPException(status_code=501, detail="Adapter does not support passkeys")
 
+        # Narrowed by FullAuthConfig._validate_passkey_config at construction time:
+        # PASSKEY_RP_ID is non-None and challenge_store is set when PASSKEY_ENABLED=True.
+        rp_id = cast("str", fullauth.config.PASSKEY_RP_ID)
+        challenge_store = cast("ChallengeStore", fullauth.challenge_store)
+
         return await begin_registration(
             user=user,
-            rp_id=fullauth.config.PASSKEY_RP_ID,
-            rp_name=fullauth.config.PASSKEY_RP_NAME or fullauth.config.PASSKEY_RP_ID,
-            challenge_store=fullauth.challenge_store,
+            rp_id=rp_id,
+            rp_name=fullauth.config.PASSKEY_RP_NAME or rp_id,
+            challenge_store=challenge_store,
             adapter=fullauth.adapter,
             challenge_ttl=fullauth.config.PASSKEY_CHALLENGE_TTL,
             require_user_verification=fullauth.config.PASSKEY_REQUIRE_USER_VERIFICATION,
@@ -93,15 +99,18 @@ def create_passkey_router(
         if not origins:
             raise HTTPException(status_code=500, detail="PASSKEY_ORIGINS not configured")
 
+        rp_id = cast("str", fullauth.config.PASSKEY_RP_ID)
+        challenge_store = cast("ChallengeStore", fullauth.challenge_store)
+
         try:
             passkey = await complete_registration(
                 challenge_key=data.challenge_key,
                 credential=data.credential,
                 device_name=data.device_name,
                 user=user,
-                rp_id=fullauth.config.PASSKEY_RP_ID,
+                rp_id=rp_id,
                 expected_origin=origins,
-                challenge_store=fullauth.challenge_store,
+                challenge_store=challenge_store,
                 adapter=fullauth.adapter,
                 require_user_verification=fullauth.config.PASSKEY_REQUIRE_USER_VERIFICATION,
             )
@@ -129,7 +138,7 @@ def create_passkey_router(
         request: Request,
         data: AuthenticateBeginRequest = Body(AuthenticateBeginRequest()),
         fullauth: "FullAuth" = Depends(_get_fullauth),
-    ) -> dict:
+    ) -> dict[str, Any]:
         from fastapi_fullauth.flows.passkey import begin_authentication
 
         if not fullauth.config.PASSKEY_ENABLED:
@@ -147,9 +156,12 @@ def create_passkey_router(
             if user:
                 user_id = user.id
 
+        rp_id = cast("str", fullauth.config.PASSKEY_RP_ID)
+        challenge_store = cast("ChallengeStore", fullauth.challenge_store)
+
         return await begin_authentication(
-            rp_id=fullauth.config.PASSKEY_RP_ID,
-            challenge_store=fullauth.challenge_store,
+            rp_id=rp_id,
+            challenge_store=challenge_store,
             adapter=fullauth.adapter,
             user_id=user_id,
             challenge_ttl=fullauth.config.PASSKEY_CHALLENGE_TTL,
@@ -174,13 +186,16 @@ def create_passkey_router(
         if not origins:
             raise HTTPException(status_code=500, detail="PASSKEY_ORIGINS not configured")
 
+        rp_id = cast("str", fullauth.config.PASSKEY_RP_ID)
+        challenge_store = cast("ChallengeStore", fullauth.challenge_store)
+
         try:
             token_pair, user = await complete_authentication(
                 challenge_key=data.challenge_key,
                 credential=data.credential,
-                rp_id=fullauth.config.PASSKEY_RP_ID,
+                rp_id=rp_id,
                 expected_origin=origins,
-                challenge_store=fullauth.challenge_store,
+                challenge_store=challenge_store,
                 adapter=fullauth.adapter,
                 passkey_adapter=fullauth.adapter,
                 token_engine=fullauth.token_engine,

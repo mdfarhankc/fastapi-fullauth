@@ -1,5 +1,5 @@
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, Body, Depends, HTTPException
 
@@ -62,7 +62,7 @@ def create_profile_router(
     async def update_me_route(
         user: CurrentUser,
         fullauth: "FullAuth" = Depends(_get_fullauth),
-        data: dict = Body(...),
+        data: dict[str, Any] = Body(...),
     ) -> UserSchema:
         try:
             updates = validate_profile_updates(data, user_schema)

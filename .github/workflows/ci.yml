@@ -14,9 +14,10 @@ jobs:
       - uses: astral-sh/setup-uv@v5
         with:
           python-version: "3.13"
-      - run: uv sync --dev
+      - run: uv sync --dev --all-extras
       - run: uv run ruff check .
       - run: uv run ruff format --check .
+      - run: uv run mypy --strict fastapi_fullauth
 
   test:
     runs-on: ubuntu-latest

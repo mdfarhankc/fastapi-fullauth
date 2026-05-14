@@ -882,3 +882,50 @@ async def test_register_rate_limited():
         assert r.status_code == 429
 
     await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_refresh_rate_limited():
+    engine, session_maker = await _make_db()
+    adapter = SQLModelAdapter(session_maker=session_maker, user_model=User)
+    fullauth = FullAuth(
+        config=FullAuthConfig(
+            SECRET_KEY="test-secret-key-that-is-long-enough-32b",
+            INJECT_SECURITY_HEADERS=False,
+            AUTH_RATE_LIMIT_ENABLED=True,
+            AUTH_RATE_LIMIT_REFRESH=1,
+            AUTH_RATE_LIMIT_WINDOW_SECONDS=60,
+        ),
+        adapter=adapter,
+    )
+    app = FastAPI()
+    fullauth.init_app(app, auto_middleware=False)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        await client.post(
+            "/api/v1/auth/register",
+            json={"email": "rl@t.com", "password": "securepass123"},
+        )
+        r = await client.post(
+            "/api/v1/auth/login",
+            json={"email": "rl@t.com", "password": "securepass123"},
+        )
+        refresh_token = r.json()["refresh_token"]
+
+        # first refresh consumes the budget
+        r = await client.post(
+            "/api/v1/auth/refresh",
+            json={"refresh_token": refresh_token},
+        )
+        assert r.status_code == 200
+        new_refresh = r.json()["refresh_token"]
+
+        # second refresh hits the limiter before token validation
+        r = await client.post(
+            "/api/v1/auth/refresh",
+            json={"refresh_token": new_refresh},
+        )
+        assert r.status_code == 429
+
+    await engine.dispose()

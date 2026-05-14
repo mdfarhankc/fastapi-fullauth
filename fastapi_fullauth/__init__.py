@@ -1,4 +1,4 @@
-__version__ = "0.9.1"
+__version__ = "0.9.2"
 
 from fastapi_fullauth.config import FullAuthConfig
 from fastapi_fullauth.fullauth import FullAuth

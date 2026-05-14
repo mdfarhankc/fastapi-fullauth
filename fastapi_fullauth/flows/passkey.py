@@ -3,6 +3,7 @@
 import logging
 import secrets
 from base64 import urlsafe_b64decode, urlsafe_b64encode
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from uuid_utils import uuid7
@@ -10,6 +11,9 @@ from uuid_utils import uuid7
 from fastapi_fullauth.adapters.base import AbstractUserAdapter, PasskeyAdapterMixin
 from fastapi_fullauth.core.challenges import ChallengeStore
 from fastapi_fullauth.types import PasskeyCredential, TokenPair, UserID, UserSchema
+
+if TYPE_CHECKING:
+    from fastapi_fullauth.core.tokens import TokenEngine
 
 logger = logging.getLogger("fastapi_fullauth.passkey")
 
@@ -31,7 +35,7 @@ async def begin_registration(
     adapter: PasskeyAdapterMixin,
     challenge_ttl: int = 60,
     require_user_verification: bool = True,
-) -> dict:
+) -> dict[str, Any]:
     """Generate WebAuthn registration options for a logged-in user."""
     from webauthn import generate_registration_options, options_to_json
     from webauthn.helpers.structs import (
@@ -68,14 +72,14 @@ async def begin_registration(
 
     import json
 
-    options_json = json.loads(options_to_json(options))
+    options_json: dict[str, Any] = json.loads(options_to_json(options))
     options_json["challenge_key"] = challenge_key
     return options_json
 
 
 async def complete_registration(
     challenge_key: str,
-    credential: dict,
+    credential: dict[str, Any],
     device_name: str,
     user: UserSchema,
     rp_id: str,
@@ -127,14 +131,14 @@ async def begin_authentication(
     adapter: PasskeyAdapterMixin | None = None,
     user_id: UserID | None = None,
     challenge_ttl: int = 60,
-) -> dict:
+) -> dict[str, Any]:
     """Generate WebAuthn authentication options.
 
     If user_id is provided, sends allowCredentials for that user (non-discoverable).
     If user_id is None, allows discoverable credentials (true passwordless).
     """
     from webauthn import generate_authentication_options, options_to_json
-    from webauthn.helpers.structs import PublicKeyCredentialDescriptor
+    from webauthn.helpers.structs import AuthenticatorTransport, PublicKeyCredentialDescriptor
 
     allow_credentials = None
     if user_id is not None and adapter is not None:
@@ -142,7 +146,9 @@ async def begin_authentication(
         allow_credentials = [
             PublicKeyCredentialDescriptor(
                 id=_b64_decode(pk.credential_id),
-                transports=pk.transports if pk.transports else None,
+                transports=(
+                    [AuthenticatorTransport(t) for t in pk.transports] if pk.transports else None
+                ),
             )
             for pk in existing
         ]
@@ -157,20 +163,20 @@ async def begin_authentication(
 
     import json
 
-    options_json = json.loads(options_to_json(options))
+    options_json: dict[str, Any] = json.loads(options_to_json(options))
     options_json["challenge_key"] = challenge_key
     return options_json
 
 
 async def complete_authentication(
     challenge_key: str,
-    credential: dict,
+    credential: dict[str, Any],
     rp_id: str,
     expected_origin: str | list[str],
     challenge_store: ChallengeStore,
     adapter: AbstractUserAdapter,
     passkey_adapter: PasskeyAdapterMixin,
-    token_engine,
+    token_engine: "TokenEngine",
     require_user_verification: bool = True,
 ) -> tuple[TokenPair, UserSchema]:
     """Verify WebAuthn authentication response and issue JWT tokens."""
@@ -225,14 +231,13 @@ async def complete_authentication(
     if user is None or not user.is_active:
         raise ValueError("User not found or inactive")
 
-    uid = str(user.id)
     roles = await adapter.get_user_roles(user.id)
-    access, refresh_meta = token_engine.create_token_pair(user_id=uid, roles=roles)
+    access, refresh_meta = token_engine.create_token_pair(user_id=str(user.id), roles=roles)
 
     await adapter.store_refresh_token(
         RefreshToken(
             token=refresh_meta.token,
-            user_id=uid,
+            user_id=user.id,
             expires_at=refresh_meta.expires_at,
             family_id=refresh_meta.family_id,
         )

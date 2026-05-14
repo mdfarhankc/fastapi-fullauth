@@ -10,6 +10,10 @@ import asyncio
 import logging
 import time
 from abc import ABC, abstractmethod
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from fastapi_fullauth.config import FullAuthConfig
 
 logger = logging.getLogger("fastapi_fullauth.challenges")
 
@@ -69,7 +73,7 @@ class RedisChallengeStore(ChallengeStore):
 
     async def pop(self, key: str) -> str | None:
         redis_key = f"{self._prefix}{key}"
-        challenge = await self._redis.getdel(redis_key)
+        challenge: str | None = await self._redis.getdel(redis_key)
         return challenge
 
 
@@ -84,7 +88,7 @@ def register_challenge_store_backend(name: str, cls: type[ChallengeStore]) -> No
     _challenge_store_registry[name] = cls
 
 
-def create_challenge_store(config) -> ChallengeStore:
+def create_challenge_store(config: "FullAuthConfig") -> ChallengeStore:
     """Create a challenge store based on config."""
     backend = config.PASSKEY_CHALLENGE_BACKEND
     backend_cls = _challenge_store_registry.get(backend)

@@ -1,4 +1,5 @@
 import logging
+from typing import Any
 from urllib.parse import urlencode
 
 from fastapi_fullauth.exceptions import OAuthProviderError
@@ -30,7 +31,7 @@ class GoogleOAuthProvider(OAuthProvider):
         }
         return f"{self.authorization_endpoint}?{urlencode(params)}"
 
-    async def exchange_code(self, code: str, redirect_uri: str) -> dict:
+    async def exchange_code(self, code: str, redirect_uri: str) -> dict[str, Any]:
         async with self._get_http_client() as client:
             resp = await client.post(
                 self.token_endpoint,
@@ -47,9 +48,10 @@ class GoogleOAuthProvider(OAuthProvider):
                     "Google token exchange failed (HTTP %s): %s", resp.status_code, resp.text
                 )
                 raise OAuthProviderError("Google token exchange failed")
-            return resp.json()
+            tokens: dict[str, Any] = resp.json()
+            return tokens
 
-    async def get_user_info(self, tokens: dict) -> OAuthUserInfo:
+    async def get_user_info(self, tokens: dict[str, Any]) -> OAuthUserInfo:
         access_token = tokens["access_token"]
         async with self._get_http_client() as client:
             resp = await client.get(

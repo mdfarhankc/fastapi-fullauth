@@ -1,4 +1,5 @@
 import logging
+from typing import Any, Literal
 
 from fastapi_fullauth.adapters.base import AbstractUserAdapter
 from fastapi_fullauth.core.crypto import hash_password, password_needs_rehash, verify_password
@@ -17,9 +18,9 @@ async def login(
     password: str,
     login_field: str = "email",
     lockout: LockoutManager | None = None,
-    extra_claims: dict | None = None,
+    extra_claims: dict[str, Any] | None = None,
     user: UserSchema | None = None,
-    hash_algorithm: str = "argon2id",
+    hash_algorithm: Literal["argon2id", "bcrypt"] = "argon2id",
 ) -> TokenPair:
     if lockout and await lockout.is_locked(identifier):
         logger.warning("Login blocked — account locked: %s", identifier)

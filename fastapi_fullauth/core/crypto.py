@@ -19,9 +19,10 @@ def hash_password(password: str, algorithm: Literal["argon2id", "bcrypt"] = "arg
                 f"bcrypt passwords must be at most {_BCRYPT_MAX_BYTES} bytes when "
                 "UTF-8 encoded. Use argon2id for longer passwords."
             )
-        import bcrypt
+        import bcrypt  # type: ignore[import-not-found]
 
-        return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+        hashed: bytes = bcrypt.hashpw(password.encode(), bcrypt.gensalt())
+        return hashed.decode()
     return _argon2_hasher.hash(password)
 
 
@@ -30,7 +31,8 @@ def verify_password(plain: str, hashed: str) -> bool:
         try:
             import bcrypt
 
-            return bcrypt.checkpw(plain.encode(), hashed.encode())
+            ok: bool = bcrypt.checkpw(plain.encode(), hashed.encode())
+            return ok
         except ImportError:
             return False
     try:

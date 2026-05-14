@@ -1,6 +1,6 @@
 import logging
 import warnings
-from typing import Generic
+from typing import Any, Generic
 
 from fastapi import APIRouter, FastAPI
 
@@ -115,7 +115,7 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
                 stacklevel=3,
             )
 
-    async def get_custom_claims(self, user: UserSchema) -> dict:
+    async def get_custom_claims(self, user: UserSchema) -> dict[str, Any]:
         if not self.on_create_token_claims:
             return {}
 
@@ -201,7 +201,7 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
         """Build combined router, optionally excluding named sub-routers."""
         exclude = exclude or set()
         prefix = self.config.API_PREFIX.rstrip("/") + self.config.AUTH_ROUTER_PREFIX
-        router = APIRouter(prefix=prefix, tags=self.config.ROUTER_TAGS)
+        router = APIRouter(prefix=prefix, tags=self.config.ROUTER_TAGS)  # type: ignore[arg-type]
         if "auth" not in exclude:
             router.include_router(self.auth_router)
         if "profile" not in exclude:
