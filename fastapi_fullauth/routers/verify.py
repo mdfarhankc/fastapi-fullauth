@@ -3,11 +3,11 @@ from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
-from fastapi_fullauth.dependencies.current_user import CurrentUser, _get_fullauth
+from fastapi_fullauth.dependencies.current_user import CurrentUser, get_fullauth
 from fastapi_fullauth.exceptions import CREDENTIALS_EXCEPTION, InvalidPasswordError, TokenError
 from fastapi_fullauth.flows.email_verify import create_email_verification_token, verify_email
 from fastapi_fullauth.flows.password_reset import request_password_reset, reset_password
-from fastapi_fullauth.router._models import (
+from fastapi_fullauth.routers._schemas import (
     MessageResponse,
     PasswordResetConfirm,
     PasswordResetRequest,
@@ -15,7 +15,7 @@ from fastapi_fullauth.router._models import (
 )
 from fastapi_fullauth.utils import get_client_ip
 
-logger = logging.getLogger("fastapi_fullauth.router")
+logger = logging.getLogger("fastapi_fullauth.routers")
 
 if TYPE_CHECKING:
     from fastapi_fullauth.fullauth import FullAuth
@@ -32,8 +32,12 @@ def create_verify_router() -> APIRouter:
     )
     async def verify_email_request_route(
         user: CurrentUser,
-        fullauth: "FullAuth" = Depends(_get_fullauth),
+        request: Request,
+        fullauth: "FullAuth" = Depends(get_fullauth),
     ) -> MessageResponse:
+        client_ip = get_client_ip(request, fullauth.config.TRUSTED_PROXY_HEADERS)
+        await fullauth.check_auth_rate_limit("password-reset", client_ip)
+
         verify_token = await create_email_verification_token(
             fullauth.adapter, fullauth.token_engine, user.id
         )
@@ -52,8 +56,12 @@ def create_verify_router() -> APIRouter:
     )
     async def verify_email_confirm_route(
         data: VerifyEmailRequest,
-        fullauth: "FullAuth" = Depends(_get_fullauth),
+        request: Request,
+        fullauth: "FullAuth" = Depends(get_fullauth),
     ) -> MessageResponse:
+        client_ip = get_client_ip(request, fullauth.config.TRUSTED_PROXY_HEADERS)
+        await fullauth.check_auth_rate_limit("password-reset", client_ip)
+
         try:
             user = await verify_email(fullauth.adapter, fullauth.token_engine, data.token)
         except TokenError:
@@ -73,7 +81,7 @@ def create_verify_router() -> APIRouter:
     async def password_reset_request_route(
         data: PasswordResetRequest,
         request: Request,
-        fullauth: "FullAuth" = Depends(_get_fullauth),
+        fullauth: "FullAuth" = Depends(get_fullauth),
     ) -> MessageResponse:
         client_ip = get_client_ip(request, fullauth.config.TRUSTED_PROXY_HEADERS)
         await fullauth.check_auth_rate_limit("password-reset", client_ip)
@@ -93,8 +101,12 @@ def create_verify_router() -> APIRouter:
     )
     async def password_reset_confirm_route(
         data: PasswordResetConfirm,
-        fullauth: "FullAuth" = Depends(_get_fullauth),
+        request: Request,
+        fullauth: "FullAuth" = Depends(get_fullauth),
     ) -> MessageResponse:
+        client_ip = get_client_ip(request, fullauth.config.TRUSTED_PROXY_HEADERS)
+        await fullauth.check_auth_rate_limit("password-reset", client_ip)
+
         try:
             user = await reset_password(
                 fullauth.adapter,

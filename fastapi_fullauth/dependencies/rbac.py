@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, Any, cast
 from fastapi import Depends
 
 from fastapi_fullauth.adapters.base import PermissionAdapterMixin
-from fastapi_fullauth.dependencies.current_user import _get_fullauth, current_user
+from fastapi_fullauth.dependencies.current_user import current_user, get_fullauth
 from fastapi_fullauth.exceptions import FORBIDDEN_EXCEPTION
 from fastapi_fullauth.types import UserSchema
 
@@ -41,7 +41,7 @@ def require_permission(*permissions: str) -> Callable[..., Coroutine[Any, Any, U
 
     async def _dep(
         user: UserSchema = Depends(current_user),
-        fullauth: "FullAuth" = Depends(_get_fullauth),
+        fullauth: "FullAuth" = Depends(get_fullauth),
     ) -> UserSchema:
         if user.is_superuser:
             return user

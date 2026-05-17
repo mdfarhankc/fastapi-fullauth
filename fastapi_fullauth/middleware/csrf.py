@@ -43,7 +43,7 @@ class CSRFMiddleware(BaseHTTPMiddleware):
     def __init__(
         self,
         app: ASGIApp,
-        secret: str | None = None,
+        secret: str,
         cookie_name: str = "fullauth_csrf",
         exempt_paths: list[str] | None = None,
         cookie_secure: bool = True,
@@ -54,8 +54,11 @@ class CSRFMiddleware(BaseHTTPMiddleware):
     ) -> None:
         super().__init__(app)
 
-        if secret is None:
-            secret = self._resolve_secret()
+        if not secret or len(secret) < 32:
+            raise ValueError(
+                "CSRFMiddleware requires a `secret` of at least 32 characters. "
+                "Pass CSRF_SECRET from your FullAuthConfig (or SECRET_KEY as a fallback)."
+            )
 
         self.secret = secret
         self.cookie_name = cookie_name
@@ -65,16 +68,6 @@ class CSRFMiddleware(BaseHTTPMiddleware):
         self.cookie_httponly = cookie_httponly
         self.cookie_domain = cookie_domain
         self.header_name = header_name
-
-    @staticmethod
-    def _resolve_secret() -> str:
-        from fastapi_fullauth.config import FullAuthConfig
-
-        cfg = FullAuthConfig.model_validate({})
-        secret = cfg.CSRF_SECRET or cfg.SECRET_KEY
-        if secret is None:
-            raise RuntimeError("CSRF_SECRET or SECRET_KEY must be set for CSRF middleware")
-        return secret
 
     def _is_exempt(self, path: str) -> bool:
         return any(path.startswith(p) for p in self.exempt_paths)

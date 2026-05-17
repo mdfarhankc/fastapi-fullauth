@@ -1,9 +1,9 @@
 from fastapi_fullauth import FullAuth, FullAuthConfig
-from fastapi_fullauth.adapters.sqlalchemy import SQLAlchemyAdapter
+from fastapi_fullauth.adapters import SQLAlchemyAdapter
 from fastapi_fullauth.types import UserSchema
 
 from .config import session_maker
-from .models import User
+from .models import RefreshToken, Role, User, UserRole
 
 
 async def send_verification_email(email: str, token: str):
@@ -19,10 +19,15 @@ async def add_custom_claims(user: UserSchema) -> dict:
 
 
 fullauth = FullAuth(
-    adapter=SQLAlchemyAdapter(session_maker=session_maker, user_model=User),
+    adapter=SQLAlchemyAdapter(
+        session_maker=session_maker,
+        user_model=User,
+        refresh_token_model=RefreshToken,
+        role_model=Role,
+        user_role_model=UserRole,
+    ),
     config=FullAuthConfig(
         SECRET_KEY="change-me-use-a-32-byte-key-here",
-        INCLUDE_USER_IN_LOGIN=True,
     ),
     on_create_token_claims=add_custom_claims,
 )

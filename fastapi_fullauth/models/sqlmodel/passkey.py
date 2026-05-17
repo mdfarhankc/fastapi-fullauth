@@ -6,7 +6,13 @@ from sqlmodel import Field, SQLModel
 from uuid_utils import uuid7
 
 
-class PasskeyRecord(SQLModel, table=True):
+class PasskeyMixin(SQLModel):
+    """Passkey credential table. Combine with ``table=True``:
+
+    class Passkey(PasskeyMixin, table=True):
+        pass
+    """
+
     __tablename__ = "fullauth_passkeys"
 
     id: UUID = Field(default_factory=uuid7, primary_key=True)

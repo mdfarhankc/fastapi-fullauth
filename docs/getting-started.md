@@ -8,25 +8,38 @@ This guide walks through setting up fastapi-fullauth from scratch.
 pip install fastapi-fullauth[sqlmodel]
 ```
 
-## 1. Define your user model
+## 1. Define your tables
+
+Each library table is a **mixin** you combine with `table=True` (SQLModel) or your own `DeclarativeBase` (SQLAlchemy). Subclass only the ones you need — features you don't opt into never register a table.
 
 ```python
 # models.py
 from sqlmodel import Field, Relationship
-from fastapi_fullauth.adapters.sqlmodel.models.base import UserBase, RefreshTokenRecord
-from fastapi_fullauth.adapters.sqlmodel.models.role import Role, UserRoleLink
+from fastapi_fullauth.models.sqlmodel import (
+    RefreshTokenMixin, RoleMixin, UserMixin, UserRoleMixin,
+)
 
-class User(UserBase, table=True):
-    __tablename__ = "fullauth_users"
 
+class RefreshToken(RefreshTokenMixin, table=True):
+    pass
+
+
+class Role(RoleMixin, table=True):
+    pass
+
+
+class UserRole(UserRoleMixin, table=True):
+    pass
+
+
+class User(UserMixin, table=True):
     display_name: str = Field(default="", max_length=100)
     phone: str = Field(default="", max_length=20)
-
-    roles: list[Role] = Relationship(link_model=UserRoleLink)
-    refresh_tokens: list[RefreshTokenRecord] = Relationship()
+    roles: list[Role] = Relationship(link_model=UserRole)
+    refresh_tokens: list[RefreshToken] = Relationship()
 ```
 
-`UserBase` provides `id`, `email`, `hashed_password`, `is_active`, `is_verified`, `is_superuser`, and `created_at`. Add any extra fields you need.
+`UserMixin` provides `id`, `email`, `hashed_password`, `has_usable_password`, `is_active`, `is_verified`, `is_superuser`, and `created_at`. Add any extra fields you need.
 
 !!! note
     Define your own schemas extending `UserSchema` and `CreateUserSchema` to include custom fields like `display_name` and `phone`, then pass them to the adapter. See [Custom User Schemas](#custom-user-schemas) below or the [API Reference](api-reference.md).
@@ -47,13 +60,19 @@ session_maker = async_sessionmaker(engine, expire_on_commit=False)
 ```python
 # auth.py
 from fastapi_fullauth import FullAuth, FullAuthConfig
-from fastapi_fullauth.adapters.sqlmodel import SQLModelAdapter
+from fastapi_fullauth.adapters import SQLModelAdapter
 
 from .config import session_maker
-from .models import User
+from .models import RefreshToken, Role, User, UserRole
 
 fullauth = FullAuth(
-    adapter=SQLModelAdapter(session_maker=session_maker, user_model=User),
+    adapter=SQLModelAdapter(
+        session_maker=session_maker,
+        user_model=User,
+        refresh_token_model=RefreshToken,
+        role_model=Role,
+        user_role_model=UserRole,
+    ),
     config=FullAuthConfig(
         SECRET_KEY="your-secret-key-at-least-32-bytes",
     ),
@@ -93,14 +112,14 @@ uvicorn main:app --reload
 
 ### Composable routers
 
-`init_app()` registers all routes. To exclude specific routers, use `exclude_routers`:
+`init_app()` registers every available router by default. Pass `include_routers` to opt in to a subset:
 
 ```python
-# skip admin routes
-fullauth.init_app(app, exclude_routers=["admin"])
+# only auth + profile, skip everything else
+fullauth.init_app(app, include_routers=["auth", "profile"])
 ```
 
-For full manual control, wire routers and middleware yourself:
+For full manual control, wire individual routers yourself:
 
 ```python
 app = FastAPI(lifespan=lifespan)
@@ -108,9 +127,22 @@ fullauth.bind(app)  # required for dependencies to work
 
 app.include_router(fullauth.auth_router, prefix="/api/v1/auth")
 app.include_router(fullauth.profile_router, prefix="/api/v1/auth")
+```
 
-# optionally wire middleware from config
-fullauth.init_middleware(app)  # also calls bind() if not done
+### Middleware
+
+`init_app()` does not add any middleware — import what you need from `fastapi_fullauth.middleware` and add it yourself:
+
+```python
+from fastapi_fullauth.middleware import (
+    SecurityHeadersMiddleware,
+    CSRFMiddleware,
+    RateLimitMiddleware,
+)
+
+app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(CSRFMiddleware, secret=fullauth.config.SECRET_KEY)
+app.add_middleware(RateLimitMiddleware, max_requests=60, window_seconds=60)
 ```
 
 | Router | Routes |
@@ -148,11 +180,11 @@ Response:
   "refresh_token": "eyJ...",
   "token_type": "bearer",
   "expires_in": 1800,
-  "user": null
+  "user": { "id": "…", "email": "user@example.com", "is_active": true, "is_verified": false, "is_superuser": false }
 }
 ```
 
-When `INCLUDE_USER_IN_LOGIN=True`, `user` contains the full user object instead of `null`.
+`user` contains the full user object on every successful login.
 
 **Get current user:**
 

@@ -11,13 +11,19 @@ Permissions are resolved *through* roles, so if you use `PermissionAdapterMixin`
 
 ## Turning it on
 
+Define concrete tables for the four mixins RBAC uses, then pass them to the adapter:
+
 ```python
-# models imports — register the role + permission tables
-from fastapi_fullauth.adapters.sqlmodel.models.role import Role, UserRoleLink  # noqa: F401
-from fastapi_fullauth.adapters.sqlmodel.models.permission import (
-    Permission,
-    RolePermissionLink,
-)  # noqa: F401
+# models.py
+from fastapi_fullauth.models.sqlmodel import (
+    PermissionMixin, RoleMixin, RolePermissionMixin, UserRoleMixin,
+)
+
+
+class Role(RoleMixin, table=True): pass
+class UserRole(UserRoleMixin, table=True): pass
+class Permission(PermissionMixin, table=True): pass
+class RolePermission(RolePermissionMixin, table=True): pass
 ```
 
 ```python
@@ -31,11 +37,16 @@ class MyUser(UserSchema):
 adapter = SQLModelAdapter(
     session_maker=session_maker,
     user_model=User,
+    refresh_token_model=RefreshToken,
+    role_model=Role,
+    user_role_model=UserRole,
+    permission_model=Permission,
+    role_permission_model=RolePermission,
     user_schema=MyUser,
 )
 ```
 
-Without the `roles` field on the schema, `require_role` raises `AttributeError` at request time. That's the "opt-in" tax for RBAC.
+Without the `roles` field on the schema, `require_role` raises `AttributeError` at request time. Without the concrete role/permission models on the adapter, the matching adapter methods raise `RuntimeError` ("Permissions requires the corresponding model class passed to SQLAlchemyAdapter(...)."). Both are the "opt-in" tax for RBAC.
 
 ## Dependencies
 

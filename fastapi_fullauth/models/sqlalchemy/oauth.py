@@ -5,10 +5,14 @@ from sqlalchemy import DateTime, ForeignKey, String, Text, UniqueConstraint, Uui
 from sqlalchemy.orm import Mapped, mapped_column
 from uuid_utils import uuid7
 
-from fastapi_fullauth.adapters.sqlalchemy.models.base import FullAuthBase
 
+class OAuthAccountMixin:
+    """OAuth-account table. Combine with your DeclarativeBase:
 
-class OAuthAccountModel(FullAuthBase):
+    class OAuthAccount(OAuthAccountMixin, Base):
+        pass
+    """
+
     __tablename__ = "fullauth_oauth_accounts"
     __table_args__ = (
         UniqueConstraint("provider", "provider_user_id", name="uq_oauth_provider_user"),

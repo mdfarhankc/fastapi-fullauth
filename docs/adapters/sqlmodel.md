@@ -10,34 +10,44 @@ pip install fastapi-fullauth[sqlmodel]
 
 ## Setup
 
-### 1. Define your user model
+### 1. Define your tables
+
+Each table you use is a concrete class you define by combining a `*Mixin` with `table=True`. Only subclass the mixins for features you actually use.
 
 ```python
 from sqlmodel import Field, Relationship
-from fastapi_fullauth.adapters.sqlmodel.models.base import UserBase, RefreshTokenRecord
-from fastapi_fullauth.adapters.sqlmodel.models.role import Role, UserRoleLink
+from fastapi_fullauth.models.sqlmodel import (
+    RefreshTokenMixin, RoleMixin, UserMixin, UserRoleMixin,
+)
 
-class User(UserBase, table=True):
-    __tablename__ = "fullauth_users"
 
-    # add your custom fields
+class RefreshToken(RefreshTokenMixin, table=True):
+    pass
+
+
+class Role(RoleMixin, table=True):
+    pass
+
+
+class UserRole(UserRoleMixin, table=True):
+    pass
+
+
+class User(UserMixin, table=True):
     display_name: str = Field(default="", max_length=100)
     phone: str = Field(default="", max_length=20)
-
-    # relationships — import only what you need
-    roles: list[Role] = Relationship(link_model=UserRoleLink)
-    refresh_tokens: list[RefreshTokenRecord] = Relationship()
+    roles: list[Role] = Relationship(link_model=UserRole)
+    refresh_tokens: list[RefreshToken] = Relationship()
 ```
 
-Only tables for imported models are created. Skip `role` imports for apps that don't need roles.
-
-`UserBase` provides these fields:
+`UserMixin` provides these fields:
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `id` | `UUID` (UUID7) | Primary key, auto-generated |
 | `email` | `str` | Unique, indexed |
 | `hashed_password` | `str` | Password hash |
+| `has_usable_password` | `bool` | False for OAuth-only users |
 | `is_active` | `bool` | Account active flag |
 | `is_verified` | `bool` | Email verified flag |
 | `is_superuser` | `bool` | Superuser flag |
@@ -74,13 +84,21 @@ You can use either SQLAlchemy's `AsyncSession` or SQLModel's `AsyncSession`:
     session_maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     ```
 
-Then create the adapter:
+Then create the adapter — pass every concrete class you defined:
 
 ```python
-from fastapi_fullauth.adapters.sqlmodel import SQLModelAdapter
+from fastapi_fullauth.adapters import SQLModelAdapter
 
-adapter = SQLModelAdapter(session_maker=session_maker, user_model=User)
+adapter = SQLModelAdapter(
+    session_maker=session_maker,
+    user_model=User,
+    refresh_token_model=RefreshToken,
+    role_model=Role,
+    user_role_model=UserRole,
+)
 ```
+
+Required kwargs: `user_model`, `refresh_token_model`. Optional kwargs (required if you use the matching feature): `role_model`, `user_role_model`, `permission_model`, `role_permission_model`, `oauth_account_model`, `passkey_model`. Calling a feature method without its model raises `RuntimeError`.
 
 ### 3. Wire into FullAuth
 
@@ -97,15 +115,15 @@ fullauth = FullAuth(
 
 ## Tables created
 
-Tables are created based on which model groups you import:
+Tables are created based on which mixins you subclass:
 
-| Group | Tables | Import from |
-|-------|--------|-------------|
-| Core (always) | `fullauth_users`, `fullauth_refresh_tokens` | `models.base` |
-| Roles | `fullauth_roles`, `fullauth_user_roles` | `models.role` |
-| Permissions | `fullauth_permissions`, `fullauth_role_permissions` | `models.permission` |
-| OAuth | `fullauth_oauth_accounts` | `models.oauth` |
-| Passkeys | `fullauth_passkeys` | `models.passkey` |
+| Group | Tables | Mixins |
+|-------|--------|--------|
+| Core (always) | `fullauth_users`, `fullauth_refresh_tokens` | `UserMixin`, `RefreshTokenMixin` |
+| Roles | `fullauth_roles`, `fullauth_user_roles` | `RoleMixin`, `UserRoleMixin` |
+| Permissions | `fullauth_permissions`, `fullauth_role_permissions` | `PermissionMixin`, `RolePermissionMixin` |
+| OAuth | `fullauth_oauth_accounts` | `OAuthAccountMixin` |
+| Passkeys | `fullauth_passkeys` | `PasskeyMixin` |
 
 ## Custom schemas
 
@@ -124,6 +142,7 @@ class MyCreateSchema(CreateUserSchema):
 adapter = SQLModelAdapter(
     session_maker=session_maker,
     user_model=User,
+    refresh_token_model=RefreshToken,
     user_schema=MyUserSchema,
     create_user_schema=MyCreateSchema,
 )
@@ -133,4 +152,4 @@ If you don't pass custom schemas, the base `UserSchema` and `CreateUserSchema` a
 
 ## OAuth support
 
-The SQLModel adapter implements `OAuthAdapterMixin`. Import `OAuthAccountRecord` from `models.oauth` to register the table.
+The SQLModel adapter implements `OAuthAdapterMixin`. Define an `OAuthAccount` from `OAuthAccountMixin` and pass it to the adapter as `oauth_account_model=...`.

@@ -8,8 +8,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlmodel import SQLModel
 
 from fastapi_fullauth import FullAuth, FullAuthConfig
-from fastapi_fullauth.adapters.sqlmodel import SQLModelAdapter
-from tests.conftest import User
+from tests.conftest import make_test_adapter
 
 
 async def _make_db():
@@ -22,18 +21,17 @@ async def _make_db():
 
 async def _make_app(**fullauth_kwargs):
     engine, session_maker = await _make_db()
-    adapter = SQLModelAdapter(session_maker=session_maker, user_model=User)
+    adapter = make_test_adapter(session_maker)
     fullauth = FullAuth(
         config=FullAuthConfig(
             SECRET_KEY="test-secret-key-that-is-long-enough-32b",
-            INJECT_SECURITY_HEADERS=False,
             AUTH_RATE_LIMIT_ENABLED=False,
         ),
         adapter=adapter,
         **fullauth_kwargs,
     )
     app = FastAPI()
-    fullauth.init_app(app, auto_middleware=False)
+    fullauth.init_app(app)
     return app, adapter, fullauth, engine
 
 
@@ -131,22 +129,20 @@ async def test_update_profile():
         display_name: str = ""
 
     engine, session_maker = await _make_db()
-    adapter = SQLModelAdapter(
-        session_maker=session_maker,
-        user_model=User,
+    adapter = make_test_adapter(
+        session_maker,
         user_schema=MyUser,
         create_user_schema=MyCreate,
     )
     fullauth = FullAuth(
         config=FullAuthConfig(
             SECRET_KEY="test-secret-key-that-is-long-enough-32b",
-            INJECT_SECURITY_HEADERS=False,
             AUTH_RATE_LIMIT_ENABLED=False,
         ),
         adapter=adapter,
     )
     app = FastAPI()
-    fullauth.init_app(app, auto_middleware=False)
+    fullauth.init_app(app)
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:

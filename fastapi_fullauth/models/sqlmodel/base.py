@@ -6,16 +6,20 @@ from sqlmodel import Field, SQLModel
 from uuid_utils import uuid7
 
 
-class UserBase(SQLModel):
-    """Mixin with all auth fields. Subclass this to create your user table:
+class UserMixin(SQLModel):
+    """Auth fields for the User table. Combine with ``table=True``:
 
-    class User(UserBase, table=True):
-        __tablename__ = "fullauth_users"
+        class User(UserMixin, table=True):
+            display_name: str = Field(default="", max_length=100)
+            roles: list[Role] = Relationship(link_model=UserRole)
+            refresh_tokens: list[RefreshToken] = Relationship()
 
-        full_name: str = Field(default="", max_length=100)
-        roles: list[Role] = Relationship(link_model=UserRoleLink)
-        refresh_tokens: list[RefreshTokenRecord] = Relationship()
+    Overriding ``__tablename__`` will break ForeignKey references in the other
+    mixins (which point at ``fullauth_users.id``). Keep the default unless you
+    also override the referencing FKs.
     """
+
+    __tablename__ = "fullauth_users"
 
     id: UUID = Field(default_factory=uuid7, primary_key=True)
     email: str = Field(unique=True, index=True, max_length=320)
@@ -31,7 +35,13 @@ class UserBase(SQLModel):
     )
 
 
-class RefreshTokenRecord(SQLModel, table=True):
+class RefreshTokenMixin(SQLModel):
+    """Refresh-token table. Combine with ``table=True``:
+
+    class RefreshToken(RefreshTokenMixin, table=True):
+        pass
+    """
+
     __tablename__ = "fullauth_refresh_tokens"
 
     id: UUID = Field(default_factory=uuid7, primary_key=True)

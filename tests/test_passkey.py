@@ -8,10 +8,9 @@ from sqlmodel import SQLModel
 from uuid_utils import uuid7
 
 from fastapi_fullauth.adapters.sqlmodel import SQLModelAdapter
-from fastapi_fullauth.adapters.sqlmodel.models.passkey import PasskeyRecord  # noqa: F401
 from fastapi_fullauth.core.challenges import InMemoryChallengeStore
 from fastapi_fullauth.types import PasskeyCredential
-from tests.conftest import User, UserSchemaWithRoles
+from tests.conftest import Passkey, RefreshToken, User, UserSchemaWithRoles
 
 # ── Challenge store tests ──────────────────────────────────────────
 
@@ -62,7 +61,11 @@ async def passkey_db():
 @pytest.fixture
 def passkey_adapter(passkey_db):
     return SQLModelAdapter(
-        session_maker=passkey_db, user_model=User, user_schema=UserSchemaWithRoles
+        session_maker=passkey_db,
+        user_model=User,
+        refresh_token_model=RefreshToken,
+        passkey_model=Passkey,
+        user_schema=UserSchemaWithRoles,
     )
 
 

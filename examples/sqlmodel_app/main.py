@@ -8,6 +8,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from sqlmodel import SQLModel
 
+from fastapi_fullauth.middleware import SecurityHeadersMiddleware
+
 from .auth import fullauth
 from .config import engine
 from .routes import router
@@ -22,5 +24,6 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="FullAuth SQLModel Demo", lifespan=lifespan)
+app.add_middleware(SecurityHeadersMiddleware)
 fullauth.init_app(app)
 app.include_router(router)

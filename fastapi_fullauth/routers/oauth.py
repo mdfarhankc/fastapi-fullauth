@@ -1,19 +1,20 @@
 import logging
 from typing import TYPE_CHECKING, cast
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
 
 from fastapi_fullauth.adapters.base import OAuthAdapterMixin
-from fastapi_fullauth.dependencies.current_user import CurrentUser, _get_fullauth
+from fastapi_fullauth.dependencies.current_user import CurrentUser, get_fullauth
 from fastapi_fullauth.exceptions import (
     OAUTH_ERROR_EXCEPTION,
     OAuthProviderError,
     TokenError,
 )
 from fastapi_fullauth.flows.oauth import generate_oauth_state, oauth_callback
-from fastapi_fullauth.router._models import build_login_response_model
+from fastapi_fullauth.routers._schemas import build_login_response_model
 from fastapi_fullauth.types import TokenPair, UserSchema, UserSchemaType
+from fastapi_fullauth.utils import get_client_ip
 
 logger = logging.getLogger("fastapi_fullauth.oauth")
 
@@ -53,7 +54,7 @@ def create_oauth_router(
         description="List configured OAuth providers.",
     )
     async def list_providers(
-        fullauth: "FullAuth" = Depends(_get_fullauth),
+        fullauth: "FullAuth" = Depends(get_fullauth),
     ) -> OAuthProviderListResponse:
         return OAuthProviderListResponse(providers=list(fullauth.oauth_providers.keys()))
 
@@ -66,7 +67,7 @@ def create_oauth_router(
     async def authorize(
         provider: str,
         redirect_uri: str,
-        fullauth: "FullAuth" = Depends(_get_fullauth),
+        fullauth: "FullAuth" = Depends(get_fullauth),
     ) -> OAuthAuthorizeResponse:
         oauth_provider = fullauth.oauth_providers.get(provider)
         if oauth_provider is None:
@@ -94,9 +95,13 @@ def create_oauth_router(
     async def callback(
         provider: str,
         data: OAuthCallbackRequest,
+        request: Request,
         response: Response,
-        fullauth: "FullAuth" = Depends(_get_fullauth),
+        fullauth: "FullAuth" = Depends(get_fullauth),
     ) -> TokenPair:
+        client_ip = get_client_ip(request, fullauth.config.TRUSTED_PROXY_HEADERS)
+        await fullauth.check_auth_rate_limit("login", client_ip)
+
         oauth_provider = fullauth.oauth_providers.get(provider)
         if oauth_provider is None:
             raise HTTPException(
@@ -126,7 +131,7 @@ def create_oauth_router(
             await fullauth.hooks.emit("after_register", user=user)
             await fullauth.hooks.emit("after_oauth_register", user=user, user_info=user_info)
 
-        if fullauth.config.INCLUDE_USER_IN_LOGIN and user:
+        if user is not None:
             return LoginResponse(
                 access_token=token_pair.access_token,
                 refresh_token=token_pair.refresh_token,
@@ -145,7 +150,7 @@ def create_oauth_router(
     )
     async def list_oauth_accounts(
         user: CurrentUser,
-        fullauth: "FullAuth" = Depends(_get_fullauth),
+        fullauth: "FullAuth" = Depends(get_fullauth),
     ) -> list[OAuthAccountResponse]:
         adapter = cast("OAuthAdapterMixin", fullauth.adapter)
         accounts = await adapter.get_user_oauth_accounts(user.id)
@@ -166,7 +171,7 @@ def create_oauth_router(
     async def unlink_oauth_account(
         provider: str,
         user: CurrentUser,
-        fullauth: "FullAuth" = Depends(_get_fullauth),
+        fullauth: "FullAuth" = Depends(get_fullauth),
     ) -> None:
         oauth_adapter = cast("OAuthAdapterMixin", fullauth.adapter)
         accounts = await oauth_adapter.get_user_oauth_accounts(user.id)

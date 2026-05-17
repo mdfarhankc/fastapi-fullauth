@@ -8,11 +8,10 @@ from sqlmodel import SQLModel
 
 from fastapi_fullauth import FullAuth, FullAuthConfig
 from fastapi_fullauth.adapters.sqlmodel import SQLModelAdapter
-from fastapi_fullauth.adapters.sqlmodel.models.oauth import OAuthAccountRecord  # noqa: F401
 from fastapi_fullauth.flows.oauth import generate_oauth_state, oauth_callback, verify_oauth_state
 from fastapi_fullauth.oauth.base import OAuthProvider
 from fastapi_fullauth.types import OAuthUserInfo
-from tests.conftest import User
+from tests.conftest import OAuthAccount, RefreshToken, Role, User, UserRole
 
 # ── Mock provider ────────────────────────────────────────────────────
 
@@ -69,7 +68,14 @@ def config():
 @pytest.fixture
 async def adapter():
     engine, session_maker = await _make_db()
-    adapter = SQLModelAdapter(session_maker=session_maker, user_model=User)
+    adapter = SQLModelAdapter(
+        session_maker=session_maker,
+        user_model=User,
+        refresh_token_model=RefreshToken,
+        role_model=Role,
+        user_role_model=UserRole,
+        oauth_account_model=OAuthAccount,
+    )
     yield adapter
     await engine.dispose()
 
@@ -82,7 +88,7 @@ def fullauth_with_oauth(config, adapter):
 @pytest.fixture
 def oauth_app(fullauth_with_oauth):
     app = FastAPI()
-    fullauth_with_oauth.init_app(app, auto_middleware=False)
+    fullauth_with_oauth.init_app(app)
     return app
 
 

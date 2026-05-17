@@ -8,9 +8,8 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlmodel import SQLModel
 
 from fastapi_fullauth import FullAuth, FullAuthConfig
-from fastapi_fullauth.adapters.sqlmodel import SQLModelAdapter
 from fastapi_fullauth.dependencies import current_user
-from tests.conftest import User
+from tests.conftest import make_test_adapter
 
 
 async def _make_db():
@@ -24,17 +23,16 @@ async def _make_db():
 async def _make_app(adapter=None, **fullauth_kwargs):
     """Helper to build a test app with given FullAuth config."""
     engine, session_maker = await _make_db()
-    adapter = adapter or SQLModelAdapter(session_maker=session_maker, user_model=User)
+    adapter = adapter or make_test_adapter(session_maker)
     fullauth = FullAuth(
         config=FullAuthConfig(
             SECRET_KEY="test-secret-key-that-is-long-enough-32b",
-            INJECT_SECURITY_HEADERS=False,
         ),
         adapter=adapter,
         **fullauth_kwargs,
     )
     app = FastAPI()
-    fullauth.init_app(app, auto_middleware=False)
+    fullauth.init_app(app)
     return app, adapter, fullauth, engine
 
 
@@ -71,17 +69,16 @@ async def test_register_anti_enumeration_same_response_for_new_and_existing():
     produce identical 202 responses so the endpoint can't be used to probe
     whether an email is registered."""
     engine, session_maker = await _make_db()
-    adapter = SQLModelAdapter(session_maker=session_maker, user_model=User)
+    adapter = make_test_adapter(session_maker)
     fullauth = FullAuth(
         config=FullAuthConfig(
             SECRET_KEY="test-secret-key-that-is-long-enough-32b",
-            INJECT_SECURITY_HEADERS=False,
             PREVENT_REGISTRATION_ENUMERATION=True,
         ),
         adapter=adapter,
     )
     app = FastAPI()
-    fullauth.init_app(app, auto_middleware=False)
+    fullauth.init_app(app)
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -144,18 +141,17 @@ async def test_login_nonexistent_user(client):
 @pytest.mark.asyncio
 async def test_login_locked_account_returns_generic_credentials_error():
     engine, session_maker = await _make_db()
-    adapter = SQLModelAdapter(session_maker=session_maker, user_model=User)
+    adapter = make_test_adapter(session_maker)
     fullauth = FullAuth(
         config=FullAuthConfig(
             SECRET_KEY="test-secret-key-that-is-long-enough-32b",
-            INJECT_SECURITY_HEADERS=False,
             MAX_LOGIN_ATTEMPTS=2,
             AUTH_RATE_LIMIT_ENABLED=False,
         ),
         adapter=adapter,
     )
     app = FastAPI()
-    fullauth.init_app(app, auto_middleware=False)
+    fullauth.init_app(app)
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -492,17 +488,16 @@ async def test_refresh_reuse_caught_by_explicit_blacklist_check():
 @pytest.mark.asyncio
 async def test_refresh_no_rotation():
     engine, session_maker = await _make_db()
-    adapter = SQLModelAdapter(session_maker=session_maker, user_model=User)
+    adapter = make_test_adapter(session_maker)
     fullauth = FullAuth(
         config=FullAuthConfig(
             SECRET_KEY="test-secret-key-that-is-long-enough-32b",
-            INJECT_SECURITY_HEADERS=False,
             REFRESH_TOKEN_ROTATION=False,
         ),
         adapter=adapter,
     )
     app = FastAPI()
-    fullauth.init_app(app, auto_middleware=False)
+    fullauth.init_app(app)
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -596,9 +591,9 @@ async def test_logout_without_body_still_works():
 async def test_redis_blacklist_add_and_check():
     import fakeredis.aioredis
 
-    from fastapi_fullauth.core.redis_blacklist import RedisBlacklist
+    from fastapi_fullauth.core.blacklist import RedisTokenBlacklist
 
-    bl = RedisBlacklist.__new__(RedisBlacklist)
+    bl = RedisTokenBlacklist.__new__(RedisTokenBlacklist)
     bl._redis = fakeredis.aioredis.FakeRedis(decode_responses=True)
     bl._default_ttl = 300
     bl._prefix = "fullauth:blacklist:"
@@ -613,9 +608,9 @@ async def test_redis_blacklist_add_and_check():
 async def test_redis_blacklist_custom_ttl():
     import fakeredis.aioredis
 
-    from fastapi_fullauth.core.redis_blacklist import RedisBlacklist
+    from fastapi_fullauth.core.blacklist import RedisTokenBlacklist
 
-    bl = RedisBlacklist.__new__(RedisBlacklist)
+    bl = RedisTokenBlacklist.__new__(RedisTokenBlacklist)
     bl._redis = fakeredis.aioredis.FakeRedis(decode_responses=True)
     bl._default_ttl = 300
     bl._prefix = "fullauth:blacklist:"
@@ -627,18 +622,18 @@ async def test_redis_blacklist_custom_ttl():
 
 
 def test_redis_blacklist_requires_redis_package():
-    """RedisBlacklist raises helpful ImportError if redis not installed."""
+    """RedisTokenBlacklist raises helpful ImportError if redis not installed."""
     import unittest.mock
 
     with unittest.mock.patch.dict("sys.modules", {"redis": None, "redis.asyncio": None}):
         # need to reimport to trigger the import check
         import importlib
 
-        from fastapi_fullauth.core import redis_blacklist
+        from fastapi_fullauth.core import blacklist
 
-        importlib.reload(redis_blacklist)
+        importlib.reload(blacklist)
         with pytest.raises(ImportError, match="redis package is required"):
-            redis_blacklist.RedisBlacklist("redis://localhost")
+            blacklist.RedisTokenBlacklist("redis://localhost")
 
 
 # ===========================================================================
@@ -657,12 +652,12 @@ async def verify_app(sent_emails):
         sent_emails.append({"email": email, "token": token})
 
     engine, session_maker = await _make_db()
-    adapter = SQLModelAdapter(session_maker=session_maker, user_model=User)
+    adapter = make_test_adapter(session_maker)
     config = FullAuthConfig(SECRET_KEY="test-secret-key-that-is-long-enough-32b")
     fullauth = FullAuth(config=config, adapter=adapter)
     fullauth.hooks.on("send_verification_email", mock_send)
     app = FastAPI()
-    fullauth.init_app(app, auto_middleware=False)
+    fullauth.init_app(app)
 
     @app.get("/me")
     async def me(user=Depends(current_user)):
@@ -814,11 +809,10 @@ async def test_refresh_returns_expires_in():
 @pytest.mark.asyncio
 async def test_login_rate_limited():
     engine, session_maker = await _make_db()
-    adapter = SQLModelAdapter(session_maker=session_maker, user_model=User)
+    adapter = make_test_adapter(session_maker)
     fullauth = FullAuth(
         config=FullAuthConfig(
             SECRET_KEY="test-secret-key-that-is-long-enough-32b",
-            INJECT_SECURITY_HEADERS=False,
             AUTH_RATE_LIMIT_ENABLED=True,
             AUTH_RATE_LIMIT_LOGIN=2,
             AUTH_RATE_LIMIT_WINDOW_SECONDS=60,
@@ -826,7 +820,7 @@ async def test_login_rate_limited():
         adapter=adapter,
     )
     app = FastAPI()
-    fullauth.init_app(app, auto_middleware=False)
+    fullauth.init_app(app)
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -855,11 +849,10 @@ async def test_login_rate_limited():
 @pytest.mark.asyncio
 async def test_register_rate_limited():
     engine, session_maker = await _make_db()
-    adapter = SQLModelAdapter(session_maker=session_maker, user_model=User)
+    adapter = make_test_adapter(session_maker)
     fullauth = FullAuth(
         config=FullAuthConfig(
             SECRET_KEY="test-secret-key-that-is-long-enough-32b",
-            INJECT_SECURITY_HEADERS=False,
             AUTH_RATE_LIMIT_ENABLED=True,
             AUTH_RATE_LIMIT_REGISTER=1,
             AUTH_RATE_LIMIT_WINDOW_SECONDS=60,
@@ -867,7 +860,7 @@ async def test_register_rate_limited():
         adapter=adapter,
     )
     app = FastAPI()
-    fullauth.init_app(app, auto_middleware=False)
+    fullauth.init_app(app)
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -887,11 +880,10 @@ async def test_register_rate_limited():
 @pytest.mark.asyncio
 async def test_refresh_rate_limited():
     engine, session_maker = await _make_db()
-    adapter = SQLModelAdapter(session_maker=session_maker, user_model=User)
+    adapter = make_test_adapter(session_maker)
     fullauth = FullAuth(
         config=FullAuthConfig(
             SECRET_KEY="test-secret-key-that-is-long-enough-32b",
-            INJECT_SECURITY_HEADERS=False,
             AUTH_RATE_LIMIT_ENABLED=True,
             AUTH_RATE_LIMIT_REFRESH=1,
             AUTH_RATE_LIMIT_WINDOW_SECONDS=60,
@@ -899,7 +891,7 @@ async def test_refresh_rate_limited():
         adapter=adapter,
     )
     app = FastAPI()
-    fullauth.init_app(app, auto_middleware=False)
+    fullauth.init_app(app)
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:

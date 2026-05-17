@@ -8,15 +8,20 @@ The library ships two providers (GitHub, Google) and a base class for the rest. 
 - **Adapter mixin:** `OAuthAdapterMixin`
 - **Router:** `oauth`
 - **Extra:** `fastapi-fullauth[oauth]` (pulls in `httpx`)
-- **Tables:** `fullauth_oauth_accounts` — registered only when `models/oauth.py` is imported
+- **Tables:** `fullauth_oauth_accounts` — registered only when you subclass `OAuthAccountMixin` in your `models/`
 
 ## Setup
 
 ```python
 from fastapi_fullauth import FullAuth, FullAuthConfig
 from fastapi_fullauth.adapters.sqlmodel import SQLModelAdapter
-from fastapi_fullauth.adapters.sqlmodel.models.oauth import OAuthAccountRecord  # noqa: F401
+from fastapi_fullauth.models.sqlmodel import OAuthAccountMixin
 from fastapi_fullauth.oauth import GithubProvider, GoogleProvider
+
+
+class OAuthAccount(OAuthAccountMixin, table=True):
+    pass
+
 
 github = GithubProvider(
     client_id=os.environ["GITHUB_CLIENT_ID"],
@@ -32,7 +37,12 @@ google = GoogleProvider(
 
 fullauth = FullAuth(
     config=FullAuthConfig(),
-    adapter=SQLModelAdapter(session_maker=session_maker, user_model=User),
+    adapter=SQLModelAdapter(
+        session_maker=session_maker,
+        user_model=User,
+        refresh_token_model=RefreshToken,
+        oauth_account_model=OAuthAccount,
+    ),
     providers=[github, google],
 )
 ```

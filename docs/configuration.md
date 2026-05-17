@@ -121,7 +121,6 @@ If you want to be defensively explicit that no file is ever read, pass `FullAuth
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `LOGIN_FIELD` | `str` | `"email"` | Field used for login (`"email"`, `"username"`, etc.). |
-| `INCLUDE_USER_IN_LOGIN` | `bool` | `False` | Include user object in login/OAuth callback response. |
 | `LOCKOUT_ENABLED` | `bool` | `True` | Enable account lockout after failed login attempts. |
 | `LOCKOUT_BACKEND` | `"memory" \| "redis"` | `"memory"` | Lockout storage backend. Use `"redis"` for multi-worker deployments. |
 | `MAX_LOGIN_ATTEMPTS` | `int` | `5` | Failed attempts before account lockout. |
@@ -129,10 +128,13 @@ If you want to be defensively explicit that no file is ever read, pass `FullAuth
 
 ### Rate Limiting
 
+Per-route auth rate limits are baked into the routers. Global request-rate
+middleware (`RateLimitMiddleware`) is opt-in — import it from
+`fastapi_fullauth.middleware` and call `app.add_middleware(...)` yourself.
+
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `RATE_LIMIT_ENABLED` | `bool` | `False` | Enable global rate limit middleware. |
-| `RATE_LIMIT_BACKEND` | `"memory" \| "redis"` | `"memory"` | Rate limiter storage backend. Use `"redis"` in production — `"memory"` is per-process, so the effective limit is multiplied by the worker count. |
+| `RATE_LIMIT_BACKEND` | `"memory" \| "redis"` | `"memory"` | Backend used by `AuthRateLimiter` and `create_rate_limiter()`. Use `"redis"` in production — `"memory"` is per-process, so the effective limit is multiplied by the worker count. |
 | `TRUSTED_PROXY_HEADERS` | `list[str]` | `[]` | Headers to read real client IP from (e.g. `["X-Forwarded-For"]`). |
 | `AUTH_RATE_LIMIT_ENABLED` | `bool` | `True` | Enable per-route auth rate limits. |
 | `AUTH_RATE_LIMIT_LOGIN` | `int` | `5` | Max login attempts per window. |
@@ -156,11 +158,13 @@ If you want to be defensively explicit that no file is ever read, pass `FullAuth
 
 ### Middleware
 
+`init_app()` does not wire middleware automatically. Import what you need from
+`fastapi_fullauth.middleware` (`SecurityHeadersMiddleware`, `CSRFMiddleware`,
+`RateLimitMiddleware`) and `app.add_middleware(...)` it yourself.
+
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `INJECT_SECURITY_HEADERS` | `bool` | `True` | Auto-add security headers middleware. |
-| `CSRF_ENABLED` | `bool` | `False` | Auto-add CSRF middleware. |
-| `CSRF_SECRET` | `str \| None` | `None` | CSRF signing secret. Falls back to `SECRET_KEY`. |
+| `CSRF_SECRET` | `str \| None` | `None` | CSRF signing secret. Pass `config.CSRF_SECRET or config.SECRET_KEY` to `CSRFMiddleware` (≥ 32 chars). |
 
 ### Cookies
 

@@ -9,8 +9,8 @@ from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
 from fastapi_fullauth.middleware import CSRFMiddleware, SecurityHeadersMiddleware
+from fastapi_fullauth.middleware.ratelimit import RateLimitMiddleware
 from fastapi_fullauth.protection.lockout import InMemoryLockoutManager
-from fastapi_fullauth.protection.ratelimit import RateLimitMiddleware
 
 # ===========================================================================
 # Security headers middleware
@@ -49,7 +49,7 @@ async def test_security_headers(security_app):
 @pytest.fixture
 def csrf_app():
     app = FastAPI()
-    app.add_middleware(CSRFMiddleware, secret="test-csrf-secret-32bytes-long!!")
+    app.add_middleware(CSRFMiddleware, secret="test-csrf-secret-that-is-at-least-32-chars-long")
 
     @app.get("/form")
     async def form():
@@ -285,7 +285,8 @@ async def test_redis_rate_limiter_reset_time():
 async def test_redis_rate_limiter_middleware():
     import fakeredis.aioredis
 
-    from fastapi_fullauth.protection.ratelimit import RateLimitMiddleware, RedisRateLimiter
+    from fastapi_fullauth.middleware.ratelimit import RateLimitMiddleware
+    from fastapi_fullauth.protection.ratelimit import RedisRateLimiter
 
     limiter = RedisRateLimiter.__new__(RedisRateLimiter)
     limiter.max_requests = 2

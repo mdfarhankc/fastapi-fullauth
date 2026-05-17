@@ -6,7 +6,13 @@ from sqlmodel import Field, SQLModel
 from uuid_utils import uuid7
 
 
-class OAuthAccountRecord(SQLModel, table=True):
+class OAuthAccountMixin(SQLModel):
+    """OAuth-account table. Combine with ``table=True``:
+
+    class OAuthAccount(OAuthAccountMixin, table=True):
+        pass
+    """
+
     __tablename__ = "fullauth_oauth_accounts"
     __table_args__ = (
         UniqueConstraint("provider", "provider_user_id", name="uq_oauth_provider_user"),

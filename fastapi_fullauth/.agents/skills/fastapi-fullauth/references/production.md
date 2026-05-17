@@ -70,11 +70,22 @@ FULLAUTH_JWT_LEEWAY_SECONDS=30               # default is fine
 
 ## 6. CSRF
 
-Only relevant when you use `CookieBackend` — a bearer-token API that isn't sent automatically by browsers doesn't have CSRF exposure in the first place.
+Only relevant when you use `CookieBackend` — a bearer-token API that isn't sent automatically by browsers doesn't have CSRF exposure in the first place. There's no `CSRF_ENABLED` flag any more — you opt in by wiring the middleware:
+
+```python
+from fastapi_fullauth.middleware import CSRFMiddleware
+
+app.add_middleware(
+    CSRFMiddleware,
+    secret=fullauth.config.CSRF_SECRET or fullauth.config.SECRET_KEY,
+    cookie_secure=fullauth.config.COOKIE_SECURE,
+    cookie_samesite=fullauth.config.COOKIE_SAMESITE,
+    cookie_domain=fullauth.config.COOKIE_DOMAIN,
+)
+```
 
 ```bash
-FULLAUTH_CSRF_ENABLED=true
-FULLAUTH_CSRF_SECRET=...   # defaults to SECRET_KEY
+FULLAUTH_CSRF_SECRET=...   # ≥ 32 chars; falls back to SECRET_KEY when not set
 ```
 
 The middleware uses double-submit-cookie: GET plants a signed CSRF cookie, unsafe methods require both the cookie and a matching `X-CSRF-Token` header. The cookie is deliberately not HttpOnly — your JS needs to read it to populate the header. That's the pattern working as intended.
@@ -94,17 +105,16 @@ UV enforcement on register AND authenticate is what keeps passkeys as two-factor
 
 ## 8. Database migrations
 
-The library defines its tables via `UserBase`, `RefreshTokenRecord`, and the optional sub-modules (`role`, `permission`, `oauth`, `passkey`). In your Alembic `env.py`:
+The library ships mixins; your project's `models/` package owns every concrete table and `Base.metadata` (SQLAlchemy) or `SQLModel.metadata` is the source of truth. Alembic env.py:
 
 ```python
-from fastapi_fullauth.migrations import include_fullauth_models
+import app.models  # noqa: F401 — registers all concrete tables
+from app.core.db import Base   # your DeclarativeBase
 
-include_fullauth_models("sqlmodel", include=["base", "role", "oauth"])
-
-target_metadata = SQLModel.metadata
+target_metadata = Base.metadata
 ```
 
-`alembic revision --autogenerate -m "..."` will then pick up exactly the groups you listed. Apps that don't use OAuth never get the `fullauth_oauth_accounts` table.
+`alembic revision --autogenerate -m "..."` picks up exactly the tables you defined from the mixins. Apps that don't subclass `OAuthAccountMixin` never get a `fullauth_oauth_accounts` table.
 
 **Since v0.8.0:** the OAuth account model has a new composite unique constraint on `(provider, provider_user_id)`. Existing users upgrading from v0.7.0 should autogenerate a migration to add it before deploying — without it, concurrent OAuth callbacks could have created duplicate-identity rows.
 
@@ -128,13 +138,13 @@ The library logs to standard loggers: `fastapi_fullauth.login`, `fastapi_fullaut
 Events worth alerting on:
 
 - `refresh token reuse/concurrent use — revoking family` (`fastapi_fullauth.router`) — someone replayed a refresh token, or clock-skew is driving concurrent use into looking like an attack.
-- `Passkey authentication failed` (`fastapi_fullauth.router.passkey`)
+- `Passkey authentication failed` (`fastapi_fullauth.routers.passkey`)
 - `oauth auto-link refused: unverified email on existing account` (`fastapi_fullauth.oauth`) — someone's trying to hijack via unverified provider email.
 - `Auth rate limit exceeded` (`fastapi_fullauth.ratelimit`) at sustained volume.
 
 ## 11. Idempotent init
 
-Since v0.8.0, `init_app()` and `init_middleware()` both warn and no-op on second call. If you see either warning in your logs, you're wiring twice — check your startup path. Most common cause: moving from `init_app()` to `init_middleware()` during a refactor and leaving both in place.
+`init_app()` warns and no-ops on second call. If you see that warning in your logs, you're wiring twice — check your startup path. As of v0.10.0, middleware is **not** wired by `init_app()` — add it yourself via `app.add_middleware(...)` from `fastapi_fullauth.middleware`.
 
 ## 12. Final check before deploy
 

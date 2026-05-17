@@ -8,6 +8,8 @@ from fastapi_fullauth.protection.lockout import (
 from fastapi_fullauth.protection.ratelimit import (
     AuthRateLimiter,
     RateLimiter,
+    RedisRateLimiter,
+    create_rate_limiter,
     register_rate_limiter_backend,
 )
 
@@ -17,7 +19,9 @@ __all__ = [
     "LockoutManager",
     "RateLimiter",
     "RedisLockoutManager",
+    "RedisRateLimiter",
     "create_lockout",
+    "create_rate_limiter",
     "register_lockout_backend",
     "register_rate_limiter_backend",
 ]

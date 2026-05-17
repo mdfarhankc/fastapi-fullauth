@@ -6,9 +6,17 @@ from sqlmodel import Field, Relationship, SQLModel
 
 from fastapi_fullauth import FullAuth, FullAuthConfig, UserSchema
 from fastapi_fullauth.adapters.sqlmodel import SQLModelAdapter
-from fastapi_fullauth.adapters.sqlmodel.models.base import RefreshTokenRecord, UserBase
-from fastapi_fullauth.adapters.sqlmodel.models.role import Role, UserRoleLink
 from fastapi_fullauth.dependencies import current_user
+from fastapi_fullauth.models.sqlmodel import (
+    OAuthAccountMixin,
+    PasskeyMixin,
+    PermissionMixin,
+    RefreshTokenMixin,
+    RoleMixin,
+    RolePermissionMixin,
+    UserMixin,
+    UserRoleMixin,
+)
 
 
 class UserSchemaWithRoles(UserSchema):
@@ -17,15 +25,40 @@ class UserSchemaWithRoles(UserSchema):
     PROTECTED_FIELDS = UserSchema.PROTECTED_FIELDS | {"roles"}
 
 
-class User(UserBase, table=True):
-    __tablename__ = "fullauth_users"
+class RefreshToken(RefreshTokenMixin, table=True):
+    __table_args__ = {"extend_existing": True}
+
+
+class UserRole(UserRoleMixin, table=True):
+    __table_args__ = {"extend_existing": True}
+
+
+class Role(RoleMixin, table=True):
+    __table_args__ = {"extend_existing": True}
+
+
+class RolePermission(RolePermissionMixin, table=True):
+    __table_args__ = {"extend_existing": True}
+
+
+class Permission(PermissionMixin, table=True):
+    __table_args__ = {"extend_existing": True}
+
+
+class OAuthAccount(OAuthAccountMixin, table=True):
+    pass
+
+
+class Passkey(PasskeyMixin, table=True):
+    pass
+
+
+class User(UserMixin, table=True):
     __table_args__ = {"extend_existing": True}
 
     display_name: str = Field(default="", max_length=100)
-    roles: list[Role] = Relationship(link_model=UserRoleLink)
-    refresh_tokens: list[RefreshTokenRecord] = Relationship(
-        cascade_delete=True,
-    )
+    roles: list[Role] = Relationship(link_model=UserRole)
+    refresh_tokens: list[RefreshToken] = Relationship(cascade_delete=True)
 
 
 @pytest.fixture
@@ -42,13 +75,27 @@ async def db():
 def config():
     return FullAuthConfig(
         SECRET_KEY="test-secret-key-that-is-long-enough-32b",
-        INJECT_SECURITY_HEADERS=False,
     )
+
+
+def make_test_adapter(session_maker, **overrides):
+    defaults = {
+        "user_model": User,
+        "refresh_token_model": RefreshToken,
+        "role_model": Role,
+        "user_role_model": UserRole,
+        "permission_model": Permission,
+        "role_permission_model": RolePermission,
+        "oauth_account_model": OAuthAccount,
+        "passkey_model": Passkey,
+        "user_schema": UserSchemaWithRoles,
+    }
+    return SQLModelAdapter(session_maker=session_maker, **{**defaults, **overrides})
 
 
 @pytest.fixture
 def adapter(db):
-    return SQLModelAdapter(session_maker=db, user_model=User, user_schema=UserSchemaWithRoles)
+    return make_test_adapter(db)
 
 
 @pytest.fixture
@@ -59,7 +106,7 @@ def fullauth(config, adapter):
 @pytest.fixture
 def app(fullauth):
     app = FastAPI()
-    fullauth.init_app(app, auto_middleware=False)
+    fullauth.init_app(app)
 
     @app.get("/me")
     async def me(user=Depends(current_user)):

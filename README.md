@@ -72,13 +72,27 @@ pip install fastapi-fullauth[all]
 
 ```python
 from fastapi import FastAPI
+from sqlmodel import Field, Relationship
 from fastapi_fullauth import FullAuth, FullAuthConfig
-from fastapi_fullauth.adapters.sqlmodel import SQLModelAdapter
+from fastapi_fullauth.adapters import SQLModelAdapter
+from fastapi_fullauth.models.sqlmodel import RefreshTokenMixin, UserMixin
+
+
+class RefreshToken(RefreshTokenMixin, table=True):
+    pass
+
+
+class User(UserMixin, table=True):
+    refresh_tokens: list[RefreshToken] = Relationship()
+
 
 app = FastAPI()
-
 fullauth = FullAuth(
-    adapter=SQLModelAdapter(session_maker=session_maker, user_model=User),
+    adapter=SQLModelAdapter(
+        session_maker=session_maker,
+        user_model=User,
+        refresh_token_model=RefreshToken,
+    ),
     config=FullAuthConfig(SECRET_KEY="your-secret-key"),
 )
 fullauth.init_app(app)
@@ -90,13 +104,13 @@ Omit `config` in dev and a random secret key is generated (tokens won't survive 
 
 ### Composable routers
 
-Exclude routers you don't need:
+Opt in to a subset of routers:
 
 ```python
-fullauth.init_app(app, exclude_routers=["admin"])
+fullauth.init_app(app, include_routers=["auth", "profile"])
 ```
 
-Or wire routers manually for full control:
+`include_routers=None` (default) registers every available router. Or wire routers manually for full control:
 
 ```python
 app = FastAPI()
@@ -104,7 +118,6 @@ fullauth.bind(app)  # required for dependencies to work
 
 app.include_router(fullauth.auth_router, prefix="/api/v1/auth")
 app.include_router(fullauth.profile_router, prefix="/api/v1/auth")
-fullauth.init_middleware(app)
 ```
 
 | Router | Routes |
@@ -116,7 +129,21 @@ fullauth.init_middleware(app)
 | `oauth_router` | OAuth provider routes (only if configured) |
 | `passkey_router` | Passkey register, authenticate, list, delete (only if enabled) |
 
-`fullauth.init_app(app)` includes all of them. Use individual routers for granular control.
+### Middleware
+
+`init_app()` does not wire any middleware automatically. Import what you want and add it yourself:
+
+```python
+from fastapi_fullauth.middleware import (
+    SecurityHeadersMiddleware,
+    CSRFMiddleware,
+    RateLimitMiddleware,
+)
+
+app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(CSRFMiddleware, secret=fullauth.config.CSRF_SECRET or fullauth.config.SECRET_KEY)
+app.add_middleware(RateLimitMiddleware, max_requests=60, window_seconds=60)
+```
 
 ## Routes
 
@@ -145,35 +172,45 @@ With OAuth enabled, additional routes are registered under `/auth/oauth/`. All r
 
 ## Custom user schemas
 
-Define your model and schemas — pass them explicitly to the adapter:
+Combine each mixin with `table=True` (or your `DeclarativeBase` for the SQLAlchemy adapter), then pass everything to the adapter:
 
 ```python
 from sqlmodel import Field, Relationship
 from fastapi_fullauth import FullAuth, FullAuthConfig, UserSchema, CreateUserSchema
-from fastapi_fullauth.adapters.sqlmodel import SQLModelAdapter
-from fastapi_fullauth.adapters.sqlmodel.models.base import UserBase, RefreshTokenRecord
-from fastapi_fullauth.adapters.sqlmodel.models.role import Role, UserRoleLink
+from fastapi_fullauth.adapters import SQLModelAdapter
+from fastapi_fullauth.models.sqlmodel import (
+    RefreshTokenMixin, RoleMixin, UserMixin, UserRoleMixin,
+)
 
-class User(UserBase, table=True):
-    __tablename__ = "fullauth_users"
 
+class RefreshToken(RefreshTokenMixin, table=True): pass
+class Role(RoleMixin, table=True): pass
+class UserRole(UserRoleMixin, table=True): pass
+
+
+class User(UserMixin, table=True):
     display_name: str = Field(default="", max_length=100)
     phone: str = Field(default="", max_length=20)
+    roles: list[Role] = Relationship(link_model=UserRole)
+    refresh_tokens: list[RefreshToken] = Relationship()
 
-    roles: list[Role] = Relationship(link_model=UserRoleLink)
-    refresh_tokens: list[RefreshTokenRecord] = Relationship()
 
 class MyUserSchema(UserSchema):
     display_name: str = ""
     phone: str = ""
 
+
 class MyCreateSchema(CreateUserSchema):
     display_name: str = ""
+
 
 fullauth = FullAuth(
     adapter=SQLModelAdapter(
         session_maker,
         user_model=User,
+        refresh_token_model=RefreshToken,
+        role_model=Role,
+        user_role_model=UserRole,
         user_schema=MyUserSchema,
         create_user_schema=MyCreateSchema,
     ),

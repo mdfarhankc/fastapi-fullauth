@@ -1,14 +1,15 @@
 import pytest
 
 from fastapi_fullauth.config import FullAuthConfig
-from fastapi_fullauth.core.tokens import InMemoryBlacklist, TokenEngine
+from fastapi_fullauth.core.blacklist import InMemoryTokenBlacklist
+from fastapi_fullauth.core.tokens import TokenEngine
 from fastapi_fullauth.exceptions import TokenBlacklistedError
 
 
 @pytest.fixture
 def engine():
     config = FullAuthConfig(SECRET_KEY="test-secret-key-that-is-long-enough-32b")
-    return TokenEngine(config=config, blacklist=InMemoryBlacklist())
+    return TokenEngine(config=config, blacklist=InMemoryTokenBlacklist())
 
 
 @pytest.mark.asyncio

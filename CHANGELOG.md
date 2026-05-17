@@ -1,10 +1,104 @@
 # Changelog
 
-## 0.9.2
+## 0.10.0
+
+### Breaking changes
+
+- **Built-in models are now mixins.** The concrete `*Model` / `*Record` classes and the `FullAuthBase` declarative base are gone. Bring your own `DeclarativeBase` (SQLAlchemy) or `SQLModel` and combine each `*Mixin` to define the tables. The previous "must subclass `FullAuthBase`" rule forced every project to put its own tables on the library's metadata; mixins let you reuse one `Base` across `fastapi-fullauth` and the rest of the app.
+
+  Before:
+
+  ```python
+  from fastapi_fullauth.adapters.sqlalchemy.models.base import FullAuthBase, UserBase
+  from fastapi_fullauth.adapters.sqlalchemy.models.role import RoleModel
+
+  class User(UserBase, FullAuthBase):
+      __tablename__ = "fullauth_users"
+      roles: Mapped[list[RoleModel]] = relationship(secondary="fullauth_user_roles")
+  ```
+
+  After:
+
+  ```python
+  from sqlalchemy.orm import DeclarativeBase, Mapped, relationship
+  from fastapi_fullauth.models.sqlalchemy import (
+      UserMixin, RefreshTokenMixin, RoleMixin, UserRoleMixin,
+  )
+
+  class Base(DeclarativeBase):
+      pass
+
+  class RefreshToken(RefreshTokenMixin, Base): pass
+  class Role(RoleMixin, Base): pass
+  class UserRole(UserRoleMixin, Base): pass
+
+  class User(UserMixin, Base):
+      roles: Mapped[list[Role]] = relationship(
+          secondary="fullauth_user_roles", lazy="selectin"
+      )
+      refresh_tokens: Mapped[list[RefreshToken]] = relationship(lazy="noload")
+  ```
+
+- **Model package moved to `fastapi_fullauth.models.{sqlalchemy,sqlmodel}`.** Old path `fastapi_fullauth.adapters.{sqlalchemy,sqlmodel}.models` is gone. Class names also normalised to `*Mixin`:
+  - `UserBase` → `UserMixin`
+  - `RefreshTokenModel` / `RefreshTokenRecord` → `RefreshTokenMixin`
+  - `RoleModel` / `Role` → `RoleMixin`
+  - `UserRoleModel` / `UserRoleLink` → `UserRoleMixin`
+  - `PermissionModel` / `Permission` → `PermissionMixin`
+  - `RolePermissionModel` / `RolePermissionLink` → `RolePermissionMixin`
+  - `OAuthAccountModel` / `OAuthAccountRecord` → `OAuthAccountMixin`
+  - `PasskeyModel` / `PasskeyRecord` → `PasskeyMixin`
+  - `FullAuthBase` — removed
+
+- **Adapter constructors take every concrete model as a keyword argument.** Required: `user_model`, `refresh_token_model`. Optional: `role_model`, `user_role_model`, `permission_model`, `role_permission_model`, `oauth_account_model`, `passkey_model` — pass only the ones for features you use. Calling a feature method without its model raises `RuntimeError`.
+
+  ```python
+  adapter = SQLAlchemyAdapter(
+      session_maker=session_maker,
+      user_model=User,
+      refresh_token_model=RefreshToken,
+      role_model=Role,
+      user_role_model=UserRole,
+      permission_model=Permission,
+      role_permission_model=RolePermission,
+      oauth_account_model=OAuthAccount,
+  )
+  ```
+
+- **`fastapi_fullauth.migrations` module removed.** `include_fullauth_models()` and `get_fullauth_metadata()` are gone. The library no longer owns a metadata registry — your own `Base.metadata` is the source of truth. In `alembic/env.py`, `import app.models` to register the tables and set `target_metadata = Base.metadata`.
+
+- **`INCLUDE_USER_IN_LOGIN` config removed.** Login, OAuth callback, and passkey-authenticate responses now always include the `user` field. The toggle existed only to preserve a pre-0.7 response shape; clients that key off `user is null` should switch to reading the field unconditionally.
+
+- **`ACCOUNT_LOCKED_EXCEPTION` removed from `fastapi_fullauth.exceptions`.** Locked accounts have returned `401` (not `423`) since 0.9.0 to prevent enumeration via status code — the unused 423 helper is now gone too.
+
+- **`ALGORITHM` constrained to `Literal["HS256", "HS384", "HS512"]`.** Free-form strings are rejected at config construction. Asymmetric algorithms (RS*/ES*) aren't supported yet — open an issue if you need them.
+
+- **`SECRET_KEY` must be at least 32 characters** when explicitly set. Short keys are rejected at config construction. Auto-generated dev keys already exceed this.
+
+- **Middleware is no longer auto-wired.** `init_app()` only mounts routers now — `CSRFMiddleware`, `SecurityHeadersMiddleware`, and `RateLimitMiddleware` are imported from `fastapi_fullauth.middleware` and added with `app.add_middleware(...)` like any other FastAPI middleware. Dropped: the `auto_middleware` kwarg on `init_app()`, the public `init_middleware()` method, and the `CSRF_ENABLED` / `INJECT_SECURITY_HEADERS` / `RATE_LIMIT_ENABLED` config flags. `create_rate_limiter()` is now exported from `fastapi_fullauth.protection` for users who want Redis-backed global limits.
+
+- **`exclude_routers` renamed to `include_routers` on `init_app()`.** Allowlist instead of denylist. `include_routers=None` (default) registers every available router — same behaviour as before with no kwarg. Pass an explicit list (e.g. `["auth", "profile"]`) to opt in selectively.
+
+### Migration guide (0.9.x → 0.10.0)
+
+No data migration is required — table names and column shapes are unchanged.
+
+1. Replace `fastapi_fullauth.adapters.{sqlalchemy,sqlmodel}.models.*` imports with `fastapi_fullauth.models.{sqlalchemy,sqlmodel}.*` and rename to the `*Mixin` classes.
+2. Declare your project's `Base` (or use the existing one).
+3. Define a concrete class per feature group you use (`RefreshToken`, `Role`, `UserRole`, etc.).
+4. Pass all of them to the adapter via keyword args.
+5. Drop `include_fullauth_models(...)` and `get_fullauth_metadata(...)` from `alembic/env.py`. Import `app.models`, then `target_metadata = Base.metadata`.
 
 ### Security
 
+- **`/auth/refresh` now requires the refresh-token row to exist** before issuing a new token pair. Previously, a JWT that decoded cleanly (valid signature, unexpired) was enough — even if the corresponding row had been pruned or never existed. This affected both rotation and non-rotation paths.
+- **Login timing oracle hardening (opt-in).** New `PREVENT_LOGIN_TIMING_ATTACKS: bool = False` config. When True, `/auth/login` runs a dummy argon2 verify on the unknown-user and missing-password paths, so response time no longer leaks whether the email exists. Off by default because it adds ~argon2 time to every failed lookup; flip it on when enumeration via timing is in your threat model.
+- **CSRF middleware no longer pulls config from env at instantiation.** `CSRFMiddleware(secret=...)` is now required and validated (≥ 32 chars). `_resolve_secret()` (which built a fresh `FullAuthConfig` to pull `CSRF_SECRET` / `SECRET_KEY` on demand — and auto-generated a random `SECRET_KEY` if neither was set) is gone. `FullAuthConfig` also gains a validator that fails at construction if `CSRF_ENABLED=True` and the effective secret is shorter than 32 chars.
 - `/auth/refresh` is now rate-limited via `AUTH_RATE_LIMIT_REFRESH` (default 30 req/min per IP). Without this, an attacker holding a stolen refresh token could hammer the endpoint for fresh access tokens, or use the response shape as a token-validation oracle. The default sits well above legitimate usage (a single user typically refreshes a handful of times per session) but caps abuse.
+- `/verify-email/request`, `/verify-email/confirm`, `/password-reset/confirm`, `/oauth/{provider}/callback`, and `/passkeys/authenticate/complete` are now rate-limited using the existing `password-reset`, `login`, and `passkey-authenticate` buckets respectively. The reset/verify confirm endpoints were previously unbounded once an attacker possessed (or forged) a token candidate; OAuth callback and passkey completion are login flows but weren't gated.
+- **Passkey authenticate-begin no longer leaks email existence.** When a client passes `email`, `allowCredentials` is always a list (possibly empty) instead of being omitted for unknown emails. Without an email, the route still allows discoverable credentials. Previously, an attacker could enumerate accounts by comparing the response shape.
+- **Malformed JWT `sub` no longer 500s.** Token decoding succeeded but `UUID(payload.sub)` raised `ValueError` on non-UUID values. Now caught at every call site (`current_user`, `/refresh`, `verify_email`, `reset_password`, `logout` hook) and treated as an invalid token (`401` / `TokenError`).
+- **`verify_password` no longer crashes on a malformed stored hash.** A garbage value in `hashed_password` (corrupted row, migration bug) caused `InvalidHashError` (argon2) or `ValueError` (bcrypt). Both are now caught and treated as a credential mismatch.
 
 ### Fixed
 

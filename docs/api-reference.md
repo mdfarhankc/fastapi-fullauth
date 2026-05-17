@@ -23,9 +23,8 @@ fullauth = FullAuth(
 
 | Method | Description |
 |--------|-------------|
-| `init_app(app, *, auto_middleware=True, exclude_routers=None)` | Mount routes and middleware on a FastAPI app. Pass `exclude_routers=["admin"]` to skip specific routers. |
+| `init_app(app, *, include_routers=None)` | Bind FullAuth to a FastAPI app and mount routes. `include_routers=None` (default) registers every available router; pass a list (e.g. `["auth", "profile"]`) to register only those. Does **not** wire middleware. |
 | `bind(app)` | Bind FullAuth to a FastAPI app (sets `app.state.fullauth`). Required when using composable routers without `init_app()`. |
-| `init_middleware(app)` | Wire up middleware from config. Also calls `bind()` if not already done. |
 | `hooks.on(event, callback)` | Register an event hook |
 
 ### Properties
@@ -95,7 +94,7 @@ class TokenPair(BaseModel):
 
 ### LoginResponse
 
-Returned by login and OAuth callback routes. Extends `TokenPair` with an optional `user` field. The `user` field contains the full user schema object when `INCLUDE_USER_IN_LOGIN=True`, otherwise `null`. The user type matches your configured user schema (e.g., `MyUserSchema`).
+Returned by login, OAuth callback, and passkey authenticate-complete routes. Extends `TokenPair` with a `user` field containing the full user schema object on every successful response. The user type matches your configured user schema (e.g., `MyUserSchema`).
 
 ### TokenPayload
 

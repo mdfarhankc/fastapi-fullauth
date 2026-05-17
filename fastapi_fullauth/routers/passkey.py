@@ -7,12 +7,12 @@ from pydantic import BaseModel
 
 from fastapi_fullauth.adapters.base import PasskeyAdapterMixin
 from fastapi_fullauth.core.challenges import ChallengeStore
-from fastapi_fullauth.dependencies.current_user import CurrentUser, _get_fullauth
-from fastapi_fullauth.router._models import build_login_response_model
+from fastapi_fullauth.dependencies.current_user import CurrentUser, get_fullauth
+from fastapi_fullauth.routers._schemas import build_login_response_model
 from fastapi_fullauth.types import TokenPair, UserSchema, UserSchemaType
 from fastapi_fullauth.utils import get_client_ip
 
-logger = logging.getLogger("fastapi_fullauth.router.passkey")
+logger = logging.getLogger("fastapi_fullauth.routers.passkey")
 
 if TYPE_CHECKING:
     from fastapi_fullauth.fullauth import FullAuth
@@ -55,7 +55,7 @@ def create_passkey_router(
     )
     async def register_begin(
         user: CurrentUser,
-        fullauth: "FullAuth" = Depends(_get_fullauth),
+        fullauth: "FullAuth" = Depends(get_fullauth),
     ) -> dict[str, Any]:
         from fastapi_fullauth.flows.passkey import begin_registration
 
@@ -88,7 +88,7 @@ def create_passkey_router(
     async def register_complete(
         user: CurrentUser,
         data: RegisterCompleteRequest,
-        fullauth: "FullAuth" = Depends(_get_fullauth),
+        fullauth: "FullAuth" = Depends(get_fullauth),
     ) -> PasskeyResponse:
         from fastapi_fullauth.flows.passkey import complete_registration
 
@@ -137,7 +137,7 @@ def create_passkey_router(
     async def authenticate_begin(
         request: Request,
         data: AuthenticateBeginRequest = Body(AuthenticateBeginRequest()),
-        fullauth: "FullAuth" = Depends(_get_fullauth),
+        fullauth: "FullAuth" = Depends(get_fullauth),
     ) -> dict[str, Any]:
         from fastapi_fullauth.flows.passkey import begin_authentication
 
@@ -151,6 +151,7 @@ def create_passkey_router(
         await fullauth.check_auth_rate_limit("passkey-authenticate", client_ip)
 
         user_id = None
+        email_provided = bool(data.email)
         if data.email:
             user = await fullauth.adapter.get_user_by_email(data.email)
             if user:
@@ -164,6 +165,7 @@ def create_passkey_router(
             challenge_store=challenge_store,
             adapter=fullauth.adapter,
             user_id=user_id,
+            email_provided=email_provided,
             challenge_ttl=fullauth.config.PASSKEY_CHALLENGE_TTL,
         )
 
@@ -175,12 +177,16 @@ def create_passkey_router(
     )
     async def authenticate_complete(
         data: AuthenticateCompleteRequest,
-        fullauth: "FullAuth" = Depends(_get_fullauth),
+        request: Request,
+        fullauth: "FullAuth" = Depends(get_fullauth),
     ) -> TokenPair:
         from fastapi_fullauth.flows.passkey import complete_authentication
 
         if not isinstance(fullauth.adapter, PasskeyAdapterMixin):
             raise HTTPException(status_code=501, detail="Adapter does not support passkeys")
+
+        client_ip = get_client_ip(request, fullauth.config.TRUSTED_PROXY_HEADERS)
+        await fullauth.check_auth_rate_limit("passkey-authenticate", client_ip)
 
         origins = fullauth.config.PASSKEY_ORIGINS
         if not origins:
@@ -209,7 +215,7 @@ def create_passkey_router(
 
         await fullauth.hooks.emit("after_login", user=user)
 
-        if fullauth.config.INCLUDE_USER_IN_LOGIN and user:
+        if user is not None:
             return LoginResponse(
                 access_token=token_pair.access_token,
                 refresh_token=token_pair.refresh_token,
@@ -228,7 +234,7 @@ def create_passkey_router(
     )
     async def list_passkeys(
         user: CurrentUser,
-        fullauth: "FullAuth" = Depends(_get_fullauth),
+        fullauth: "FullAuth" = Depends(get_fullauth),
     ) -> list[PasskeyResponse]:
         if not isinstance(fullauth.adapter, PasskeyAdapterMixin):
             raise HTTPException(status_code=501, detail="Adapter does not support passkeys")
@@ -254,7 +260,7 @@ def create_passkey_router(
     async def delete_passkey(
         passkey_id: UUID,
         user: CurrentUser,
-        fullauth: "FullAuth" = Depends(_get_fullauth),
+        fullauth: "FullAuth" = Depends(get_fullauth),
     ) -> None:
         if not isinstance(fullauth.adapter, PasskeyAdapterMixin):
             raise HTTPException(status_code=501, detail="Adapter does not support passkeys")

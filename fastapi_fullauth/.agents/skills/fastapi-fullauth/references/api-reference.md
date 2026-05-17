@@ -26,24 +26,31 @@ from fastapi_fullauth.adapters.sqlmodel import SQLModelAdapter
 from fastapi_fullauth.adapters.sqlalchemy import SQLAlchemyAdapter
 ```
 
-### Model base classes
+### Model mixins (sqlmodel)
 
 ```python
-# sqlmodel
-from fastapi_fullauth.adapters.sqlmodel.models.base import UserBase, RefreshTokenRecord
-
-# sqlalchemy
-from fastapi_fullauth.adapters.sqlalchemy.models.base import UserBase, FullAuthBase, RefreshTokenModel
+from fastapi_fullauth.models.sqlmodel import (
+    UserMixin, RefreshTokenMixin,
+    RoleMixin, UserRoleMixin,
+    PermissionMixin, RolePermissionMixin,
+    OAuthAccountMixin,
+    PasskeyMixin,
+)
 ```
 
-### Opt-in model submodules
+### Model mixins (sqlalchemy)
 
-Importing registers the corresponding tables:
+```python
+from fastapi_fullauth.models.sqlalchemy import (
+    UserMixin, RefreshTokenMixin,
+    RoleMixin, UserRoleMixin,
+    PermissionMixin, RolePermissionMixin,
+    OAuthAccountMixin,
+    PasskeyMixin,
+)
+```
 
-- `.models.role` — `Role`, `UserRoleLink` (sqlmodel) / `RoleModel`, `user_role_table` (sqlalchemy)
-- `.models.permission` — `Permission`, `RolePermissionLink`
-- `.models.oauth` — `OAuthAccountRecord` / `OAuthAccountModel`
-- `.models.passkey` — `PasskeyRecord` / `PasskeyModel`
+Combine each with `table=True` (SQLModel) or your own `DeclarativeBase` (SQLAlchemy) to register a concrete table. Features you don't subclass never register a table.
 
 ## Types
 
@@ -187,7 +194,7 @@ from fastapi_fullauth.middleware.ratelimit import RateLimitMiddleware
 from fastapi_fullauth.middleware.security_headers import SecurityHeadersMiddleware
 ```
 
-Normally wired automatically by `fullauth.init_middleware(app)` or `fullauth.init_app(app, auto_middleware=True)`.
+None of these are wired by `init_app()` — call `app.add_middleware(...)` yourself. The `CSRFMiddleware` constructor requires `secret` (≥ 32 chars); pass `fullauth.config.CSRF_SECRET or fullauth.config.SECRET_KEY`.
 
 ## Hooks
 
@@ -218,15 +225,16 @@ from fastapi_fullauth.utils import (
 )
 ```
 
-## Migrations helper
+## Alembic env.py
+
+The library doesn't own a metadata registry — point Alembic at your project's `Base.metadata` (or `SQLModel.metadata`):
 
 ```python
-from fastapi_fullauth.migrations import include_fullauth_models
+import app.models  # noqa: F401 — registers all concrete tables
+from app.core.db import Base
 
-include_fullauth_models("sqlmodel", include=["base", "role", "oauth"])
+target_metadata = Base.metadata
 ```
-
-Valid `include` entries: `"base"`, `"role"`, `"permission"`, `"oauth"`, `"passkey"`.
 
 ## Exceptions
 
@@ -250,7 +258,6 @@ from fastapi_fullauth.exceptions import (
     CREDENTIALS_EXCEPTION,      # 401
     FORBIDDEN_EXCEPTION,        # 403
     USER_EXISTS_EXCEPTION,      # 409
-    ACCOUNT_LOCKED_EXCEPTION,   # 423 — retained for backward compat; login now returns 401
     OAUTH_ERROR_EXCEPTION,      # 400
 )
 ```
@@ -277,7 +284,7 @@ Grouped for readability. All read from env with `FULLAUTH_` prefix.
 
 ### Login
 - `LOGIN_FIELD: str = "email"`
-- `INCLUDE_USER_IN_LOGIN: bool = False`
+- `PREVENT_LOGIN_TIMING_ATTACKS: bool = False`  (dummy argon2 verify on unknown-user path)
 
 ### Lockout
 - `LOCKOUT_ENABLED: bool = True`
@@ -286,8 +293,7 @@ Grouped for readability. All read from env with `FULLAUTH_` prefix.
 - `LOCKOUT_DURATION_MINUTES: int = 15`
 
 ### Rate limits
-- `RATE_LIMIT_ENABLED: bool = False`  (global middleware)
-- `RATE_LIMIT_BACKEND: "memory" | "redis" = "memory"`
+- `RATE_LIMIT_BACKEND: "memory" | "redis" = "memory"`  (used by `AuthRateLimiter` and `create_rate_limiter()`)
 - `TRUSTED_PROXY_HEADERS: list[str] = []`
 - `AUTH_RATE_LIMIT_ENABLED: bool = True`
 - `AUTH_RATE_LIMIT_LOGIN: int = 5`
@@ -305,9 +311,8 @@ Grouped for readability. All read from env with `FULLAUTH_` prefix.
 - `BLACKLIST_BACKEND: "memory" | "redis" = "memory"`
 
 ### Middleware
-- `INJECT_SECURITY_HEADERS: bool = True`
-- `CSRF_ENABLED: bool = False`
-- `CSRF_SECRET: str | None = None`
+- `CSRF_SECRET: str | None = None`  (≥ 32 chars; pass to `CSRFMiddleware(secret=...)`. Falls back to `SECRET_KEY`.)
+- Middleware is opt-in: `app.add_middleware(SecurityHeadersMiddleware | CSRFMiddleware | RateLimitMiddleware)`. `init_app()` does not wire anything.
 
 ### Cookies (when using `CookieBackend`)
 - `COOKIE_NAME: str = "fullauth_access"`
@@ -339,8 +344,7 @@ Grouped for readability. All read from env with `FULLAUTH_` prefix.
 
 ## `FullAuth` public methods
 
-- `init_app(app, *, auto_middleware=True, exclude_routers=None)` — routers + optional middleware. Idempotent.
-- `init_middleware(app)` — middleware only. Idempotent.
+- `init_app(app, *, include_routers=None)` — bind + mount routers. `include_routers=None` mounts every available router; pass a list (e.g. `["auth", "profile"]`) to opt in selectively. Does **not** add middleware. Idempotent.
 - `bind(app)` — sets `app.state.fullauth`.
 - `check_auth_rate_limit(route_name, client_ip)` — manual hit for custom routes.
 - `get_custom_claims(user)` — returns extra JWT claims, validates reserved keys.

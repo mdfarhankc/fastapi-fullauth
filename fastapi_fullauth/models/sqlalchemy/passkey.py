@@ -5,10 +5,14 @@ from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, Uui
 from sqlalchemy.orm import Mapped, mapped_column
 from uuid_utils import uuid7
 
-from fastapi_fullauth.adapters.sqlalchemy.models.base import FullAuthBase
 
+class PasskeyMixin:
+    """Passkey credential table. Combine with your DeclarativeBase:
 
-class PasskeyModel(FullAuthBase):
+    class Passkey(PasskeyMixin, Base):
+        pass
+    """
+
     __tablename__ = "fullauth_passkeys"
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid7)
