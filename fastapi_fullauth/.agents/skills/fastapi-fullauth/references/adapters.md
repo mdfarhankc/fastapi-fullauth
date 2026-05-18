@@ -221,4 +221,4 @@ adapter = SQLModelAdapter(
 ## Performance notes
 
 - `PermissionAdapterMixin.get_permissions_for_roles` is batched — a single JOIN instead of N+1. The default override loops per-role; the built-in adapters override it with one query. Do the same for custom adapters when you can.
-- Relationships on SQLAlchemy models use `lazy="selectin"` where async matters. A custom model that defaults to `lazy="select"` on a relationship will throw `MissingGreenlet` the first time user roles are touched in async.
+- The built-in adapters call `selectinload(User.roles)` themselves, so the user model's `roles` relationship can use the default `lazy="select"` and still work in async. Any other relationships you add (e.g. `organizations`) need either `lazy="selectin"` on the definition or `options(selectinload(...))` at the call site, otherwise touching them outside the session raises `MissingGreenlet`.

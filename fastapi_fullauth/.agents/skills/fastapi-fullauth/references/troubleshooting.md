@@ -49,12 +49,10 @@ And pass `MyUser` to both `SQLModelAdapter(user_schema=MyUser)` and (if generic)
 
 ### `MissingGreenlet` / "greenlet_spawn has not been called"
 
-SQLAlchemy async + a relationship with `lazy="select"` (the default) = runtime error the first time you touch the attribute. Two fixes:
+SQLAlchemy async + a relationship with `lazy="select"` (the default) = runtime error the first time you touch the attribute. The built-in adapters call `selectinload(User.roles)` themselves, so the `roles` relationship on your user model is fine either way. For any other relationship you add (custom user fields, joined tables outside the auth surface), one of:
 
 - Set `lazy="selectin"` on the relationship definition.
 - At query time, add `options(selectinload(Model.relation))`.
-
-The built-in adapters already use `selectinload(User.roles)`. If you customise the user model and add relationships, do the same.
 
 ### `401 Could not validate credentials` when the password is correct
 

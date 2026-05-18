@@ -1355,6 +1355,8 @@ fullauth.hooks.on("after_register", create_default_workspace)
 fullauth.hooks.on("after_register", track_signup_analytics)
 ```
 
+A hook that raises is caught and logged via `logging.getLogger("fastapi_fullauth.hooks")`; the next hook still runs and the route returns its normal status. The auth response never 500s because of a notification or analytics failure. Check the logger if a hook side-effect goes silently missing.
+
 ---
 
 # Password Validation
