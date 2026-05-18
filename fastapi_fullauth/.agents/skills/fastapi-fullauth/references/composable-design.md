@@ -95,14 +95,14 @@ The adapter's `create_user` calls `data.model_dump(exclude={"email", "password"}
 
 See `adapters.md` for the full picture. Short version: inherit the mixin for each feature you want, skip the ones you don't. Route auto-skip does the rest.
 
-## What `has_usable_password` is for
+## OAuth-only users have a `NULL` `hashed_password`
 
-OAuth-only users are created with a random password they don't know and `has_usable_password=False`. Two consequences:
+The OAuth flow inserts the user with `hashed_password=None` — no fake random hash, no separate `has_usable_password` flag. Consequences:
 
-- `change-password` rejects them (they can't supply the current password they don't have).
-- `set-password` accepts them (it's their first time setting one).
+- `/login` rejects them (the password path needs a hash to verify).
+- `/change-password` accepts them without `current_password` — the access token is the auth boundary, and there's no current password to defend against. Once they set one, subsequent calls require it like a normal user.
 
-`has_usable_password` is on `UserMixin` and `UserSchema` by default. This is one opinionated inclusion — splitting it further would complicate every OAuth app. If you really don't want OAuth, setting the field is free and costs nothing.
+There's no separate `set-password` route; `/change-password` is the single entry point for both first-time set and subsequent changes.
 
 ## Why not a "config flag for everything"?
 

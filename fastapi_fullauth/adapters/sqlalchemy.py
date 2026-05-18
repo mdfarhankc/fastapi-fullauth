@@ -116,7 +116,9 @@ class SQLAlchemyAdapter(
             user = result.scalars().first()
             return self._to_schema(user) if user else None
 
-    async def create_user(self, data: CreateUserSchemaType, hashed_password: str) -> UserSchemaType:
+    async def create_user(
+        self, data: CreateUserSchemaType, hashed_password: str | None
+    ) -> UserSchemaType:
         async with self._session_maker() as session:
             extra = data.model_dump(exclude={"email", "password"})
             normalized_email = normalize_email(data.email)

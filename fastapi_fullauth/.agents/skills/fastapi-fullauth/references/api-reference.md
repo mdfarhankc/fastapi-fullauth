@@ -128,7 +128,6 @@ from fastapi_fullauth.flows.login import login
 from fastapi_fullauth.flows.register import register
 from fastapi_fullauth.flows.logout import logout
 from fastapi_fullauth.flows.change_password import change_password
-from fastapi_fullauth.flows.set_password import set_password
 from fastapi_fullauth.flows.update_profile import update_profile
 from fastapi_fullauth.flows.email_verify import (
     create_email_verification_token,
@@ -364,7 +363,6 @@ Default prefix `/api/v1/auth`:
 | GET    | `/me`                             | profile  | yes           |
 | PATCH  | `/me`                             | profile  | yes           |
 | POST   | `/change-password`                | profile  | yes           |
-| POST   | `/set-password`                   | profile  | yes           |
 | POST   | `/password-reset/request`         | verify   | no            |
 | POST   | `/password-reset/confirm`         | verify   | no            |
 | POST   | `/verify/request`                 | verify   | yes           |

@@ -51,12 +51,8 @@ class LogoutRequest(BaseModel):
 
 
 class ChangePasswordRequest(BaseModel):
-    current_password: str
     new_password: str
-
-
-class SetPasswordRequest(BaseModel):
-    new_password: str
+    current_password: str | None = None
 
 
 class RoleAssignment(BaseModel):

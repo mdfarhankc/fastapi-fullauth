@@ -13,15 +13,18 @@ logger = logging.getLogger("fastapi_fullauth.change_password")
 async def change_password(
     adapter: AbstractUserAdapter,
     user_id: UserID,
-    current_password: str,
     new_password: str,
+    current_password: str | None = None,
     hash_algorithm: Literal["argon2id", "bcrypt"] = "argon2id",
     password_validator: PasswordValidator | None = None,
 ) -> None:
     hashed = await adapter.get_hashed_password(user_id)
-    if hashed is None or not verify_password(current_password, hashed):
-        logger.warning("Password change failed — wrong current password: user_id=%s", user_id)
-        raise AuthenticationError("Current password is incorrect")
+    # OAuth-only users have no stored hash. The access token is the auth boundary —
+    # we trust it and let them set a first password without a current-password check.
+    if hashed is not None:
+        if not current_password or not verify_password(current_password, hashed):
+            logger.warning("Password change failed — wrong current password: user_id=%s", user_id)
+            raise AuthenticationError("Current password is incorrect")
 
     if password_validator:
         password_validator.validate(new_password)

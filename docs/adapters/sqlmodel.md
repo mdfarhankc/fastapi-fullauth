@@ -46,8 +46,7 @@ class User(UserMixin, table=True):
 |-------|------|-------------|
 | `id` | `UUID` (UUID7) | Primary key, auto-generated |
 | `email` | `str` | Unique, indexed |
-| `hashed_password` | `str` | Password hash |
-| `has_usable_password` | `bool` | False for OAuth-only users |
+| `hashed_password` | `str \| None` | Password hash. `NULL` for OAuth-only users. |
 | `is_active` | `bool` | Account active flag |
 | `is_verified` | `bool` | Email verified flag |
 | `is_superuser` | `bool` | Superuser flag |

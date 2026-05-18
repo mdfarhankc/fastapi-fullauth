@@ -4,6 +4,13 @@
 
 ### Breaking changes
 
+- **`hashed_password` is nullable** on `UserMixin` (both SQLAlchemy and SQLModel). OAuth-only users are inserted with `hashed_password=NULL` instead of a fake random hash. The previous `has_usable_password` boolean is gone — `hashed_password IS NOT NULL` is the single signal.
+- **`/auth/set-password` route removed.** First-time password creation for OAuth-only users now goes through `/auth/change-password` with `current_password` omitted — the route accepts the missing field only when the stored hash is `NULL`. Users with an existing password must still supply it. The previous `set_password` flow checked `getattr(user, "has_usable_password", True)` against a `UserSchema` that didn't include the field, so OAuth-only users on the default schema could never call it successfully; this is now closed.
+- **`flows.set_password` module removed.** Folded into `flows.change_password`, whose `current_password` parameter is now `str | None = None`.
+- **`AbstractUserAdapter.create_user` signature change.** `hashed_password: str` is now `hashed_password: str | None`. Custom adapters must accept `None` and persist it. Built-in adapters already do.
+- **`flows.oauth.link_or_create_user` and `flows.oauth.oauth_callback` no longer take `hash_algorithm`.** OAuth users have no password to hash anymore.
+- **`ChangePasswordRequest.current_password` is now `str | None`.** Clients that always sent it keep working; clients can omit it when the user has no stored password.
+
 - **Built-in models are now mixins.** The concrete `*Model` / `*Record` classes and the `FullAuthBase` declarative base are gone. Bring your own `DeclarativeBase` (SQLAlchemy) or `SQLModel` and combine each `*Mixin` to define the tables. The previous "must subclass `FullAuthBase`" rule forced every project to put its own tables on the library's metadata; mixins let you reuse one `Base` across `fastapi-fullauth` and the rest of the app.
 
   Before:

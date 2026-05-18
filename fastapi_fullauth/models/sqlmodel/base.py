@@ -23,9 +23,9 @@ class UserMixin(SQLModel):
 
     id: UUID = Field(default_factory=uuid7, primary_key=True)
     email: str = Field(unique=True, index=True, max_length=320)
-    # argon2id output is ~97 chars; VARCHAR(255) default on MySQL/MSSQL silently truncates
-    hashed_password: str = Field(sa_column=Column(Text, nullable=False))
-    has_usable_password: bool = Field(default=True)
+    # argon2id output is ~97 chars; VARCHAR(255) default on MySQL/MSSQL silently truncates.
+    # Nullable so OAuth-only users can exist without a password.
+    hashed_password: str | None = Field(default=None, sa_column=Column(Text, nullable=True))
     is_active: bool = Field(default=True)
     is_verified: bool = Field(default=False)
     is_superuser: bool = Field(default=False)

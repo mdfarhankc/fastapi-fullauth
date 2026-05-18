@@ -49,7 +49,7 @@ class User(UserMixin, Base):
     refresh_tokens: Mapped[list[RefreshToken]] = relationship(lazy="noload")
 ```
 
-`UserMixin` provides `id`, `email`, `hashed_password`, `has_usable_password`, `is_active`, `is_verified`, `is_superuser`, `created_at`.
+`UserMixin` provides `id`, `email`, `hashed_password` (nullable — `NULL` for OAuth-only users), `is_active`, `is_verified`, `is_superuser`, `created_at`.
 
 ### 2. Create the adapter
 

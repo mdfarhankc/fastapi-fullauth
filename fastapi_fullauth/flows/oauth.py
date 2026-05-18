@@ -1,9 +1,8 @@
 import logging
 import secrets
-from typing import Any, Literal, cast
+from typing import Any, cast
 
 from fastapi_fullauth.adapters.base import AbstractUserAdapter, OAuthAdapterMixin
-from fastapi_fullauth.core.crypto import hash_password
 from fastapi_fullauth.core.tokens import TokenEngine
 from fastapi_fullauth.exceptions import OAuthProviderError, UserAlreadyExistsError
 from fastapi_fullauth.oauth.base import OAuthProvider
@@ -54,7 +53,6 @@ async def link_or_create_user(
     info: OAuthUserInfo,
     provider_tokens: dict[str, Any],
     auto_link_by_email: bool = True,
-    hash_algorithm: Literal["argon2id", "bcrypt"] = "argon2id",
 ) -> tuple[UserSchema, bool]:
     """Link OAuth account to existing user or create a new one.
 
@@ -113,12 +111,11 @@ async def link_or_create_user(
                 f"No email returned from {info.provider}. Cannot create account."
             )
 
-        random_password = secrets.token_urlsafe(32)
-        data = CreateUserSchema(email=info.email, password=random_password)
+        # OAuth users have no password — they auth via the provider. CreateUserSchema
+        # still requires `password`, but hashed_password=None means it's never persisted.
+        data = CreateUserSchema(email=info.email, password=secrets.token_urlsafe(32))
         try:
-            user = await adapter.create_user(
-                data, hashed_password=hash_password(random_password, algorithm=hash_algorithm)
-            )
+            user = await adapter.create_user(data, hashed_password=None)
         except UserAlreadyExistsError as e:
             # Lost a race against a concurrent local signup (or another OAuth flow).
             # Ask the user to retry — the next attempt will find the now-existing account.
@@ -127,7 +124,6 @@ async def link_or_create_user(
                 info.provider,
             )
             raise OAuthProviderError("Please retry signing in.") from e
-        await adapter.update_user(user.id, {"has_usable_password": False})
 
         if info.email_verified:
             await adapter.set_user_verified(user.id)
@@ -183,13 +179,12 @@ async def oauth_callback(
     code: str,
     state: str,
     auto_link_by_email: bool = True,
-    hash_algorithm: Literal["argon2id", "bcrypt"] = "argon2id",
 ) -> tuple[TokenPair, UserSchema, bool, OAuthUserInfo]:
     """Full OAuth callback flow. Delegates to smaller functions."""
     provider_tokens, info = await exchange_oauth_code(provider, token_engine, code, state)
 
     user, is_new_user = await link_or_create_user(
-        adapter, info, provider_tokens, auto_link_by_email, hash_algorithm
+        adapter, info, provider_tokens, auto_link_by_email
     )
 
     if is_new_user:

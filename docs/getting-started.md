@@ -39,7 +39,7 @@ class User(UserMixin, table=True):
     refresh_tokens: list[RefreshToken] = Relationship()
 ```
 
-`UserMixin` provides `id`, `email`, `hashed_password`, `has_usable_password`, `is_active`, `is_verified`, `is_superuser`, and `created_at`. Add any extra fields you need.
+`UserMixin` provides `id`, `email`, `hashed_password` (nullable — `NULL` for OAuth-only users), `is_active`, `is_verified`, `is_superuser`, and `created_at`. Add any extra fields you need.
 
 !!! note
     Define your own schemas extending `UserSchema` and `CreateUserSchema` to include custom fields like `display_name` and `phone`, then pass them to the adapter. See [Custom User Schemas](#custom-user-schemas) below or the [API Reference](api-reference.md).
