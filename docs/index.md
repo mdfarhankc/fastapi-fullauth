@@ -86,10 +86,10 @@ Omit `SECRET_KEY` in dev and a random one is generated (tokens won't survive res
 
 ### Composable routers
 
-Exclude routers you don't need:
+Opt in to a subset of routers:
 
 ```python
-fullauth.init_app(app, exclude_routers=["admin"])
+fullauth.init_app(app, include_routers=["auth", "profile"])
 ```
 
 Or wire routers manually for full control:
@@ -100,7 +100,6 @@ fullauth.bind(app)  # required for dependencies to work
 
 app.include_router(fullauth.auth_router, prefix="/api/v1/auth")
 app.include_router(fullauth.profile_router, prefix="/api/v1/auth")
-fullauth.init_middleware(app)
 ```
 
 | Router | Routes |
@@ -112,7 +111,7 @@ fullauth.init_middleware(app)
 | `oauth_router` | OAuth provider routes (only if configured) |
 | `passkey_router` | Passkey register, authenticate, list, delete (only if enabled) |
 
-`fullauth.init_app(app)` includes all of them. Use `exclude_routers` or individual routers for granular control.
+`fullauth.init_app(app)` with no `include_routers` registers all of them. Pass an explicit list (or use the individual router properties) for granular control. Middleware is never auto-wired — see [Middleware](security/middleware.md).
 
 ## Routes
 

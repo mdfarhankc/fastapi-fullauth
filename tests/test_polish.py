@@ -14,7 +14,7 @@ from fastapi_fullauth.adapters.sqlmodel import SQLModelAdapter
 from fastapi_fullauth.backends.bearer import BearerBackend
 from fastapi_fullauth.core.crypto import hash_password
 from fastapi_fullauth.exceptions import InvalidPasswordError
-from tests.conftest import User
+from tests.conftest import RefreshToken, User
 
 _has_bcrypt = importlib.util.find_spec("bcrypt") is not None
 
@@ -56,16 +56,19 @@ async def test_require_role_returns_403_when_user_has_no_roles_field():
     session_maker = async_sessionmaker(engine, expire_on_commit=False)
     async with engine.begin() as conn:
         await conn.run_sync(SQLModel.metadata.create_all)
-    adapter = SQLModelAdapter(session_maker=session_maker, user_model=User)
+    adapter = SQLModelAdapter(
+        session_maker=session_maker,
+        user_model=User,
+        refresh_token_model=RefreshToken,
+    )
     fullauth = FullAuth(
         config=FullAuthConfig(
             SECRET_KEY="test-secret-key-that-is-long-enough-32b",
-            INJECT_SECURITY_HEADERS=False,
         ),
         adapter=adapter,
     )
     app = FastAPI()
-    fullauth.init_app(app, auto_middleware=False)
+    fullauth.init_app(app)
 
     @app.get("/admin-only", dependencies=[Depends(require_role("admin"))])
     async def admin_only(user=Depends(current_user)):
@@ -114,9 +117,9 @@ def test_argon2_accepts_long_passwords():
 def test_sqlmodel_hashed_password_is_text_column():
     from sqlalchemy import Text
 
-    from fastapi_fullauth.adapters.sqlmodel.models.base import UserBase
+    from fastapi_fullauth.models.sqlmodel import UserMixin
 
-    col = UserBase.model_fields["hashed_password"].sa_column  # type: ignore[attr-defined]
+    col = UserMixin.model_fields["hashed_password"].sa_column  # type: ignore[attr-defined]
     assert isinstance(col.type, Text)
 
 
@@ -179,3 +182,45 @@ def test_passkey_config_happy_path():
         PASSKEY_ORIGINS=["https://example.com", "https://m.example.com"],
     )
     assert cfg.PASSKEY_ENABLED is True
+
+
+# ── Adapter init-time model class validation ────────────────────────
+
+
+def test_adapter_rejects_role_without_user_role():
+    from tests.conftest import RefreshToken, Role, User
+
+    with pytest.raises(ValueError, match="role_model and user_role_model"):
+        SQLModelAdapter(
+            session_maker=None,  # type: ignore[arg-type]
+            user_model=User,
+            refresh_token_model=RefreshToken,
+            role_model=Role,
+        )
+
+
+def test_adapter_rejects_permission_without_role_permission():
+    from tests.conftest import Permission, RefreshToken, Role, User, UserRole
+
+    with pytest.raises(ValueError, match="permission_model and role_permission_model"):
+        SQLModelAdapter(
+            session_maker=None,  # type: ignore[arg-type]
+            user_model=User,
+            refresh_token_model=RefreshToken,
+            role_model=Role,
+            user_role_model=UserRole,
+            permission_model=Permission,
+        )
+
+
+def test_adapter_rejects_permission_without_role():
+    from tests.conftest import Permission, RefreshToken, RolePermission, User
+
+    with pytest.raises(ValueError, match="Permissions require role_model"):
+        SQLModelAdapter(
+            session_maker=None,  # type: ignore[arg-type]
+            user_model=User,
+            refresh_token_model=RefreshToken,
+            permission_model=Permission,
+            role_permission_model=RolePermission,
+        )

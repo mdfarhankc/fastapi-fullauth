@@ -1,3 +1,4 @@
+import contextlib
 import logging
 from typing import TYPE_CHECKING, cast
 from uuid import UUID
@@ -5,7 +6,7 @@ from uuid import UUID
 from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
 
-from fastapi_fullauth.dependencies.current_user import _extract_token, _get_fullauth
+from fastapi_fullauth.dependencies.current_user import _extract_token, get_fullauth
 from fastapi_fullauth.exceptions import (
     CREDENTIALS_EXCEPTION,
     USER_EXISTS_EXCEPTION,
@@ -18,7 +19,7 @@ from fastapi_fullauth.exceptions import (
 from fastapi_fullauth.flows.login import login
 from fastapi_fullauth.flows.logout import logout
 from fastapi_fullauth.flows.register import register
-from fastapi_fullauth.router._models import (
+from fastapi_fullauth.routers._schemas import (
     LogoutRequest,
     MessageResponse,
     RefreshRequest,
@@ -64,7 +65,7 @@ def create_auth_router(
     async def register_route(
         request: Request,
         response: Response,
-        fullauth: "FullAuth" = Depends(_get_fullauth),
+        fullauth: "FullAuth" = Depends(get_fullauth),
         data: create_user_schema = Body(...),  # type: ignore[valid-type]
     ) -> UserSchema | MessageResponse:
         client_ip = get_client_ip(request, fullauth.config.TRUSTED_PROXY_HEADERS)
@@ -108,7 +109,7 @@ def create_auth_router(
         data: LoginRequest,  # type: ignore[valid-type]
         request: Request,
         response: Response,
-        fullauth: "FullAuth" = Depends(_get_fullauth),
+        fullauth: "FullAuth" = Depends(get_fullauth),
     ) -> TokenPair:
         client_ip = get_client_ip(request, fullauth.config.TRUSTED_PROXY_HEADERS)
         await fullauth.check_auth_rate_limit("login", client_ip)
@@ -133,6 +134,7 @@ def create_auth_router(
                 extra_claims=extra_claims,
                 user=user,
                 hash_algorithm=fullauth.config.PASSWORD_HASH_ALGORITHM,
+                prevent_timing_attacks=fullauth.config.PREVENT_LOGIN_TIMING_ATTACKS,
             )
         except (AccountLockedError, AuthenticationError):
             raise CREDENTIALS_EXCEPTION
@@ -142,7 +144,7 @@ def create_auth_router(
 
         await fullauth.hooks.emit("after_login", user=user)
 
-        if fullauth.config.INCLUDE_USER_IN_LOGIN and user:
+        if user is not None:
             return LoginResponse(
                 access_token=tokens.access_token,
                 refresh_token=tokens.refresh_token,
@@ -162,7 +164,7 @@ def create_auth_router(
     async def refresh_route(
         data: RefreshRequest,
         request: Request,
-        fullauth: "FullAuth" = Depends(_get_fullauth),
+        fullauth: "FullAuth" = Depends(get_fullauth),
     ) -> TokenPair:
         client_ip = get_client_ip(request, fullauth.config.TRUSTED_PROXY_HEADERS)
         await fullauth.check_auth_rate_limit("refresh", client_ip)
@@ -175,11 +177,22 @@ def create_auth_router(
         if payload.type != "refresh":
             raise CREDENTIALS_EXCEPTION
 
-        user = await fullauth.adapter.get_user_by_id(UUID(payload.sub))
+        try:
+            user_id = UUID(payload.sub)
+        except ValueError:
+            raise CREDENTIALS_EXCEPTION
+
+        user = await fullauth.adapter.get_user_by_id(user_id)
         if user is None or not user.is_active:
             raise CREDENTIALS_EXCEPTION
 
         stored = await fullauth.adapter.get_refresh_token(data.refresh_token)
+        # Defence in depth: the refresh JWT may decode cleanly (valid signature,
+        # unexpired) and still not correspond to a stored session — e.g. an old
+        # row pruned, or a token issued before the row was deleted. Reject so
+        # signed-but-unbacked tokens can't mint new access tokens.
+        if stored is None:
+            raise CREDENTIALS_EXCEPTION
 
         roles = await fullauth.adapter.get_user_roles(user.id)
         extra_claims = await fullauth.get_custom_claims(user)
@@ -190,15 +203,14 @@ def create_auth_router(
             # from not-revoked → revoked. The loser sees rowcount=0 — that's
             # either a reuse attack or a lost concurrency race. Either way,
             # burn the family.
-            if stored is not None:
-                won = await fullauth.adapter.revoke_refresh_token(data.refresh_token)
-                if not won:
-                    logger.error(
-                        "refresh token reuse/concurrent use — revoking family: %s",
-                        stored.family_id,
-                    )
-                    await fullauth.adapter.revoke_refresh_token_family(stored.family_id)
-                    raise CREDENTIALS_EXCEPTION
+            won = await fullauth.adapter.revoke_refresh_token(data.refresh_token)
+            if not won:
+                logger.error(
+                    "refresh token reuse/concurrent use — revoking family: %s",
+                    stored.family_id,
+                )
+                await fullauth.adapter.revoke_refresh_token_family(stored.family_id)
+                raise CREDENTIALS_EXCEPTION
             await fullauth.token_engine.blacklist_token(
                 payload.jti,
                 ttl_seconds=fullauth.config.REFRESH_TOKEN_EXPIRE_DAYS * 86400,
@@ -221,7 +233,7 @@ def create_auth_router(
             )
             refresh_token = refresh_meta.token
         else:
-            if stored is not None and stored.revoked:
+            if stored.revoked:
                 raise CREDENTIALS_EXCEPTION
             access = fullauth.token_engine.create_access_token(
                 user_id=uid,
@@ -242,7 +254,7 @@ def create_auth_router(
         description="Blacklist token. Pass refresh_token in body to revoke the session.",
     )
     async def logout_route(
-        fullauth: "FullAuth" = Depends(_get_fullauth),
+        fullauth: "FullAuth" = Depends(get_fullauth),
         token: str = Depends(_extract_token),
         data: LogoutRequest | None = Body(None),
     ) -> Response:
@@ -257,7 +269,8 @@ def create_auth_router(
             adapter=fullauth.adapter,
             refresh_token=data.refresh_token if data else None,
         )
-        await fullauth.hooks.emit("after_logout", user_id=UUID(payload.sub))
+        with contextlib.suppress(ValueError):
+            await fullauth.hooks.emit("after_logout", user_id=UUID(payload.sub))
 
         response = Response(status_code=204)
         for backend in fullauth.backends:

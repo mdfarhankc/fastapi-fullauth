@@ -10,6 +10,16 @@ from fastapi_fullauth.types import RefreshToken, TokenPair, UserSchema
 
 logger = logging.getLogger("fastapi_fullauth.login")
 
+_DUMMY_HASH: str | None = None
+
+
+def _get_dummy_hash() -> str:
+    """Lazily build a valid argon2 hash so timing-defense verifies take real time."""
+    global _DUMMY_HASH
+    if _DUMMY_HASH is None:
+        _DUMMY_HASH = hash_password("fastapi-fullauth-timing-defense")
+    return _DUMMY_HASH
+
 
 async def login(
     adapter: AbstractUserAdapter,
@@ -21,6 +31,7 @@ async def login(
     extra_claims: dict[str, Any] | None = None,
     user: UserSchema | None = None,
     hash_algorithm: Literal["argon2id", "bcrypt"] = "argon2id",
+    prevent_timing_attacks: bool = False,
 ) -> TokenPair:
     if lockout and await lockout.is_locked(identifier):
         logger.warning("Login blocked — account locked: %s", identifier)
@@ -28,14 +39,20 @@ async def login(
 
     if user is None:
         user = await adapter.get_user_by_field(login_field, identifier)
-    if user is None:
+
+    hashed: str | None = None
+    if user is not None:
+        hashed = await adapter.get_hashed_password(user.id)
+
+    if user is None or hashed is None:
+        if prevent_timing_attacks:
+            verify_password(password, _get_dummy_hash())
         if lockout:
             await lockout.record_failure(identifier)
-        logger.warning("Login failed — user not found: %s", identifier)
+        logger.warning("Login failed — unknown user or no password: %s", identifier)
         raise AuthenticationError("Invalid credentials")
 
-    hashed = await adapter.get_hashed_password(user.id)
-    if hashed is None or not verify_password(password, hashed):
+    if not verify_password(password, hashed):
         if lockout:
             await lockout.record_failure(identifier)
         logger.warning("Login failed — invalid password: %s", identifier)

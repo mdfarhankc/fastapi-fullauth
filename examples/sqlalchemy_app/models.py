@@ -1,19 +1,33 @@
 from sqlalchemy import String
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
-from fastapi_fullauth.adapters.sqlalchemy.models.base import (
-    FullAuthBase,
-    RefreshTokenModel,
-    UserBase,
+from fastapi_fullauth.models.sqlalchemy import (
+    RefreshTokenMixin,
+    RoleMixin,
+    UserMixin,
+    UserRoleMixin,
 )
-from fastapi_fullauth.adapters.sqlalchemy.models.role import RoleModel
 
 
-class User(UserBase, FullAuthBase):
-    __tablename__ = "fullauth_users"
+class Base(DeclarativeBase):
+    pass
 
+
+class RefreshToken(RefreshTokenMixin, Base):
+    pass
+
+
+class Role(RoleMixin, Base):
+    pass
+
+
+class UserRole(UserRoleMixin, Base):
+    pass
+
+
+class User(UserMixin, Base):
     display_name: Mapped[str] = mapped_column(String(100), default="")
     phone: Mapped[str] = mapped_column(String(20), default="")
 
-    roles: Mapped[list[RoleModel]] = relationship(secondary="fullauth_user_roles", lazy="selectin")
-    refresh_tokens: Mapped[list[RefreshTokenModel]] = relationship(lazy="noload")
+    roles: Mapped[list[Role]] = relationship(secondary="fullauth_user_roles", lazy="selectin")
+    refresh_tokens: Mapped[list[RefreshToken]] = relationship(lazy="noload")

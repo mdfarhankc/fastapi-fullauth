@@ -1,7 +1,7 @@
 from typing import Literal
 
 from argon2 import PasswordHasher
-from argon2.exceptions import VerificationError, VerifyMismatchError
+from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
 
 from fastapi_fullauth.exceptions import InvalidPasswordError
 
@@ -33,11 +33,11 @@ def verify_password(plain: str, hashed: str) -> bool:
 
             ok: bool = bcrypt.checkpw(plain.encode(), hashed.encode())
             return ok
-        except ImportError:
+        except (ImportError, ValueError):
             return False
     try:
         return _argon2_hasher.verify(hashed, plain)
-    except (VerifyMismatchError, VerificationError):
+    except (VerifyMismatchError, VerificationError, InvalidHashError):
         return False
 
 

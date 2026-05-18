@@ -1,17 +1,24 @@
 # Middleware
 
-fastapi-fullauth includes three middleware components. By default, `init_app()` auto-wires them based on config flags. Pass `auto_middleware=False` to manage them yourself, or use `init_middleware()` when wiring routers manually:
+fastapi-fullauth ships three middleware classes. None of them are wired automatically — `init_app()` only mounts routers. Import what you want and call `app.add_middleware(...)` yourself:
 
 ```python
-fullauth.init_app(app, auto_middleware=False)
+from fastapi_fullauth.middleware import (
+    SecurityHeadersMiddleware,
+    CSRFMiddleware,
+    RateLimitMiddleware,
+)
 
-# or, when using composable routers:
-fullauth.init_middleware(app)
+app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(CSRFMiddleware, secret=fullauth.config.CSRF_SECRET or fullauth.config.SECRET_KEY)
+fullauth.init_app(app)
 ```
+
+> FastAPI applies middleware in reverse order, so `add_middleware` calls before `init_app` execute outermost. Add the broadest protections (security headers, rate limiting) first.
 
 ## Security Headers
 
-Enabled by default (`INJECT_SECURITY_HEADERS=True`). Adds standard security headers to every response:
+Adds standard security headers to every response:
 
 | Header | Value |
 |--------|-------|
@@ -40,18 +47,24 @@ app.add_middleware(
 
 ## CSRF Protection
 
-Disabled by default (`CSRF_ENABLED=False`). Enable it for cookie-based auth where the frontend and backend share a domain:
+Use for cookie-based auth where the frontend and backend share a domain. `secret` must be at least 32 characters — pass `config.CSRF_SECRET` (or fall back to `SECRET_KEY`):
 
 ```python
 from fastapi_fullauth import FullAuth, FullAuthConfig
+from fastapi_fullauth.middleware import CSRFMiddleware
 
-fullauth = FullAuth(
-    adapter=adapter,
-    config=FullAuthConfig(
-        SECRET_KEY="...",
-        CSRF_ENABLED=True,
-        CSRF_SECRET="optional-separate-secret",  # falls back to SECRET_KEY
-    ),
+config = FullAuthConfig(
+    SECRET_KEY="…",
+    CSRF_SECRET="optional-separate-secret",  # falls back to SECRET_KEY
+)
+fullauth = FullAuth(adapter=adapter, config=config)
+
+app.add_middleware(
+    CSRFMiddleware,
+    secret=config.CSRF_SECRET or config.SECRET_KEY,
+    cookie_secure=config.COOKIE_SECURE,
+    cookie_samesite=config.COOKIE_SAMESITE,
+    cookie_domain=config.COOKIE_DOMAIN,
 )
 ```
 
@@ -87,11 +100,9 @@ fetch('/api/v1/auth/login', {
 ### Exempt paths
 
 ```python
-from fastapi_fullauth.middleware import CSRFMiddleware
-
 app.add_middleware(
     CSRFMiddleware,
-    secret="your-secret",
+    secret="your-32-plus-character-secret-here…",
     exempt_paths=["/api/v1/webhooks"],
 )
 ```

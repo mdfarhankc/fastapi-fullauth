@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, Body, Depends, HTTPException
 
-from fastapi_fullauth.dependencies.current_user import CurrentUser, VerifiedUser, _get_fullauth
+from fastapi_fullauth.dependencies.current_user import CurrentUser, VerifiedUser, get_fullauth
 from fastapi_fullauth.exceptions import (
     AuthenticationError,
     InvalidPasswordError,
@@ -11,16 +11,16 @@ from fastapi_fullauth.exceptions import (
     UnknownFieldsError,
 )
 from fastapi_fullauth.flows.change_password import change_password
+from fastapi_fullauth.flows.profile import validate_profile_updates
 from fastapi_fullauth.flows.set_password import set_password
-from fastapi_fullauth.flows.update_profile import validate_profile_updates
-from fastapi_fullauth.router._models import (
+from fastapi_fullauth.routers._schemas import (
     ChangePasswordRequest,
     MessageResponse,
     SetPasswordRequest,
 )
 from fastapi_fullauth.types import UserSchema, UserSchemaType
 
-logger = logging.getLogger("fastapi_fullauth.router")
+logger = logging.getLogger("fastapi_fullauth.routers")
 
 if TYPE_CHECKING:
     from fastapi_fullauth.fullauth import FullAuth
@@ -61,7 +61,7 @@ def create_profile_router(
     )
     async def update_me_route(
         user: CurrentUser,
-        fullauth: "FullAuth" = Depends(_get_fullauth),
+        fullauth: "FullAuth" = Depends(get_fullauth),
         data: dict[str, Any] = Body(...),
     ) -> UserSchema:
         try:
@@ -76,7 +76,7 @@ def create_profile_router(
     @router.delete("/me", status_code=204, description="Delete your own account.")
     async def delete_me_route(
         user: CurrentUser,
-        fullauth: "FullAuth" = Depends(_get_fullauth),
+        fullauth: "FullAuth" = Depends(get_fullauth),
     ) -> None:
         await fullauth.adapter.revoke_all_user_refresh_tokens(user.id)
         await fullauth.adapter.delete_user(user.id)
@@ -91,7 +91,7 @@ def create_profile_router(
     async def change_password_route(
         data: ChangePasswordRequest,
         user: CurrentUser,
-        fullauth: "FullAuth" = Depends(_get_fullauth),
+        fullauth: "FullAuth" = Depends(get_fullauth),
     ) -> MessageResponse:
         try:
             await change_password(
@@ -119,7 +119,7 @@ def create_profile_router(
     async def set_password_route(
         data: SetPasswordRequest,
         user: CurrentUser,
-        fullauth: "FullAuth" = Depends(_get_fullauth),
+        fullauth: "FullAuth" = Depends(get_fullauth),
     ) -> MessageResponse:
         try:
             await set_password(

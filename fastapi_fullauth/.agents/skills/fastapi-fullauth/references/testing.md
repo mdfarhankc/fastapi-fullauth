@@ -38,7 +38,6 @@ def fullauth(adapter):
     return FullAuth(
         config=FullAuthConfig(
             SECRET_KEY="test-secret-key-that-is-long-enough-32b",
-            INJECT_SECURITY_HEADERS=False,
             AUTH_RATE_LIMIT_ENABLED=False,
         ),
         adapter=adapter,
@@ -48,7 +47,7 @@ def fullauth(adapter):
 @pytest.fixture
 def app(fullauth):
     app = FastAPI()
-    fullauth.init_app(app, auto_middleware=False)
+    fullauth.init_app(app)
     return app
 
 
@@ -64,7 +63,7 @@ Key choices:
 - **`sqlite+aiosqlite://`** (no path) gives a per-process in-memory DB that dies with the fixture. Zero cleanup needed.
 - **`expire_on_commit=False`** prevents lazy-loads after commit — async code can't do them.
 - **`AUTH_RATE_LIMIT_ENABLED=False`** in tests so hammering the login endpoint doesn't hit `429 Too Many Requests` on the 6th attempt.
-- **`auto_middleware=False`** in `init_app` skips CSRF / security headers / rate limit middleware — tests usually want to assert on the raw route behavior without middleware in the way.
+- **No `app.add_middleware(...)` in tests** — `init_app()` doesn't wire middleware automatically (as of v0.10.0), so tests get raw route behavior by default. Add middleware explicitly only in the tests that need to assert on it.
 
 ## Registered-user and authenticated-headers helpers
 

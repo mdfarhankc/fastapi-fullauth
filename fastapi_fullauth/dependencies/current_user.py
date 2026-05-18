@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 _bearer_scheme = HTTPBearer(auto_error=False)
 
 
-def _get_fullauth(request: Request) -> "FullAuth":
+def get_fullauth(request: Request) -> "FullAuth":
     fullauth: FullAuth | None = getattr(request.app.state, "fullauth", None)
     if fullauth is None:
         raise RuntimeError("FullAuth not initialized on app.state")
@@ -24,7 +24,7 @@ def _get_fullauth(request: Request) -> "FullAuth":
 
 async def _extract_token(
     request: Request,
-    fullauth: "FullAuth" = Depends(_get_fullauth),
+    fullauth: "FullAuth" = Depends(get_fullauth),
     credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
 ) -> str:
     if credentials is not None:
@@ -38,7 +38,7 @@ async def _extract_token(
 
 
 async def current_user(
-    fullauth: "FullAuth" = Depends(_get_fullauth),
+    fullauth: "FullAuth" = Depends(get_fullauth),
     token: str = Depends(_extract_token),
 ) -> UserSchema:
     from fastapi_fullauth.exceptions import TokenError
@@ -54,7 +54,12 @@ async def current_user(
     if payload.extra.get("purpose"):
         raise CREDENTIALS_EXCEPTION
 
-    user = await fullauth.adapter.get_user_by_id(UUID(payload.sub))
+    try:
+        user_id = UUID(payload.sub)
+    except ValueError:
+        raise CREDENTIALS_EXCEPTION
+
+    user = await fullauth.adapter.get_user_by_id(user_id)
     if user is None or not user.is_active:
         raise CREDENTIALS_EXCEPTION
 
@@ -99,7 +104,7 @@ def get_current_user_dependency(
     """
 
     async def _current_user(
-        fullauth: "FullAuth" = Depends(_get_fullauth),
+        fullauth: "FullAuth" = Depends(get_fullauth),
         token: str = Depends(_extract_token),
     ) -> UserSchemaType:
         from fastapi_fullauth.exceptions import TokenError
@@ -115,7 +120,12 @@ def get_current_user_dependency(
         if payload.extra.get("purpose"):
             raise CREDENTIALS_EXCEPTION
 
-        user = await fullauth.adapter.get_user_by_id(UUID(payload.sub))
+        try:
+            user_id = UUID(payload.sub)
+        except ValueError:
+            raise CREDENTIALS_EXCEPTION
+
+        user = await fullauth.adapter.get_user_by_id(user_id)
         if user is None or not user.is_active:
             raise CREDENTIALS_EXCEPTION
 

@@ -3,37 +3,11 @@
 import pytest
 from fastapi import Depends, FastAPI
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
-from sqlmodel import SQLModel
 
 from fastapi_fullauth import FullAuth, FullAuthConfig
-from fastapi_fullauth.adapters.sqlmodel import SQLModelAdapter
-from fastapi_fullauth.adapters.sqlmodel.models.oauth import OAuthAccountRecord  # noqa: F401
-from fastapi_fullauth.adapters.sqlmodel.models.permission import (  # noqa: F401
-    Permission,
-    RolePermissionLink,
-)
 from fastapi_fullauth.core.crypto import hash_password
 from fastapi_fullauth.dependencies import current_user, require_permission, require_role
 from fastapi_fullauth.types import CreateUserSchema
-from tests.conftest import User, UserSchemaWithRoles
-
-# ── Fixtures ────────────────────────────────────────────────────────
-
-
-@pytest.fixture
-async def db():
-    engine = create_async_engine("sqlite+aiosqlite://", echo=False)
-    session_maker = async_sessionmaker(engine, expire_on_commit=False)
-    async with engine.begin() as conn:
-        await conn.run_sync(SQLModel.metadata.create_all)
-    yield session_maker
-    await engine.dispose()
-
-
-@pytest.fixture
-def adapter(db):
-    return SQLModelAdapter(session_maker=db, user_model=User, user_schema=UserSchemaWithRoles)
 
 
 @pytest.fixture
@@ -41,7 +15,6 @@ def fullauth(adapter):
     return FullAuth(
         config=FullAuthConfig(
             SECRET_KEY="test-secret-key-that-is-long-enough-32b",
-            INJECT_SECURITY_HEADERS=False,
         ),
         adapter=adapter,
     )
@@ -50,7 +23,7 @@ def fullauth(adapter):
 @pytest.fixture
 def app(fullauth):
     app = FastAPI()
-    fullauth.init_app(app, auto_middleware=False)
+    fullauth.init_app(app)
 
     @app.get("/me")
     async def me(user=Depends(current_user)):

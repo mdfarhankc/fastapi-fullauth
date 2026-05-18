@@ -4,17 +4,27 @@ from sqlalchemy import ForeignKey, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 from uuid_utils import uuid7
 
-from fastapi_fullauth.adapters.sqlalchemy.models.base import FullAuthBase
 
+class RoleMixin:
+    """Role table. Combine with your DeclarativeBase:
 
-class RoleModel(FullAuthBase):
+    class Role(RoleMixin, Base):
+        pass
+    """
+
     __tablename__ = "fullauth_roles"
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid7)
     name: Mapped[str] = mapped_column(unique=True, nullable=False)
 
 
-class UserRoleModel(FullAuthBase):
+class UserRoleMixin:
+    """User-role association. Combine with your DeclarativeBase:
+
+    class UserRole(UserRoleMixin, Base):
+        pass
+    """
+
     __tablename__ = "fullauth_user_roles"
 
     user_id: Mapped[UUID] = mapped_column(

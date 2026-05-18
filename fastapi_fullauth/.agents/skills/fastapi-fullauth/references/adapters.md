@@ -27,15 +27,27 @@ class MyAdapter(AbstractUserAdapter):
 
 ## Built-in: SQLModelAdapter
 
+Every table you use is a concrete class you define from the matching mixin:
+
 ```python
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
-from fastapi_fullauth.adapters.sqlmodel import SQLModelAdapter
-from fastapi_fullauth.adapters.sqlmodel.models.base import UserBase
-from sqlmodel import Field
+from sqlmodel import Field, Relationship
+from fastapi_fullauth.adapters import SQLModelAdapter
+from fastapi_fullauth.models.sqlmodel import (
+    RefreshTokenMixin, RoleMixin, UserMixin, UserRoleMixin,
+)
 
-class User(UserBase, table=True):
-    __tablename__ = "users"
+
+class RefreshToken(RefreshTokenMixin, table=True): pass
+class Role(RoleMixin, table=True): pass
+class UserRole(UserRoleMixin, table=True): pass
+
+
+class User(UserMixin, table=True):
     display_name: str | None = Field(default=None)
+    roles: list[Role] = Relationship(link_model=UserRole)
+    refresh_tokens: list[RefreshToken] = Relationship()
+
 
 engine = create_async_engine("postgresql+asyncpg://...")
 session_maker = async_sessionmaker(engine, expire_on_commit=False)
@@ -43,6 +55,12 @@ session_maker = async_sessionmaker(engine, expire_on_commit=False)
 adapter = SQLModelAdapter(
     session_maker=session_maker,
     user_model=User,
+    refresh_token_model=RefreshToken,
+    role_model=Role,                 # required if you use roles
+    user_role_model=UserRole,        # required if you use roles
+    # permission_model / role_permission_model — required for permissions
+    # oauth_account_model — required for OAuth
+    # passkey_model — required for passkeys
     user_schema=MyUser,              # optional — defaults to UserSchema
     create_user_schema=MyCreateUser, # optional — defaults to CreateUserSchema
 )
@@ -52,18 +70,41 @@ Important: `expire_on_commit=False`. Without it, accessing attributes after comm
 
 ## Built-in: SQLAlchemyAdapter
 
-Same shape, different model base:
+Same shape, with your own `DeclarativeBase`:
 
 ```python
-from fastapi_fullauth.adapters.sqlalchemy import SQLAlchemyAdapter
-from fastapi_fullauth.adapters.sqlalchemy.models.base import UserBase
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from fastapi_fullauth.adapters import SQLAlchemyAdapter
+from fastapi_fullauth.models.sqlalchemy import (
+    RefreshTokenMixin, RoleMixin, UserMixin, UserRoleMixin,
+)
 
-class User(UserBase):
-    __tablename__ = "users"
-    # add columns via Mapped/mapped_column
+
+class Base(DeclarativeBase):
+    pass
+
+
+class RefreshToken(RefreshTokenMixin, Base): pass
+class Role(RoleMixin, Base): pass
+class UserRole(UserRoleMixin, Base): pass
+
+
+class User(UserMixin, Base):
+    display_name: Mapped[str] = mapped_column(default="")
+    roles: Mapped[list[Role]] = relationship(secondary="fullauth_user_roles", lazy="selectin")
+    refresh_tokens: Mapped[list[RefreshToken]] = relationship(lazy="noload")
+
+
+adapter = SQLAlchemyAdapter(
+    session_maker=session_maker,
+    user_model=User,
+    refresh_token_model=RefreshToken,
+    role_model=Role,
+    user_role_model=UserRole,
+)
 ```
 
-Both adapters share the same API. Pick whichever ORM you already use — if you have no preference, SQLModel is a bit more ergonomic for small apps.
+Both adapters share the same API. Pick whichever ORM you already use — if you have no preference, SQLModel is a bit more ergonomic for small apps. The "bring your own Base" pivot in v0.10.0 means both adapters now play cleanly when your app already has a `DeclarativeBase` for its own tables — one metadata registry, FK and relationship resolution Just Works.
 
 ## Writing a custom adapter
 
@@ -171,6 +212,7 @@ Don't expose raw ORM instances from the adapter. Convert to the `UserSchema` typ
 adapter = SQLModelAdapter(
     session_maker=session_maker,
     user_model=User,
+    refresh_token_model=RefreshToken,
     user_schema=MyUser,
     create_user_schema=MyCreateUser,
 )

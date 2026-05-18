@@ -13,31 +13,36 @@ If you're tempted to "just add X for convenience," first ask "does every app nee
 
 They're independent knobs. Turn on what you need, ignore the rest.
 
-## Models: lazy imports
+## Models: mixins + lazy imports
 
-`fastapi_fullauth.adapters.sqlmodel.models` is a package, not a module. Importing the package doesn't import any tables — submodule attribute access does.
-
-```python
-# This registers ONLY the user + refresh-token tables:
-from fastapi_fullauth.adapters.sqlmodel.models.base import UserBase
-
-# This additionally registers Role + UserRoleLink:
-from fastapi_fullauth.adapters.sqlmodel.models.role import Role, UserRoleLink  # noqa: F401
-
-# etc. for permission, oauth, passkey
-```
-
-The submodules (`role`, `permission`, `oauth`, `passkey`) aren't imported as a side-effect of touching the package. This is done via a lazy `__getattr__` in `models/__init__.py` — grabbing `models.Role` at runtime triggers the import, but the bare `from ...models.base import UserBase` doesn't.
-
-**Why it matters:** a table that's imported registers itself with `MetaData`. `alembic revision --autogenerate` picks it up. `create_all` creates it. Apps that don't need that table get a clean schema.
-
-## Routers: `exclude_routers` and adapter-driven auto-skip
+`fastapi_fullauth.models.{sqlalchemy,sqlmodel}` ships **mixins** — column-only classes with no `Base` parent and no `table=True`. They are inert until you combine them with `table=True` (SQLModel) or your own `DeclarativeBase` (SQLAlchemy). Only the features you subclass register tables with `MetaData`.
 
 ```python
-fullauth.init_app(app, exclude_routers=["admin", "oauth"])
+# Core only (users + refresh tokens):
+from fastapi_fullauth.models.sqlmodel import RefreshTokenMixin, UserMixin
+
+class RefreshToken(RefreshTokenMixin, table=True): pass
+class User(UserMixin, table=True): pass
+
+
+# Add roles — also registers fullauth_roles, fullauth_user_roles:
+from fastapi_fullauth.models.sqlmodel import RoleMixin, UserRoleMixin
+
+class Role(RoleMixin, table=True): pass
+class UserRole(UserRoleMixin, table=True): pass
 ```
 
-Valid names: `"auth"`, `"profile"`, `"verify"`, `"admin"`, `"oauth"`, `"passkey"`. Unknown names raise `ValueError` at init.
+The mixin sub-packages use lazy `__getattr__` so `from fastapi_fullauth.models.sqlmodel import RoleMixin` doesn't import the OAuth or passkey sub-modules. Only the mixin you name is loaded, so a minimal app's import graph stays minimal.
+
+**Why it matters:** a table you don't subclass isn't on `MetaData`. `alembic revision --autogenerate` doesn't see it. `create_all` doesn't create it. Apps that don't need that table get a clean schema.
+
+## Routers: `include_routers` and adapter-driven auto-skip
+
+```python
+fullauth.init_app(app, include_routers=["auth", "profile", "verify"])
+```
+
+`include_routers=None` (default) registers every available router. Valid names: `"auth"`, `"profile"`, `"verify"`, `"admin"`, `"oauth"`, `"passkey"`. Unknown names raise `ValueError` at init.
 
 On top of that, routers auto-skip when your adapter doesn't implement the matching mixin:
 
@@ -97,7 +102,7 @@ OAuth-only users are created with a random password they don't know and `has_usa
 - `change-password` rejects them (they can't supply the current password they don't have).
 - `set-password` accepts them (it's their first time setting one).
 
-`has_usable_password` is on `UserBase` and `UserSchema` by default. This is one opinionated inclusion — splitting it further would complicate every OAuth app. If you really don't want OAuth, setting the field is free and costs nothing.
+`has_usable_password` is on `UserMixin` and `UserSchema` by default. This is one opinionated inclusion — splitting it further would complicate every OAuth app. If you really don't want OAuth, setting the field is free and costs nothing.
 
 ## Why not a "config flag for everything"?
 

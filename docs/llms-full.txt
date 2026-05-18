@@ -101,7 +101,7 @@ Omit `config` in dev and a random secret key is generated (tokens won't survive 
 Exclude routers you don't need:
 
 ```python
-fullauth.init_app(app, exclude_routers=["admin"])
+fullauth.init_app(app, include_routers=["auth", "profile"])
 ```
 
 Or wire routers manually for full control:
@@ -112,7 +112,7 @@ fullauth.bind(app)  # required for dependencies to work
 
 app.include_router(fullauth.auth_router, prefix="/api/v1/auth")
 app.include_router(fullauth.profile_router, prefix="/api/v1/auth")
-fullauth.init_middleware(app)
+# middleware is opt-in — import what you need from fastapi_fullauth.middleware
 ```
 
 | Router | Routes |
@@ -124,7 +124,7 @@ fullauth.init_middleware(app)
 | `oauth_router` | OAuth provider routes (only if configured) |
 | `passkey_router` | Passkey register, authenticate, list, delete (only if enabled) |
 
-`fullauth.init_app(app)` includes all of them. Use `exclude_routers` or individual routers for granular control.
+`fullauth.init_app(app)` includes all of them. Pass `include_routers=["auth", "profile"]` (or use individual router properties) for granular control.
 
 ## Routes
 
@@ -159,29 +159,39 @@ Define your model and schemas — pass them explicitly to the adapter:
 from sqlmodel import Field, Relationship
 from fastapi_fullauth import FullAuth, FullAuthConfig, UserSchema, CreateUserSchema
 from fastapi_fullauth.adapters.sqlmodel import SQLModelAdapter
-from fastapi_fullauth.adapters.sqlmodel.models.base import UserBase, RefreshTokenRecord
-from fastapi_fullauth.adapters.sqlmodel.models.role import Role, UserRoleLink
+from fastapi_fullauth.models.sqlmodel import (
+    RefreshTokenMixin, RoleMixin, UserMixin, UserRoleMixin,
+)
 
-class User(UserBase, table=True):
-    __tablename__ = "fullauth_users"
 
+class RefreshToken(RefreshTokenMixin, table=True): pass
+class Role(RoleMixin, table=True): pass
+class UserRole(UserRoleMixin, table=True): pass
+
+
+class User(UserMixin, table=True):
     display_name: str = Field(default="", max_length=100)
     phone: str = Field(default="", max_length=20)
+    roles: list[Role] = Relationship(link_model=UserRole)
+    refresh_tokens: list[RefreshToken] = Relationship()
 
-    roles: list[Role] = Relationship(link_model=UserRoleLink)
-    refresh_tokens: list[RefreshTokenRecord] = Relationship()
 
 class MyUserSchema(UserSchema):
     display_name: str = ""
     phone: str = ""
 
+
 class MyCreateSchema(CreateUserSchema):
     display_name: str = ""
+
 
 fullauth = FullAuth(
     adapter=SQLModelAdapter(
         session_maker,
         user_model=User,
+        refresh_token_model=RefreshToken,
+        role_model=Role,
+        user_role_model=UserRole,
         user_schema=MyUserSchema,
         create_user_schema=MyCreateSchema,
     ),
@@ -286,8 +296,7 @@ fullauth = FullAuth(
         PASSWORD_HASH_ALGORITHM="bcrypt",
         BLACKLIST_BACKEND="redis",
         REDIS_URL="redis://localhost:6379/0",
-        AUTH_RATE_LIMIT_ENABLED=True,
-        TRUSTED_PROXY_HEADERS=["X-Forwarded-For"],
+        AUTH_TRUSTED_PROXY_HEADERS=["X-Forwarded-For"],
     ),
 )
 ```
@@ -333,25 +342,38 @@ This guide walks through setting up fastapi-fullauth from scratch.
 pip install fastapi-fullauth[sqlmodel]
 ```
 
-## 1. Define your user model
+## 1. Define your tables
+
+Each library table is a **mixin** you combine with `table=True` (SQLModel) or your own `DeclarativeBase` (SQLAlchemy). Only subclass the mixins for features you use.
 
 ```python
 # models.py
 from sqlmodel import Field, Relationship
-from fastapi_fullauth.adapters.sqlmodel.models.base import UserBase, RefreshTokenRecord
-from fastapi_fullauth.adapters.sqlmodel.models.role import Role, UserRoleLink
+from fastapi_fullauth.models.sqlmodel import (
+    RefreshTokenMixin, RoleMixin, UserMixin, UserRoleMixin,
+)
 
-class User(UserBase, table=True):
-    __tablename__ = "fullauth_users"
 
+class RefreshToken(RefreshTokenMixin, table=True):
+    pass
+
+
+class Role(RoleMixin, table=True):
+    pass
+
+
+class UserRole(UserRoleMixin, table=True):
+    pass
+
+
+class User(UserMixin, table=True):
     display_name: str = Field(default="", max_length=100)
     phone: str = Field(default="", max_length=20)
-
-    roles: list[Role] = Relationship(link_model=UserRoleLink)
-    refresh_tokens: list[RefreshTokenRecord] = Relationship()
+    roles: list[Role] = Relationship(link_model=UserRole)
+    refresh_tokens: list[RefreshToken] = Relationship()
 ```
 
-`UserBase` provides `id`, `email`, `hashed_password`, `is_active`, `is_verified`, `is_superuser`, and `created_at`. Add any extra fields you need.
+`UserMixin` provides `id`, `email`, `hashed_password`, `has_usable_password`, `is_active`, `is_verified`, `is_superuser`, and `created_at`. Add any extra fields you need.
 
 !!! note
     Define your own schemas extending `UserSchema` and `CreateUserSchema` to include custom fields like `display_name` and `phone`, then pass them to the adapter. See [Custom User Schemas](#custom-user-schemas) below or the [API Reference](api-reference.md).
@@ -375,10 +397,16 @@ from fastapi_fullauth import FullAuth, FullAuthConfig
 from fastapi_fullauth.adapters.sqlmodel import SQLModelAdapter
 
 from .config import session_maker
-from .models import User
+from .models import RefreshToken, Role, User, UserRole
 
 fullauth = FullAuth(
-    adapter=SQLModelAdapter(session_maker=session_maker, user_model=User),
+    adapter=SQLModelAdapter(
+        session_maker=session_maker,
+        user_model=User,
+        refresh_token_model=RefreshToken,
+        role_model=Role,
+        user_role_model=UserRole,
+    ),
     config=FullAuthConfig(
         SECRET_KEY="your-secret-key-at-least-32-bytes",
     ),
@@ -418,10 +446,10 @@ uvicorn main:app --reload
 
 ### Composable routers
 
-`init_app()` registers all routes. To exclude specific routers, use `exclude_routers`:
+`init_app()` registers every available router by default. Pass `include_routers` to opt in selectively:
 
 ```python
-fullauth.init_app(app, exclude_routers=["admin"])
+fullauth.init_app(app, include_routers=["auth", "profile"])
 ```
 
 For full manual control, wire routers and middleware yourself:
@@ -432,7 +460,7 @@ fullauth.bind(app)  # required for dependencies to work
 
 app.include_router(fullauth.auth_router, prefix="/api/v1/auth")
 app.include_router(fullauth.profile_router, prefix="/api/v1/auth")
-fullauth.init_middleware(app)
+# middleware is opt-in — import what you need from fastapi_fullauth.middleware
 ```
 
 | Router | Routes |
@@ -470,11 +498,11 @@ Response:
   "refresh_token": "eyJ...",
   "token_type": "bearer",
   "expires_in": 1800,
-  "user": null
+  "user": { "id": "…", "email": "user@example.com", "is_active": true, "is_verified": false, "is_superuser": false }
 }
 ```
 
-When `INCLUDE_USER_IN_LOGIN=True`, `user` contains the full user object instead of `null`.
+`user` contains the full user object on every successful login.
 
 **Get current user:**
 
@@ -599,7 +627,6 @@ Use a different file via `FullAuthConfig(_env_file=".env.production")` or by sub
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `LOGIN_FIELD` | `str` | `"email"` | Field used for login (`"email"`, `"username"`, etc.). |
-| `INCLUDE_USER_IN_LOGIN` | `bool` | `False` | Include user object in login/OAuth callback response. |
 | `LOCKOUT_ENABLED` | `bool` | `True` | Enable account lockout after failed login attempts. |
 | `LOCKOUT_BACKEND` | `"memory" \| "redis"` | `"memory"` | Lockout storage backend. Use `"redis"` for multi-worker deployments. |
 | `MAX_LOGIN_ATTEMPTS` | `int` | `5` | Failed attempts before account lockout. |
@@ -609,7 +636,6 @@ Use a different file via `FullAuthConfig(_env_file=".env.production")` or by sub
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `RATE_LIMIT_ENABLED` | `bool` | `False` | Enable global rate limit middleware. |
 | `RATE_LIMIT_BACKEND` | `"memory" \| "redis"` | `"memory"` | Rate limiter storage backend. Use `"redis"` in production — `"memory"` is per-process. |
 | `TRUSTED_PROXY_HEADERS` | `list[str]` | `[]` | Headers to read real client IP from (e.g. `["X-Forwarded-For"]`). |
 | `AUTH_RATE_LIMIT_ENABLED` | `bool` | `True` | Enable per-route auth rate limits. |
@@ -635,8 +661,6 @@ Use a different file via `FullAuthConfig(_env_file=".env.production")` or by sub
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `INJECT_SECURITY_HEADERS` | `bool` | `True` | Auto-add security headers middleware. |
-| `CSRF_ENABLED` | `bool` | `False` | Auto-add CSRF middleware. |
 | `CSRF_SECRET` | `str \| None` | `None` | CSRF signing secret. Falls back to `SECRET_KEY`. |
 
 ### Cookies
@@ -773,32 +797,42 @@ pip install fastapi-fullauth[sqlmodel]
 
 ## Setup
 
-### 1. Define your user model
+### 1. Define your tables
 
 ```python
 from sqlmodel import Field, Relationship
-from fastapi_fullauth.adapters.sqlmodel.models.base import UserBase, RefreshTokenRecord
-from fastapi_fullauth.adapters.sqlmodel.models.role import Role, UserRoleLink
+from fastapi_fullauth.models.sqlmodel import (
+    RefreshTokenMixin, RoleMixin, UserMixin, UserRoleMixin,
+)
 
-class User(UserBase, table=True):
-    __tablename__ = "fullauth_users"
 
-    # add your custom fields
+class RefreshToken(RefreshTokenMixin, table=True):
+    pass
+
+
+class Role(RoleMixin, table=True):
+    pass
+
+
+class UserRole(UserRoleMixin, table=True):
+    pass
+
+
+class User(UserMixin, table=True):
     display_name: str = Field(default="", max_length=100)
     phone: str = Field(default="", max_length=20)
-
-    # required relationships
-    roles: list[Role] = Relationship(link_model=UserRoleLink)
-    refresh_tokens: list[RefreshTokenRecord] = Relationship()
+    roles: list[Role] = Relationship(link_model=UserRole)
+    refresh_tokens: list[RefreshToken] = Relationship()
 ```
 
-`UserBase` provides these fields:
+`UserMixin` provides these fields:
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `id` | `UUID` (UUID7) | Primary key, auto-generated |
 | `email` | `str` | Unique, indexed |
 | `hashed_password` | `str` | Password hash |
+| `has_usable_password` | `bool` | False for OAuth-only users |
 | `is_active` | `bool` | Account active flag |
 | `is_verified` | `bool` | Email verified flag |
 | `is_superuser` | `bool` | Superuser flag |
@@ -912,28 +946,46 @@ pip install fastapi-fullauth[sqlalchemy]
 
 ## Setup
 
-### 1. Define your user model
+### 1. Define your tables
+
+Each library table is a **mixin** you combine with your own `DeclarativeBase`. Only subclass the mixins for features you use.
 
 ```python
-from sqlalchemy import Boolean, Column, DateTime, String, Table, ForeignKey
+from sqlalchemy import String
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
-from fastapi_fullauth.adapters.sqlalchemy.models.base import FullAuthBase, UserBase
-from fastapi_fullauth.adapters.sqlalchemy.models.role import RoleModel
 
-class User(UserBase):
-    __tablename__ = "fullauth_users"
+from fastapi_fullauth.models.sqlalchemy import (
+    RefreshTokenMixin, RoleMixin, UserMixin, UserRoleMixin,
+)
 
-    # add your custom fields
+
+class Base(DeclarativeBase):
+    pass
+
+
+class RefreshToken(RefreshTokenMixin, Base):
+    pass
+
+
+class Role(RoleMixin, Base):
+    pass
+
+
+class UserRole(UserRoleMixin, Base):
+    pass
+
+
+class User(UserMixin, Base):
     display_name: Mapped[str] = mapped_column(String(100), default="")
     phone: Mapped[str] = mapped_column(String(20), default="")
 
-    # required relationships
-    roles: Mapped[list[RoleModel]] = relationship(
+    roles: Mapped[list[Role]] = relationship(
         secondary="fullauth_user_roles", lazy="selectin",
     )
+    refresh_tokens: Mapped[list[RefreshToken]] = relationship(lazy="noload")
 ```
 
-`UserBase` provides the same core fields as the SQLModel version: `id`, `email`, `hashed_password`, `is_active`, `is_verified`, `is_superuser`, `created_at`.
+`UserMixin` provides `id`, `email`, `hashed_password`, `has_usable_password`, `is_active`, `is_verified`, `is_superuser`, `created_at`.
 
 ### 2. Create the adapter
 
@@ -944,7 +996,13 @@ from fastapi_fullauth.adapters.sqlalchemy import SQLAlchemyAdapter
 engine = create_async_engine("sqlite+aiosqlite:///app.db")
 session_maker = async_sessionmaker(engine, expire_on_commit=False)
 
-adapter = SQLAlchemyAdapter(session_maker=session_maker, user_model=User)
+adapter = SQLAlchemyAdapter(
+    session_maker=session_maker,
+    user_model=User,
+    refresh_token_model=RefreshToken,
+    role_model=Role,
+    user_role_model=UserRole,
+)
 ```
 
 ### 3. Wire into FullAuth
@@ -966,7 +1024,7 @@ Use your existing Alembic setup or create tables directly:
 
 ```python
 async with engine.begin() as conn:
-    await conn.run_sync(FullAuthBase.metadata.create_all)
+    await conn.run_sync(Base.metadata.create_all)
 ```
 
 ## Custom schemas
@@ -985,6 +1043,7 @@ class MyCreateSchema(CreateUserSchema):
 adapter = SQLAlchemyAdapter(
     session_maker=session_maker,
     user_model=User,
+    refresh_token_model=RefreshToken,
     user_schema=MyUserSchema,
     create_user_schema=MyCreateSchema,
 )
@@ -1435,18 +1494,23 @@ This means claims stay fresh on each refresh. If a user's plan changes, the next
 
 # Middleware
 
-fastapi-fullauth includes three middleware components. By default, `init_app()` auto-wires them based on config flags. Pass `auto_middleware=False` to manage them yourself, or use `init_middleware()` when wiring routers manually:
+fastapi-fullauth ships three middleware classes. None of them are wired automatically — `init_app()` only mounts routers. Import what you want and add it yourself:
 
 ```python
-fullauth.init_app(app, auto_middleware=False)
+from fastapi_fullauth.middleware import (
+    SecurityHeadersMiddleware,
+    CSRFMiddleware,
+    RateLimitMiddleware,
+)
 
-# or, when using composable routers:
-fullauth.init_middleware(app)
+app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(CSRFMiddleware, secret=fullauth.config.CSRF_SECRET or fullauth.config.SECRET_KEY)
+fullauth.init_app(app)
 ```
 
 ## Security Headers
 
-Enabled by default (`INJECT_SECURITY_HEADERS=True`). Adds standard security headers to every response:
+Adds standard security headers to every response:
 
 | Header | Value |
 |--------|-------|
@@ -1475,7 +1539,7 @@ app.add_middleware(
 
 ## CSRF Protection
 
-Disabled by default (`CSRF_ENABLED=False`). Enable it for cookie-based auth where the frontend and backend share a domain:
+Useful for cookie-based auth where the frontend and backend share a domain. Wire it manually — `secret` must be ≥ 32 chars:
 
 ```python
 from fastapi_fullauth import FullAuth, FullAuthConfig
@@ -1483,9 +1547,7 @@ from fastapi_fullauth import FullAuth, FullAuthConfig
 fullauth = FullAuth(
     adapter=adapter,
     config=FullAuthConfig(
-        SECRET_KEY="...",
-        CSRF_ENABLED=True,
-        CSRF_SECRET="optional-separate-secret",  # falls back to SECRET_KEY
+        SECRET_KEY="...",        CSRF_SECRET="optional-separate-secret",  # falls back to SECRET_KEY
     ),
 )
 ```
@@ -1593,8 +1655,7 @@ fullauth = FullAuth(
     adapter=adapter,
     config=FullAuthConfig(
         SECRET_KEY="...",
-        RATE_LIMIT_ENABLED=True,
-    ),
+        ),
 )
 fullauth.init_app(app)  # middleware is auto-added
 ```
@@ -1641,7 +1702,6 @@ fullauth = FullAuth(
     adapter=adapter,
     config=FullAuthConfig(
         SECRET_KEY="...",
-        RATE_LIMIT_ENABLED=True,
         RATE_LIMIT_BACKEND="redis",
         REDIS_URL="redis://localhost:6379/0",
     ),
@@ -1678,7 +1738,7 @@ If you need more control, disable auto-middleware and add it yourself:
 ```python
 from fastapi_fullauth.protection.ratelimit import RateLimitMiddleware, RateLimiter
 
-fullauth.init_app(app, auto_middleware=False)
+fullauth.init_app(app)
 
 app.add_middleware(
     RateLimitMiddleware,
@@ -1872,13 +1932,11 @@ Default scopes: `read:user`, `user:email`
 
 # Database Migrations
 
-# Database Migrations
-
-fastapi-fullauth provides Alembic integration helpers for managing database schema migrations.
+The library doesn't own your metadata registry. Your `models/` package owns every concrete table you subclass from a `*Mixin`, and your own `Base.metadata` (SQLAlchemy) or `SQLModel.metadata` is the single source of truth for Alembic.
 
 ## Quick start (without Alembic)
 
-For development or simple projects, create tables directly:
+For development or simple projects, create tables directly off your own Base:
 
 === "SQLModel"
 
@@ -1892,10 +1950,10 @@ For development or simple projects, create tables directly:
 === "SQLAlchemy"
 
     ```python
-    from fastapi_fullauth.adapters.sqlalchemy.models.base import FullAuthBase
+    from app.core.db import Base   # your DeclarativeBase
 
     async with engine.begin() as conn:
-        await conn.run_sync(FullAuthBase.metadata.create_all)
+        await conn.run_sync(Base.metadata.create_all)
     ```
 
 ## Alembic integration
@@ -1910,31 +1968,15 @@ alembic init alembic
 
 ### 2. Update env.py
 
-Import fullauth models so Alembic detects them during autogenerate:
+Import your `models` package so every concrete table you defined registers, then point Alembic at the metadata.
 
-=== "All tables"
+=== "SQLModel"
 
     ```python
     # alembic/env.py
-    from fastapi_fullauth.migrations import include_fullauth_models
+    import app.models  # noqa: F401 — registers all your concrete tables
     from sqlmodel import SQLModel
 
-    include_fullauth_models("sqlmodel")
-
-    from your_app.models import User  # noqa: F401
-    target_metadata = SQLModel.metadata
-    ```
-
-=== "Selective tables"
-
-    ```python
-    # alembic/env.py — only core + roles, no permissions/oauth
-    from fastapi_fullauth.migrations import include_fullauth_models
-    from sqlmodel import SQLModel
-
-    include_fullauth_models("sqlmodel", include=["base", "role"])
-
-    from your_app.models import User  # noqa: F401
     target_metadata = SQLModel.metadata
     ```
 
@@ -1942,10 +1984,9 @@ Import fullauth models so Alembic detects them during autogenerate:
 
     ```python
     # alembic/env.py
-    from fastapi_fullauth.migrations import include_fullauth_models
-    from your_app.models import Base  # your declarative base
+    import app.models  # noqa: F401
+    from app.core.db import Base
 
-    include_fullauth_models("sqlalchemy")
     target_metadata = Base.metadata
     ```
 
@@ -1956,42 +1997,19 @@ alembic revision --autogenerate -m "add fullauth tables"
 alembic upgrade head
 ```
 
-## Model groups
+## Opt-in tables
 
-Models are split into groups. Import only what you need:
+Each library table is a mixin that registers only when you subclass it. Subclass only the features you use:
 
-| Group | Tables | When to include |
-|-------|--------|-----------------|
-| `base` | `fullauth_users`, `fullauth_refresh_tokens` | Always (core auth) |
-| `role` | `fullauth_roles`, `fullauth_user_roles` | When using roles |
-| `permission` | `fullauth_permissions`, `fullauth_role_permissions` | When using RBAC permissions |
-| `oauth` | `fullauth_oauth_accounts` | When using OAuth providers |
-| `passkey` | `fullauth_passkeys` | When using passkey/WebAuthn authentication |
+| Feature | Tables | Mixins to subclass |
+|---------|--------|--------------------|
+| Core | `fullauth_users`, `fullauth_refresh_tokens` | `UserMixin`, `RefreshTokenMixin` |
+| Roles | `fullauth_roles`, `fullauth_user_roles` | `RoleMixin`, `UserRoleMixin` |
+| Permissions | `fullauth_permissions`, `fullauth_role_permissions` | `PermissionMixin`, `RolePermissionMixin` |
+| OAuth | `fullauth_oauth_accounts` | `OAuthAccountMixin` |
+| Passkeys | `fullauth_passkeys` | `PasskeyMixin` |
 
-## Helper functions
-
-### `include_fullauth_models(adapter, include=None)`
-
-Imports fullauth model classes so Alembic's autogenerate detects them. Call this in `env.py` before setting `target_metadata`.
-
-```python
-from fastapi_fullauth.migrations import include_fullauth_models
-
-# all tables
-include_fullauth_models("sqlmodel")
-
-# selective — only core + roles
-include_fullauth_models("sqlmodel", include=["base", "role"])
-```
-
-### `get_fullauth_metadata(adapter)`
-
-Returns the SQLAlchemy `MetaData` object containing fullauth table definitions. Useful if you need to merge metadata from multiple sources.
-
-```python
-from fastapi_fullauth.migrations import get_fullauth_metadata
-metadata = get_fullauth_metadata("sqlalchemy")
-```
+When you turn on a new feature later, add the concrete class, re-run autogenerate, and you get a clean `CREATE TABLE` migration for just that table.
 
 ---
 
@@ -2022,9 +2040,8 @@ fullauth = FullAuth(
 
 | Method | Description |
 |--------|-------------|
-| `init_app(app, *, auto_middleware=True, exclude_routers=None)` | Mount routes and middleware on a FastAPI app. Pass `exclude_routers=["admin"]` to skip specific routers. |
+| `init_app(app, *, include_routers=None)` | Bind FullAuth and mount routers. `include_routers=None` mounts every available router; pass a list (e.g. `["auth", "profile"]`) to opt in selectively. Middleware is not wired automatically. |
 | `bind(app)` | Bind FullAuth to a FastAPI app (sets `app.state.fullauth`). Required when using composable routers without `init_app()`. |
-| `init_middleware(app)` | Wire up middleware from config. Also calls `bind()` if not already done. |
 | `hooks.on(event, callback)` | Register an event hook |
 
 ### Properties

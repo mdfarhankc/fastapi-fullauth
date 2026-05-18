@@ -49,7 +49,12 @@ async def reset_password(
     if password_validator:
         password_validator.validate(new_password)
 
-    user = await adapter.get_user_by_id(UUID(payload.sub))
+    try:
+        user_id = UUID(payload.sub)
+    except ValueError:
+        raise TokenError("Invalid password reset token")
+
+    user = await adapter.get_user_by_id(user_id)
     if user is None:
         logger.error("Password reset failed — user not found: %s", payload.sub)
         raise UserNotFoundError("User not found")

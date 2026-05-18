@@ -39,7 +39,12 @@ async def verify_email(
         logger.warning("Invalid email verification token (wrong purpose)")
         raise TokenError("Invalid email verification token")
 
-    user = await adapter.get_user_by_id(UUID(payload.sub))
+    try:
+        user_id = UUID(payload.sub)
+    except ValueError:
+        raise TokenError("Invalid email verification token")
+
+    user = await adapter.get_user_by_id(user_id)
     if user is None:
         logger.error("Email verification failed — user not found: %s", payload.sub)
         raise UserNotFoundError("User not found")

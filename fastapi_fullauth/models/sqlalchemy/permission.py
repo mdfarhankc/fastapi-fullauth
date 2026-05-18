@@ -4,10 +4,14 @@ from sqlalchemy import ForeignKey, String, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 from uuid_utils import uuid7
 
-from fastapi_fullauth.adapters.sqlalchemy.models.base import FullAuthBase
 
+class PermissionMixin:
+    """Permission table. Combine with your DeclarativeBase:
 
-class PermissionModel(FullAuthBase):
+    class Permission(PermissionMixin, Base):
+        pass
+    """
+
     __tablename__ = "fullauth_permissions"
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid7)
@@ -15,7 +19,13 @@ class PermissionModel(FullAuthBase):
     description: Mapped[str] = mapped_column(String(500), default="")
 
 
-class RolePermissionModel(FullAuthBase):
+class RolePermissionMixin:
+    """Role-permission association. Combine with your DeclarativeBase:
+
+    class RolePermission(RolePermissionMixin, Base):
+        pass
+    """
+
     __tablename__ = "fullauth_role_permissions"
 
     role_id: Mapped[UUID] = mapped_column(

@@ -1,7 +1,6 @@
 from fastapi import HTTPException, status
 
 __all__ = [
-    "ACCOUNT_LOCKED_EXCEPTION",
     "CREDENTIALS_EXCEPTION",
     "FORBIDDEN_EXCEPTION",
     "OAUTH_ERROR_EXCEPTION",
@@ -105,11 +104,6 @@ FORBIDDEN_EXCEPTION = HTTPException(
 USER_EXISTS_EXCEPTION = HTTPException(
     status_code=status.HTTP_409_CONFLICT,
     detail="A user with this email already exists",
-)
-
-ACCOUNT_LOCKED_EXCEPTION = HTTPException(
-    status_code=status.HTTP_423_LOCKED,
-    detail="Account is temporarily locked due to too many failed login attempts",
 )
 
 OAUTH_ERROR_EXCEPTION = HTTPException(

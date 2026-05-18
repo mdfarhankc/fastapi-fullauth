@@ -2,10 +2,10 @@
 
 fastapi-fullauth provides two levels of rate limiting:
 
-1. **Auth rate limits** — per-route limits on login, register, and password reset (enabled by default)
-2. **Global rate limit middleware** — limits all requests per IP (disabled by default)
+1. **Auth rate limits** — per-route limits on login, register, password reset, passkey-authenticate, and refresh. Baked into the routers, enabled by default via `AUTH_RATE_LIMIT_ENABLED=True`.
+2. **`RateLimitMiddleware`** — a generic per-IP request limiter. **Not wired automatically** — add it yourself with `app.add_middleware(...)`.
 
-Both support in-memory and Redis backends.
+Both layers share the same backend (`RATE_LIMIT_BACKEND`: `memory` or `redis`).
 
 ## Auth rate limits
 
@@ -15,7 +15,9 @@ Enabled by default. Protects auth endpoints from brute force:
 |-------|--------------|--------|
 | Login | 5 per minute | `AUTH_RATE_LIMIT_LOGIN` |
 | Register | 3 per minute | `AUTH_RATE_LIMIT_REGISTER` |
-| Password reset | 3 per minute | `AUTH_RATE_LIMIT_PASSWORD_RESET` |
+| Password reset / email verify | 3 per minute | `AUTH_RATE_LIMIT_PASSWORD_RESET` |
+| Passkey authenticate | 10 per minute | `AUTH_RATE_LIMIT_PASSKEY_AUTH` |
+| Refresh | 30 per minute | `AUTH_RATE_LIMIT_REFRESH` |
 
 ```python
 from fastapi_fullauth import FullAuth, FullAuthConfig
@@ -34,33 +36,31 @@ fullauth = FullAuth(
 Disable entirely:
 
 ```python
-fullauth = FullAuth(
-    adapter=adapter,
-    config=FullAuthConfig(
-        SECRET_KEY="...",
-        AUTH_RATE_LIMIT_ENABLED=False,
-    ),
+config = FullAuthConfig(
+    SECRET_KEY="...",
+    AUTH_RATE_LIMIT_ENABLED=False,
 )
 ```
 
 ## Global rate limit middleware
 
-Limits all requests per client IP. Disabled by default:
+`RateLimitMiddleware` limits every request to the app per client IP. Useful when you don't already have a CDN/WAF in front of the service.
 
 ```python
-fullauth = FullAuth(
-    adapter=adapter,
-    config=FullAuthConfig(
-        SECRET_KEY="...",
-        RATE_LIMIT_ENABLED=True,
-    ),
+from fastapi_fullauth.middleware import RateLimitMiddleware
+
+app.add_middleware(
+    RateLimitMiddleware,
+    max_requests=60,
+    window_seconds=60,
+    trusted_proxy_headers=fullauth.config.TRUSTED_PROXY_HEADERS,
+    exempt_paths=["/health", "/metrics"],
 )
-fullauth.init_app(app)  # middleware is auto-added
 ```
 
 Default: 60 requests per 60 seconds per IP.
 
-Response headers are included on every response:
+Every response includes:
 
 ```
 X-RateLimit-Limit: 60
@@ -70,17 +70,32 @@ X-RateLimit-Reset: 45
 
 When the limit is exceeded, a `429 Too Many Requests` response is returned.
 
+### Redis-backed global limit
+
+Build the limiter with `create_rate_limiter()` so it uses the same backend as the rest of the library:
+
+```python
+from fastapi_fullauth.middleware import RateLimitMiddleware
+from fastapi_fullauth.protection import create_rate_limiter
+
+limiter = create_rate_limiter(fullauth.config, max_requests=60, window_seconds=60)
+app.add_middleware(
+    RateLimitMiddleware,
+    limiter=limiter,
+    trusted_proxy_headers=fullauth.config.TRUSTED_PROXY_HEADERS,
+)
+```
+
+Set `RATE_LIMIT_BACKEND="redis"` and `REDIS_URL=...` on the config to switch to Redis. The in-memory backend is per-process — fine for a single worker, broken on multi-worker / multi-pod.
+
 ## Proxy support
 
 Behind a reverse proxy (Nginx, Cloudflare, AWS ALB), `request.client.host` is the proxy's IP, not the real user's. Configure trusted proxy headers so rate limiting works correctly:
 
 ```python
-fullauth = FullAuth(
-    adapter=adapter,
-    config=FullAuthConfig(
-        SECRET_KEY="...",
-        TRUSTED_PROXY_HEADERS=["X-Forwarded-For"],
-    ),
+config = FullAuthConfig(
+    SECRET_KEY="...",
+    TRUSTED_PROXY_HEADERS=["X-Forwarded-For"],
 )
 ```
 
@@ -89,25 +104,7 @@ fullauth = FullAuth(
 
 When `X-Forwarded-For` contains a chain (e.g. `1.2.3.4, 10.0.0.1`), the first IP (original client) is used.
 
-This setting applies to both auth rate limits and the global rate limit middleware.
-
-## Redis backend
-
-For multi-process or multi-server deployments, use the Redis backend:
-
-```python
-fullauth = FullAuth(
-    adapter=adapter,
-    config=FullAuthConfig(
-        SECRET_KEY="...",
-        RATE_LIMIT_ENABLED=True,
-        RATE_LIMIT_BACKEND="redis",
-        REDIS_URL="redis://localhost:6379/0",
-    ),
-)
-```
-
-The in-memory backend is per-process. Redis shares state across all workers/servers.
+This setting applies to both auth rate limits and any `RateLimitMiddleware` you wire up.
 
 ## Custom backends
 
@@ -131,21 +128,3 @@ register_lockout_backend("database", DatabaseLockoutManager)
 ```
 
 The same pattern works for rate limiters with `register_rate_limiter_backend()`.
-
-## Manual middleware setup
-
-If you need more control, disable auto-middleware and add it yourself:
-
-```python
-from fastapi_fullauth.protection.ratelimit import RateLimitMiddleware, RateLimiter
-
-fullauth.init_app(app, auto_middleware=False)
-
-app.add_middleware(
-    RateLimitMiddleware,
-    max_requests=100,
-    window_seconds=60,
-    exempt_paths=["/health", "/metrics"],
-    trusted_proxy_headers=["X-Forwarded-For"],
-)
-```

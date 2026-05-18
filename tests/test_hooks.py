@@ -8,8 +8,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlmodel import SQLModel
 
 from fastapi_fullauth import FullAuth, FullAuthConfig
-from fastapi_fullauth.adapters.sqlmodel import SQLModelAdapter
-from tests.conftest import User
+from tests.conftest import make_test_adapter
 
 
 async def _make_db():
@@ -33,7 +32,7 @@ def hook_log():
 @pytest.fixture
 async def hooks_app(hook_log):
     engine, session_maker = await _make_db()
-    adapter = SQLModelAdapter(session_maker=session_maker, user_model=User)
+    adapter = make_test_adapter(session_maker)
     config = FullAuthConfig(SECRET_KEY="test-secret-key-that-is-long-enough-32b")
     fullauth = FullAuth(config=config, adapter=adapter)
 
@@ -51,7 +50,7 @@ async def hooks_app(hook_log):
     fullauth.hooks.on("after_logout", on_logout)
 
     app = FastAPI()
-    fullauth.init_app(app, auto_middleware=False)
+    fullauth.init_app(app)
     yield app
     await engine.dispose()
 
@@ -113,12 +112,12 @@ async def test_password_reset_email_callback():
         sent.append({"email": email, "token": token})
 
     engine, session_maker = await _make_db()
-    adapter = SQLModelAdapter(session_maker=session_maker, user_model=User)
+    adapter = make_test_adapter(session_maker)
     config = FullAuthConfig(SECRET_KEY="test-secret-key-that-is-long-enough-32b")
     fullauth = FullAuth(config=config, adapter=adapter)
     fullauth.hooks.on("send_password_reset_email", on_reset_email)
     app = FastAPI()
-    fullauth.init_app(app, auto_middleware=False)
+    fullauth.init_app(app)
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -155,18 +154,17 @@ async def test_email_callback_via_hooks():
         sent.append({"email": email, "token": token})
 
     engine, session_maker = await _make_db()
-    adapter = SQLModelAdapter(session_maker=session_maker, user_model=User)
+    adapter = make_test_adapter(session_maker)
     fullauth = FullAuth(
         config=FullAuthConfig(
             SECRET_KEY="test-key-32b-long-enough-here!!!",
-            INJECT_SECURITY_HEADERS=False,
         ),
         adapter=adapter,
     )
     fullauth.hooks.on("send_password_reset_email", on_reset)
 
     app = FastAPI()
-    fullauth.init_app(app, auto_middleware=False)
+    fullauth.init_app(app)
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:

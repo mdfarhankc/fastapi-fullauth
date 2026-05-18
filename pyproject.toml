@@ -107,8 +107,8 @@ warn_unused_configs = true
 # stays strict.
 [[tool.mypy.overrides]]
 module = [
-    "fastapi_fullauth.adapters.sqlmodel.adapter",
-    "fastapi_fullauth.adapters.sqlalchemy.adapter",
+    "fastapi_fullauth.adapters.sqlmodel",
+    "fastapi_fullauth.adapters.sqlalchemy",
 ]
 disable_error_code = [
     "arg-type",
@@ -116,6 +116,7 @@ disable_error_code = [
     "assignment",
     "call-arg",
     "call-overload",
+    "misc",
     "no-any-return",
     "no-untyped-call",
     "no-untyped-def",

@@ -18,21 +18,30 @@ Async-first authentication library for FastAPI. Keyword-only public API, composa
 
 ```python
 from fastapi import FastAPI
+from sqlmodel import Relationship
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from fastapi_fullauth import FullAuth, FullAuthConfig
-from fastapi_fullauth.adapters.sqlmodel import SQLModelAdapter
-from fastapi_fullauth.adapters.sqlmodel.models.base import UserBase
+from fastapi_fullauth.adapters import SQLModelAdapter
+from fastapi_fullauth.models.sqlmodel import RefreshTokenMixin, UserMixin
 
-class User(UserBase, table=True):
-    __tablename__ = "users"
+
+class RefreshToken(RefreshTokenMixin, table=True): pass
+
+class User(UserMixin, table=True):
+    refresh_tokens: list[RefreshToken] = Relationship()
+
 
 engine = create_async_engine("postgresql+asyncpg://...")
 session_maker = async_sessionmaker(engine, expire_on_commit=False)
 
 fullauth = FullAuth(
     config=FullAuthConfig(),   # reads FULLAUTH_* env vars
-    adapter=SQLModelAdapter(session_maker=session_maker, user_model=User),
+    adapter=SQLModelAdapter(
+        session_maker=session_maker,
+        user_model=User,
+        refresh_token_model=RefreshToken,
+    ),
 )
 
 app = FastAPI()
@@ -43,11 +52,12 @@ That exposes `/api/v1/auth/{register,login,logout,refresh}`, `/api/v1/auth/me`, 
 
 ## Things to get right on day one
 
-1. **`FULLAUTH_SECRET_KEY` must be set in production.** If unset, the library auto-generates one and emits a `UserWarning`. That means tokens invalidate on every restart — fine for dev, broken for prod.
-2. **`init_app` / `init_middleware` are idempotent** since v0.8.0 — calling either twice warns and no-ops. Pick one wiring style and stick with it.
-3. **In-memory backends are single-process.** `BLACKLIST_BACKEND`, `LOCKOUT_BACKEND`, `RATE_LIMIT_BACKEND`, `PASSKEY_CHALLENGE_BACKEND` all default to `"memory"` — the library emits a startup `UserWarning` listing which ones you're using. Switch to `"redis"` before `uvicorn --workers N` or you get revoked-tokens-that-still-work, halved rate limits, and broken passkey begin/complete pairs.
-4. **Routers are opt-in.** `init_app(app, exclude_routers=["admin", "oauth"])` drops what you don't need. Admin/OAuth/passkey routers **auto-skip** when your adapter doesn't implement the matching mixin, so a minimal adapter doesn't accidentally expose routes it can't back.
-5. **Don't add `roles: list[str]` to your custom `UserSchema` unless you actually use roles.** The default schema is intentionally minimal — no forced columns, no forced routes.
+1. **Models are mixins.** Combine `*Mixin` classes from `fastapi_fullauth.models.{sqlalchemy,sqlmodel}` with your own `Base` / `table=True` to declare each table you use. There is no `FullAuthBase` and no concrete `*Model` classes any more — your tables live on your `Base.metadata`. Adapter constructors take each concrete model class as a keyword arg (`user_model=...`, `refresh_token_model=...`, plus `role_model`, `user_role_model`, `permission_model`, `role_permission_model`, `oauth_account_model`, `passkey_model` for the features you use). Calling a feature method without its model raises `RuntimeError`.
+2. **`FULLAUTH_SECRET_KEY` must be set in production.** If unset, the library auto-generates one and emits a `UserWarning`. That means tokens invalidate on every restart — fine for dev, broken for prod.
+3. **`init_app` is idempotent** since v0.8.0 — calling it twice warns and no-ops. Middleware is **not** wired by `init_app()` in v0.10.0+ — import what you want from `fastapi_fullauth.middleware` (`SecurityHeadersMiddleware`, `CSRFMiddleware`, `RateLimitMiddleware`) and `app.add_middleware(...)` it yourself.
+4. **In-memory backends are single-process.** `BLACKLIST_BACKEND`, `LOCKOUT_BACKEND`, `RATE_LIMIT_BACKEND`, `PASSKEY_CHALLENGE_BACKEND` all default to `"memory"` — the library emits a startup `UserWarning` listing which ones you're using. Switch to `"redis"` before `uvicorn --workers N` or you get revoked-tokens-that-still-work, halved rate limits, and broken passkey begin/complete pairs.
+5. **Routers are opt-in.** `init_app(app, include_routers=["auth", "profile"])` registers only those; `include_routers=None` (default) registers everything available. Admin/OAuth/passkey routers **auto-skip** when your adapter doesn't implement the matching mixin, so a minimal adapter doesn't accidentally expose routes it can't back.
+6. **Don't add `roles: list[str]` to your custom `UserSchema` unless you actually use roles.** The default schema is intentionally minimal — no forced columns, no forced routes.
 
 ## Composability matrix
 
@@ -69,7 +79,7 @@ Built-in `SQLAlchemyAdapter` and `SQLModelAdapter` inherit all mixins. A custom 
 - **`references/passkeys.md`** — WebAuthn setup, UV enforcement, discoverable credentials, sign-count CAS, challenge store.
 - **`references/rbac.md`** — roles + permissions mixins, `require_role` / `require_permission`, admin router, cold-start seeding.
 - **`references/hooks.md`** — `after_*` and `send_*` hook signatures, when each fires, gotchas.
-- **`references/migrations.md`** — Alembic `env.py` wiring, `include_fullauth_models` helper, v0.7 → v0.8 schema step.
+- **`references/migrations.md`** — Alembic `env.py` wiring with your own `Base.metadata`, v0.x → v0.10 mixin pivot step.
 - **`references/production.md`** — deployment checklist: `SECRET_KEY`, Redis backends, cookie flags, rate-limit trust boundary, observability.
 - **`references/testing.md`** — pytest fixture stack, mocking email hooks, minting tokens, exercising passkey / OAuth flows.
 - **`references/troubleshooting.md`** — common errors and warnings, what they mean, what to change.

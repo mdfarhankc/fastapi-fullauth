@@ -8,14 +8,28 @@ Passwordless authentication backed by a platform authenticator (Touch ID, Face I
 - **Adapter mixin:** `PasskeyAdapterMixin`
 - **Router:** `passkey`
 - **Extra:** `fastapi-fullauth[passkey]` (pulls in `webauthn>=2.0`)
-- **Tables:** `fullauth_passkeys` — registered only when `models/passkey.py` is imported
+- **Tables:** `fullauth_passkeys` — registered only when you subclass `PasskeyMixin`
 - **Challenge store:** `PASSKEY_CHALLENGE_BACKEND` (`memory` or `redis`)
 
 ## Setup
 
 ```python
-# models imports
-from fastapi_fullauth.adapters.sqlmodel.models.passkey import PasskeyRecord  # noqa: F401
+# models.py
+from fastapi_fullauth.models.sqlmodel import PasskeyMixin
+
+
+class Passkey(PasskeyMixin, table=True):
+    pass
+```
+
+```python
+# wire it on the adapter
+adapter = SQLModelAdapter(
+    session_maker=session_maker,
+    user_model=User,
+    refresh_token_model=RefreshToken,
+    passkey_model=Passkey,
+)
 ```
 
 ```bash

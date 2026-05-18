@@ -130,28 +130,34 @@ async def begin_authentication(
     challenge_store: ChallengeStore,
     adapter: PasskeyAdapterMixin | None = None,
     user_id: UserID | None = None,
+    email_provided: bool = False,
     challenge_ttl: int = 60,
 ) -> dict[str, Any]:
     """Generate WebAuthn authentication options.
 
-    If user_id is provided, sends allowCredentials for that user (non-discoverable).
-    If user_id is None, allows discoverable credentials (true passwordless).
+    If ``email_provided`` is True, ``allowCredentials`` is always a list (possibly
+    empty) so callers can't distinguish unknown emails from known ones with no
+    passkeys. Without an email, allows discoverable credentials (true passwordless).
     """
     from webauthn import generate_authentication_options, options_to_json
     from webauthn.helpers.structs import AuthenticatorTransport, PublicKeyCredentialDescriptor
 
-    allow_credentials = None
-    if user_id is not None and adapter is not None:
-        existing = await adapter.get_user_passkeys(user_id)
-        allow_credentials = [
-            PublicKeyCredentialDescriptor(
-                id=_b64_decode(pk.credential_id),
-                transports=(
-                    [AuthenticatorTransport(t) for t in pk.transports] if pk.transports else None
-                ),
-            )
-            for pk in existing
-        ]
+    allow_credentials: list[PublicKeyCredentialDescriptor] | None = None
+    if email_provided:
+        allow_credentials = []
+        if user_id is not None and adapter is not None:
+            existing = await adapter.get_user_passkeys(user_id)
+            allow_credentials = [
+                PublicKeyCredentialDescriptor(
+                    id=_b64_decode(pk.credential_id),
+                    transports=(
+                        [AuthenticatorTransport(t) for t in pk.transports]
+                        if pk.transports
+                        else None
+                    ),
+                )
+                for pk in existing
+            ]
 
     options = generate_authentication_options(
         rp_id=rp_id,

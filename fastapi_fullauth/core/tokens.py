@@ -1,5 +1,4 @@
 import logging
-import time
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -7,42 +6,21 @@ from typing import Any
 import jwt
 
 from fastapi_fullauth.config import FullAuthConfig
+from fastapi_fullauth.core.blacklist import (
+    InMemoryTokenBlacklist,
+    RedisTokenBlacklist,
+    TokenBlacklist,
+)
 from fastapi_fullauth.exceptions import TokenBlacklistedError, TokenError, TokenExpiredError
 from fastapi_fullauth.types import RefreshTokenMeta, TokenPayload
 
 logger = logging.getLogger("fastapi_fullauth.tokens")
 
 
-class TokenBlacklist:
-    async def add(self, jti: str, ttl_seconds: int | None = None) -> None:
-        raise NotImplementedError
-
-    async def is_blacklisted(self, jti: str) -> bool:
-        raise NotImplementedError
-
-
-class InMemoryBlacklist(TokenBlacklist):
-    def __init__(self) -> None:
-        self._blacklisted: dict[str, float | None] = {}
-
-    async def add(self, jti: str, ttl_seconds: int | None = None) -> None:
-        expires_at = (time.monotonic() + ttl_seconds) if ttl_seconds else None
-        self._blacklisted[jti] = expires_at
-
-    async def is_blacklisted(self, jti: str) -> bool:
-        expires_at = self._blacklisted.get(jti)
-        if expires_at is None and jti not in self._blacklisted:
-            return False
-        if expires_at is not None and time.monotonic() > expires_at:
-            del self._blacklisted[jti]
-            return False
-        return True
-
-
 class TokenEngine:
     def __init__(self, config: FullAuthConfig, blacklist: TokenBlacklist | None = None) -> None:
         self.config = config
-        self.blacklist = blacklist or InMemoryBlacklist()
+        self.blacklist = blacklist or InMemoryTokenBlacklist()
 
     def create_access_token(
         self,
@@ -143,10 +121,8 @@ def create_blacklist(config: FullAuthConfig) -> TokenBlacklist:
     if config.BLACKLIST_BACKEND == "redis":
         if not config.REDIS_URL:
             raise ValueError("REDIS_URL must be set when BLACKLIST_BACKEND='redis'")
-        from fastapi_fullauth.core.redis_blacklist import RedisBlacklist
-
-        return RedisBlacklist(
+        return RedisTokenBlacklist(
             redis_url=config.REDIS_URL,
             default_ttl_seconds=config.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
         )
-    return InMemoryBlacklist()
+    return InMemoryTokenBlacklist()

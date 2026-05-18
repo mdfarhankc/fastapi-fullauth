@@ -9,7 +9,7 @@ from fastapi_fullauth.dependencies.current_user import (
     get_superuser_dependency,
     get_verified_user_dependency,
 )
-from fastapi_fullauth.dependencies.require_role import require_permission, require_role
+from fastapi_fullauth.dependencies.rbac import require_permission, require_role
 
 __all__ = [
     "CurrentUser",

@@ -2,26 +2,31 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Text, Uuid
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column
 from uuid_utils import uuid7
 
 
-class FullAuthBase(DeclarativeBase):
-    pass
+class UserMixin:
+    """Auth columns for the User table. Combine with your DeclarativeBase.
 
+    Example:
 
-class UserBase:
-    """Mixin with all auth columns. Subclass this + FullAuthBase to create your user table:
+        class Base(DeclarativeBase):
+            pass
 
-    class User(UserBase, FullAuthBase):
-        __tablename__ = "fullauth_users"
+        class User(UserMixin, Base):
+            display_name: Mapped[str] = mapped_column(String(100), default="")
+            roles: Mapped[list[Role]] = relationship(
+                secondary="fullauth_user_roles", lazy="selectin"
+            )
+            refresh_tokens: Mapped[list[RefreshToken]] = relationship(lazy="noload")
 
-        display_name: Mapped[str] = mapped_column(String(100), default="")
-        roles: Mapped[list[RoleModel]] = relationship(
-            secondary="fullauth_user_roles", lazy="selectin"
-        )
-        refresh_tokens: Mapped[list[RefreshTokenModel]] = relationship(lazy="noload")
+    Overriding ``__tablename__`` will break the ForeignKey references in the
+    other mixins (which point at ``fullauth_users.id``). Keep the default
+    unless you also override the referencing FKs.
     """
+
+    __tablename__ = "fullauth_users"
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid7)
     email: Mapped[str] = mapped_column(unique=True, index=True, nullable=False)
@@ -35,7 +40,13 @@ class UserBase:
     )
 
 
-class RefreshTokenModel(FullAuthBase):
+class RefreshTokenMixin:
+    """Refresh-token table. Combine with your DeclarativeBase:
+
+    class RefreshToken(RefreshTokenMixin, Base):
+        pass
+    """
+
     __tablename__ = "fullauth_refresh_tokens"
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid7)

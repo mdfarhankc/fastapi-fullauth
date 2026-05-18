@@ -1,14 +1,28 @@
 from sqlmodel import Field, Relationship
 
-from fastapi_fullauth.adapters.sqlmodel.models.base import RefreshTokenRecord, UserBase
-from fastapi_fullauth.adapters.sqlmodel.models.role import Role, UserRoleLink
+from fastapi_fullauth.models.sqlmodel import (
+    RefreshTokenMixin,
+    RoleMixin,
+    UserMixin,
+    UserRoleMixin,
+)
 
 
-class User(UserBase, table=True):
-    __tablename__ = "fullauth_users"
+class RefreshToken(RefreshTokenMixin, table=True):
+    pass
 
+
+class UserRole(UserRoleMixin, table=True):
+    pass
+
+
+class Role(RoleMixin, table=True):
+    pass
+
+
+class User(UserMixin, table=True):
     display_name: str = Field(default="", max_length=100)
     phone: str = Field(default="", max_length=20)
 
-    roles: list[Role] = Relationship(link_model=UserRoleLink)
-    refresh_tokens: list[RefreshTokenRecord] = Relationship()
+    roles: list[Role] = Relationship(link_model=UserRole)
+    refresh_tokens: list[RefreshToken] = Relationship()
