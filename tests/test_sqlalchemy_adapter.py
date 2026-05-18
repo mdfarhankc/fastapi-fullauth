@@ -365,6 +365,51 @@ async def test_refresh_token_rotation(client):
 
 
 @pytest.mark.asyncio
+async def test_adapter_eager_loads_roles_with_default_lazy_relationship():
+    """`_user_query()` adds selectinload on `roles` regardless of the user's
+    relationship lazy setting. Without it, accessing `user.roles` outside the
+    session in `_to_schema` would raise MissingGreenlet in async mode."""
+
+    class Base2(DeclarativeBase):
+        pass
+
+    class RefreshToken2(RefreshTokenMixin, Base2):
+        pass
+
+    class Role2(RoleMixin, Base2):
+        pass
+
+    class UserRole2(UserRoleMixin, Base2):
+        pass
+
+    class User2(UserMixin, Base2):
+        roles: Mapped[list[Role2]] = relationship(secondary="fullauth_user_roles")
+
+    engine = create_async_engine("sqlite+aiosqlite://", echo=False)
+    session_maker = async_sessionmaker(engine, expire_on_commit=False)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base2.metadata.create_all)
+    adapter = SQLAlchemyAdapter(
+        session_maker=session_maker,
+        user_model=User2,
+        refresh_token_model=RefreshToken2,
+        role_model=Role2,
+        user_role_model=UserRole2,
+        user_schema=UserSchemaWithRoles,
+    )
+
+    data = CreateUserSchema(email="lazy@test.com", password="pass123")
+    user = await adapter.create_user(data, hashed_password=hash_password("pass123"))
+    await adapter.assign_role(user.id, "editor")
+
+    fetched = await adapter.get_user_by_email("lazy@test.com")
+    assert fetched is not None
+    assert "editor" in fetched.roles
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
 async def test_role_and_permission_flow(client, adapter):
     await client.post(
         "/api/v1/auth/register",

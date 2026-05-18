@@ -84,6 +84,14 @@ class SQLAlchemyAdapter(
         self._user_schema = user_schema
         self._create_user_schema = create_user_schema
 
+    def _user_query(self) -> Any:
+        # Eager-load roles so _to_schema() can read user.roles outside the session
+        # without triggering an async refresh.
+        query = select(self._user_model)
+        if hasattr(self._user_model, "roles"):
+            query = query.options(selectinload(self._user_model.roles))
+        return query
+
     def _to_schema(self, user: Any) -> UserSchemaType:
         data = {}
         for field_name in self._user_schema.model_fields:
@@ -96,9 +104,7 @@ class SQLAlchemyAdapter(
 
     async def get_user_by_id(self, user_id: UserID) -> UserSchemaType | None:
         async with self._session_maker() as session:
-            result = await session.execute(
-                select(self._user_model).where(self._user_model.id == user_id)
-            )
+            result = await session.execute(self._user_query().where(self._user_model.id == user_id))
             user = result.scalars().first()
             return self._to_schema(user) if user else None
 
@@ -112,7 +118,7 @@ class SQLAlchemyAdapter(
         if field == "email":
             value = normalize_email(value)
         async with self._session_maker() as session:
-            result = await session.execute(select(self._user_model).where(column == value))
+            result = await session.execute(self._user_query().where(column == value))
             user = result.scalars().first()
             return self._to_schema(user) if user else None
 
@@ -135,7 +141,10 @@ class SQLAlchemyAdapter(
                 raise UserAlreadyExistsError(
                     f"User with email {normalized_email} already exists"
                 ) from e
-            await session.refresh(user)
+            # Re-fetch with roles eager-loaded so _to_schema works outside the session.
+            result = await session.execute(self._user_query().where(self._user_model.id == user.id))
+            user = result.scalars().first()
+            assert user is not None
             return self._to_schema(user)
 
     async def update_user(self, user_id: UserID, data: dict[str, Any]) -> UserSchemaType:
@@ -146,9 +155,7 @@ class SQLAlchemyAdapter(
                 update(self._user_model).where(self._user_model.id == user_id).values(**data)
             )
             await session.commit()
-            result = await session.execute(
-                select(self._user_model).where(self._user_model.id == user_id)
-            )
+            result = await session.execute(self._user_query().where(self._user_model.id == user_id))
             user = result.scalars().first()
             if user is None:
                 raise ValueError(f"User {user_id} not found")
@@ -168,9 +175,7 @@ class SQLAlchemyAdapter(
         if not hasattr(self._user_model, "roles"):
             return []
         async with self._session_maker() as session:
-            result = await session.execute(
-                select(self._user_model).where(self._user_model.id == user_id)
-            )
+            result = await session.execute(self._user_query().where(self._user_model.id == user_id))
             user = result.scalars().first()
             if user is None:
                 return []
