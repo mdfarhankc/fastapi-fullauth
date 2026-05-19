@@ -10,6 +10,7 @@
 - **`AbstractUserAdapter.create_user` signature change.** `hashed_password: str` is now `hashed_password: str | None`. Custom adapters must accept `None` and persist it. Built-in adapters already do.
 - **`flows.oauth.link_or_create_user` and `flows.oauth.oauth_callback` no longer take `hash_algorithm`.** OAuth users have no password to hash anymore.
 - **`ChangePasswordRequest.current_password` is now `str | None`.** Clients that always sent it keep working; clients can omit it when the user has no stored password.
+- **`ChallengeStore` moved from `core.challenges` to `protection.challenges`.** Import path change: `from fastapi_fullauth.protection.challenges import ChallengeStore, InMemoryChallengeStore, RedisChallengeStore, create_challenge_store, register_challenge_store_backend`. Also exported from the `fastapi_fullauth.protection` package. The challenge store is a stateful anti-replay defence for WebAuthn — it belongs with the other defensive stores (`lockout`, `ratelimit`) rather than next to `TokenEngine` in `core/`.
 
 - **Built-in models are now mixins.** The concrete `*Model` / `*Record` classes and the `FullAuthBase` declarative base are gone. Bring your own `DeclarativeBase` (SQLAlchemy) or `SQLModel` and combine each `*Mixin` to define the tables. The previous "must subclass `FullAuthBase`" rule forced every project to put its own tables on the library's metadata; mixins let you reuse one `Base` across `fastapi-fullauth` and the rest of the app.
 

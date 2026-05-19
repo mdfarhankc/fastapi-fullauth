@@ -164,25 +164,28 @@ from fastapi_fullauth.protection.ratelimit import (
     AuthRateLimiter,
     RateLimiter,
     RedisRateLimiter,
-    RateLimitMiddleware,
     create_rate_limiter,
     register_rate_limiter_backend,
 )
-```
-
-## Core
-
-```python
-from fastapi_fullauth.core.tokens import TokenEngine, TokenBlacklist, InMemoryBlacklist, create_blacklist
-from fastapi_fullauth.core.crypto import hash_password, verify_password, password_needs_rehash
-from fastapi_fullauth.core.challenges import (
+from fastapi_fullauth.protection.challenges import (
     ChallengeStore,
     InMemoryChallengeStore,
     RedisChallengeStore,
     create_challenge_store,
     register_challenge_store_backend,
 )
-from fastapi_fullauth.core.redis_blacklist import RedisBlacklist
+```
+
+## Core
+
+```python
+from fastapi_fullauth.core.tokens import TokenEngine, create_blacklist
+from fastapi_fullauth.core.crypto import hash_password, verify_password, password_needs_rehash
+from fastapi_fullauth.core.blacklist import (
+    TokenBlacklist,
+    InMemoryTokenBlacklist,
+    RedisTokenBlacklist,
+)
 ```
 
 ## Middleware

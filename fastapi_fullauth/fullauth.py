@@ -63,7 +63,7 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
 
         self.challenge_store = None
         if config.PASSKEY_ENABLED:
-            from fastapi_fullauth.core.challenges import create_challenge_store
+            from fastapi_fullauth.protection.challenges import create_challenge_store
 
             self.challenge_store = create_challenge_store(config)
 

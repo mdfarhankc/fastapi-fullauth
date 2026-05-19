@@ -8,7 +8,7 @@ from sqlmodel import SQLModel
 from uuid_utils import uuid7
 
 from fastapi_fullauth.adapters.sqlmodel import SQLModelAdapter
-from fastapi_fullauth.core.challenges import InMemoryChallengeStore
+from fastapi_fullauth.protection.challenges import InMemoryChallengeStore
 from fastapi_fullauth.types import PasskeyCredential
 from tests.conftest import Passkey, RefreshToken, User, UserSchemaWithRoles
 

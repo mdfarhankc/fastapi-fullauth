@@ -9,7 +9,7 @@ from uuid import UUID
 from uuid_utils import uuid7
 
 from fastapi_fullauth.adapters.base import AbstractUserAdapter, PasskeyAdapterMixin
-from fastapi_fullauth.core.challenges import ChallengeStore
+from fastapi_fullauth.protection.challenges import ChallengeStore
 from fastapi_fullauth.types import PasskeyCredential, TokenPair, UserID, UserSchema
 
 if TYPE_CHECKING:
