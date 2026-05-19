@@ -37,7 +37,7 @@ class AbstractUserAdapter(ABC, Generic[UserSchemaType, CreateUserSchemaType]):
 
     @abstractmethod
     async def create_user(
-        self, data: CreateUserSchemaType, hashed_password: str
+        self, data: CreateUserSchemaType, hashed_password: str | None
     ) -> UserSchemaType: ...
 
     @abstractmethod

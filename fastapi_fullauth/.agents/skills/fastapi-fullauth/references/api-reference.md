@@ -128,7 +128,6 @@ from fastapi_fullauth.flows.login import login
 from fastapi_fullauth.flows.register import register
 from fastapi_fullauth.flows.logout import logout
 from fastapi_fullauth.flows.change_password import change_password
-from fastapi_fullauth.flows.set_password import set_password
 from fastapi_fullauth.flows.update_profile import update_profile
 from fastapi_fullauth.flows.email_verify import (
     create_email_verification_token,
@@ -165,25 +164,28 @@ from fastapi_fullauth.protection.ratelimit import (
     AuthRateLimiter,
     RateLimiter,
     RedisRateLimiter,
-    RateLimitMiddleware,
     create_rate_limiter,
     register_rate_limiter_backend,
 )
-```
-
-## Core
-
-```python
-from fastapi_fullauth.core.tokens import TokenEngine, TokenBlacklist, InMemoryBlacklist, create_blacklist
-from fastapi_fullauth.core.crypto import hash_password, verify_password, password_needs_rehash
-from fastapi_fullauth.core.challenges import (
+from fastapi_fullauth.protection.challenges import (
     ChallengeStore,
     InMemoryChallengeStore,
     RedisChallengeStore,
     create_challenge_store,
     register_challenge_store_backend,
 )
-from fastapi_fullauth.core.redis_blacklist import RedisBlacklist
+```
+
+## Core
+
+```python
+from fastapi_fullauth.core.tokens import TokenEngine, create_blacklist
+from fastapi_fullauth.core.crypto import hash_password, verify_password, password_needs_rehash
+from fastapi_fullauth.core.blacklist import (
+    TokenBlacklist,
+    InMemoryTokenBlacklist,
+    RedisTokenBlacklist,
+)
 ```
 
 ## Middleware
@@ -364,7 +366,6 @@ Default prefix `/api/v1/auth`:
 | GET    | `/me`                             | profile  | yes           |
 | PATCH  | `/me`                             | profile  | yes           |
 | POST   | `/change-password`                | profile  | yes           |
-| POST   | `/set-password`                   | profile  | yes           |
 | POST   | `/password-reset/request`         | verify   | no            |
 | POST   | `/password-reset/confirm`         | verify   | no            |
 | POST   | `/verify/request`                 | verify   | yes           |

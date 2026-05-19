@@ -22,7 +22,6 @@ class UserSchema(BaseModel):
         "id",
         "email",
         "hashed_password",
-        "has_usable_password",
         "is_active",
         "is_verified",
         "is_superuser",

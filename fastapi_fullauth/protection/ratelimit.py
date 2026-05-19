@@ -206,5 +206,15 @@ class AuthRateLimiter:
         if limiter and not await limiter.is_allowed(client_ip):
             from fastapi import HTTPException
 
+            reset_in = await limiter.reset_time(client_ip)
             logger.warning("Auth rate limit exceeded: route=%s, ip=%s", route_name, client_ip)
-            raise HTTPException(status_code=429, detail="Too many requests. Try again later.")
+            raise HTTPException(
+                status_code=429,
+                detail="Too many requests. Try again later.",
+                headers={
+                    "X-RateLimit-Limit": str(limiter.max_requests),
+                    "X-RateLimit-Remaining": "0",
+                    "X-RateLimit-Reset": str(int(reset_in)),
+                    "Retry-After": str(int(reset_in)),
+                },
+            )

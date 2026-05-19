@@ -113,6 +113,62 @@ async def test_change_password_weak_new():
     await engine.dispose()
 
 
+@pytest.mark.asyncio
+async def test_change_password_for_user_without_stored_hash():
+    """OAuth-only users have hashed_password=NULL. They must be able to set a first
+    password through /change-password without supplying `current_password`."""
+    from fastapi_fullauth.types import CreateUserSchema
+
+    app, adapter, fullauth, engine = await _make_app()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        # Create a user the way the OAuth flow does — no stored password.
+        data = CreateUserSchema(email="oauth@t.com", password="placeholder-unused")
+        user = await adapter.create_user(data, hashed_password=None)
+        assert await adapter.get_hashed_password(user.id) is None
+
+        # Mint an access token directly so we can call /change-password authenticated.
+        access = fullauth.token_engine.create_access_token(user_id=str(user.id))
+        headers = {"Authorization": f"Bearer {access}"}
+
+        r = await client.post(
+            "/api/v1/auth/change-password",
+            json={"new_password": "firstpassword42"},
+            headers=headers,
+        )
+        assert r.status_code == 200
+
+        # New password works for login.
+        r = await client.post(
+            "/api/v1/auth/login",
+            json={"email": "oauth@t.com", "password": "firstpassword42"},
+        )
+        assert r.status_code == 200
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_change_password_still_requires_current_when_hash_exists():
+    """Regression: a user with a stored hash can't bypass current-password check
+    by omitting the field. Otherwise stolen access tokens would silently overwrite
+    passwords without the current-password defence."""
+    app, _, _, engine = await _make_app()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        tokens = await _register_and_login(client)
+        headers = {"Authorization": f"Bearer {tokens['access_token']}"}
+
+        r = await client.post(
+            "/api/v1/auth/change-password",
+            json={"new_password": "newpass456!!"},
+            headers=headers,
+        )
+        assert r.status_code == 400
+
+    await engine.dispose()
+
+
 # ===========================================================================
 # Update profile
 # ===========================================================================

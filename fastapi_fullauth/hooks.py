@@ -1,7 +1,10 @@
+import logging
 from collections.abc import Awaitable, Callable
 from typing import Any, Literal, Protocol, overload
 
 from fastapi_fullauth.types import OAuthUserInfo, UserID, UserSchema
+
+logger = logging.getLogger("fastapi_fullauth.hooks")
 
 
 class AfterUserHook(Protocol):
@@ -60,5 +63,9 @@ class EventHooks:
         self._hooks.setdefault(event, []).append(callback)
 
     async def emit(self, event: str, **kwargs: Any) -> None:
+        # Hooks fire after the side effect has committed; a raising hook is logged, not propagated.
         for hook in self._hooks.get(event, []):
-            await hook(**kwargs)
+            try:
+                await hook(**kwargs)
+            except Exception:
+                logger.exception("hook for event %r raised", event)

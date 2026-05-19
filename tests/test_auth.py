@@ -842,6 +842,10 @@ async def test_login_rate_limited():
             json={"email": "t@t.com", "password": "securepass123"},
         )
         assert r.status_code == 429
+        assert r.headers["X-RateLimit-Limit"] == "2"
+        assert r.headers["X-RateLimit-Remaining"] == "0"
+        assert int(r.headers["X-RateLimit-Reset"]) >= 0
+        assert int(r.headers["Retry-After"]) >= 0
 
     await engine.dispose()
 

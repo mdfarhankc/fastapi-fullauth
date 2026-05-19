@@ -4,6 +4,14 @@
 
 ### Breaking changes
 
+- **`hashed_password` is nullable** on `UserMixin` (both SQLAlchemy and SQLModel). OAuth-only users are inserted with `hashed_password=NULL` instead of a fake random hash. The previous `has_usable_password` boolean is gone — `hashed_password IS NOT NULL` is the single signal.
+- **`/auth/set-password` route removed.** First-time password creation for OAuth-only users now goes through `/auth/change-password` with `current_password` omitted — the route accepts the missing field only when the stored hash is `NULL`. Users with an existing password must still supply it. The previous `set_password` flow checked `getattr(user, "has_usable_password", True)` against a `UserSchema` that didn't include the field, so OAuth-only users on the default schema could never call it successfully; this is now closed.
+- **`flows.set_password` module removed.** Folded into `flows.change_password`, whose `current_password` parameter is now `str | None = None`.
+- **`AbstractUserAdapter.create_user` signature change.** `hashed_password: str` is now `hashed_password: str | None`. Custom adapters must accept `None` and persist it. Built-in adapters already do.
+- **`flows.oauth.link_or_create_user` and `flows.oauth.oauth_callback` no longer take `hash_algorithm`.** OAuth users have no password to hash anymore.
+- **`ChangePasswordRequest.current_password` is now `str | None`.** Clients that always sent it keep working; clients can omit it when the user has no stored password.
+- **`ChallengeStore` moved from `core.challenges` to `protection.challenges`.** Import path change: `from fastapi_fullauth.protection.challenges import ChallengeStore, InMemoryChallengeStore, RedisChallengeStore, create_challenge_store, register_challenge_store_backend`. Also exported from the `fastapi_fullauth.protection` package. The challenge store is a stateful anti-replay defence for WebAuthn — it belongs with the other defensive stores (`lockout`, `ratelimit`) rather than next to `TokenEngine` in `core/`.
+
 - **Built-in models are now mixins.** The concrete `*Model` / `*Record` classes and the `FullAuthBase` declarative base are gone. Bring your own `DeclarativeBase` (SQLAlchemy) or `SQLModel` and combine each `*Mixin` to define the tables. The previous "must subclass `FullAuthBase`" rule forced every project to put its own tables on the library's metadata; mixins let you reuse one `Base` across `fastapi-fullauth` and the rest of the app.
 
   Before:
@@ -102,6 +110,10 @@ No data migration is required — table names and column shapes are unchanged.
 
 ### Fixed
 
+- **Hooks are now isolated.** A raising hook is logged via `fastapi_fullauth.hooks` and the next hook still runs. Previously a single failing hook (e.g. an email-send raising on a transient SMTP error) aborted every subsequent hook and surfaced as a 500 to the client — even though the user had already been created / password reset / etc. Hooks fire after the primary side effect commits, so a notification failure should never undo the operation the response reports.
+- **`SQLAlchemyAdapter` eager-loads `roles` regardless of relationship lazy setting.** Added a `_user_query()` helper mirroring the SQLModel adapter that calls `selectinload(user_model.roles)` when the model has a `roles` attribute. Used by `get_user_by_id`, `get_user_by_field` (and `get_user_by_email`), `update_user`, `create_user`, and `get_user_roles`. Previously these methods built a bare `select(user_model)` and relied on the app to declare `lazy="selectin"` on the relationship; if the app left it default (`select`), `_to_schema` triggered an async lazy-load outside the session and raised `MissingGreenlet`. Behaviour now matches the SQLModel adapter.
+- **Passkey router preserves tracebacks for unexpected failures.** The broad `except Exception as e: logger.error("...: %s", e)` in `/passkeys/register/complete` and `/passkeys/authenticate/complete` dropped the stack trace, making webauthn library failures effectively undebuggable. Now uses `logger.exception(...)` so the traceback lands in the `fastapi_fullauth.routers.passkey` logger alongside the request log line.
+- **SQLAlchemy `UserMixin.email` is now `String(320)`** to match the explicit length on `OAuthAccountMixin.provider_email` and the SQLModel mixin's `max_length=320`. Previously the unsized column produced MySQL/MSSQL default-length VARCHARs (255 / 256) that silently truncated long addresses — Postgres/SQLite were unaffected. The local-part can legally be up to 64 chars and the domain up to 255 (RFC 5321), so 320 is the right ceiling.
 - `/auth/refresh` was passing `str(user.id)` to `RefreshToken(user_id=...)` which expects `UUID`. Pydantic v2 coerced silently so there was no runtime break, but the path now passes `user.id` directly — consistent with `flows/login.py` and clean under static type checking.
 - `LoginResponse` is now a real subclass of `TokenPair` with `user: UserSchema | None = None` instead of a dynamically created model with no static type. The dynamic factory still narrows the `user` field to the configured user schema for OpenAPI, but `LoginResponse(...)` calls now type-check cleanly in mypy/pyright.
 - `DELETE /oauth/accounts/{provider}` was calling `delete_oauth_account(provider, user.id)` — passing the local user UUID where the provider's `provider_user_id` (e.g. a Google subject ID) was expected. The query never matched, so unlinking silently no-op'd. Now resolves the OAuth account for the current user first and passes the right `provider_user_id`. Returns `404` if the user doesn't have an account on that provider.
@@ -119,6 +131,8 @@ No data migration is required — table names and column shapes are unchanged.
 - Version is now read dynamically from `fastapi_fullauth/__init__.py` via `[tool.hatch.version]` so a bump only touches one file.
 - `[tool.pytest.ini_options]` migrated to `[tool.pytest]` (pytest 9 supports the flat key).
 - `pytest-cov` added to the dev dependency group so contributors can run `uv run pytest --cov=fastapi_fullauth` locally.
+- **`AuthRateLimiter.check()` now sets `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`, and `Retry-After` headers on its `429` responses.** The global `RateLimitMiddleware` already sets the `X-RateLimit-*` triplet; the per-route auth limiter (login, register, password-reset, refresh, passkey-authenticate buckets) used to raise a bare `429` so clients couldn't tell when to retry. Headers come from the same limiter instance's `reset_time(client_ip)`.
+- `_b64_decode` helper in `flows/passkey.py` now computes padding as `(-len(data)) % 4` instead of `4 - len(data) % 4`. Mathematically equivalent except when the input length is already a multiple of 4 — the old form appended `====` (four bytes) instead of nothing. `urlsafe_b64decode` is lenient enough to tolerate either, but the new form is the standard idiom.
 
 ## 0.9.1
 

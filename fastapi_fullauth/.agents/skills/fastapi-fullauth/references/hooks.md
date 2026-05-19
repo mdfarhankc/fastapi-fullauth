@@ -59,13 +59,13 @@ Your callable matches the Protocol structurally — no base class to inherit.
 
 ## Contract: hooks run after the operation succeeds
 
-The operation (user created, login authenticated, token rotated) has already committed by the time the hook runs. If your hook raises, the exception propagates out of the route and becomes a 500, but the user's state is already changed.
+The operation (user created, login authenticated, token rotated) has already committed by the time the hook runs. A raising hook is caught and logged via `logging.getLogger("fastapi_fullauth.hooks")`; subsequent hooks for the same event still run and the route returns its normal status. The route never 500s because of a hook.
 
 Implications:
 
-- **Don't rely on hooks for validation.** Validate in the flow or the adapter. A hook raising doesn't roll back the registration.
-- **Do your own error handling inside the hook** if the side-effect is optional — emailing a welcome that fails shouldn't 500 the register endpoint.
-- **Idempotency helps.** A user who retries a failed registration might see `after_register` fire twice if the first attempt's hook raised after the user was created. Make email sends idempotent or keyed on user id.
+- **Don't rely on hooks for validation.** Validate in the flow or the adapter. A raising hook doesn't roll back the registration and doesn't reach the client.
+- **Check your logs.** Hook failures are silent to the user. If an email isn't sending, look for the exception trace in the `fastapi_fullauth.hooks` logger.
+- **Idempotency still helps.** A user who retries an action might see `after_register` fire twice; make email sends idempotent or keyed on user id.
 
 ## Typical wire-up for email
 

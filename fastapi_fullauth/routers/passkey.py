@@ -6,8 +6,8 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from fastapi_fullauth.adapters.base import PasskeyAdapterMixin
-from fastapi_fullauth.core.challenges import ChallengeStore
 from fastapi_fullauth.dependencies.current_user import CurrentUser, get_fullauth
+from fastapi_fullauth.protection.challenges import ChallengeStore
 from fastapi_fullauth.routers._schemas import build_login_response_model
 from fastapi_fullauth.types import TokenPair, UserSchema, UserSchemaType
 from fastapi_fullauth.utils import get_client_ip
@@ -116,8 +116,8 @@ def create_passkey_router(
             )
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
-        except Exception as e:
-            logger.error("Passkey registration failed: %s", e)
+        except Exception:
+            logger.exception("Passkey registration failed")
             raise HTTPException(status_code=400, detail="Passkey registration failed")
 
         return PasskeyResponse(
@@ -209,8 +209,8 @@ def create_passkey_router(
             )
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
-        except Exception as e:
-            logger.error("Passkey authentication failed: %s", e)
+        except Exception:
+            logger.exception("Passkey authentication failed")
             raise HTTPException(status_code=401, detail="Passkey authentication failed")
 
         await fullauth.hooks.emit("after_login", user=user)

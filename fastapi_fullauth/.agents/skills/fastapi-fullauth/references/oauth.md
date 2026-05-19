@@ -100,20 +100,20 @@ code + state
 
 1. Look up existing OAuth account by `(provider, provider_user_id)`. If found → log that user in, update access/refresh tokens.
 2. No existing link but `auto_link_by_email=True` and `info.email_verified=True` and the email matches an existing local user → link that user.
-3. No existing link, email doesn't match or email_verified is False → create a new user with a random password and `has_usable_password=False`.
+3. No existing link, email doesn't match or email_verified is False → create a new user with `hashed_password=NULL`.
 4. Insert the OAuth account row. If that fails with `IntegrityError` on the composite unique `(provider, provider_user_id)` (concurrent callback), fetch the existing row and return it — both callers linked the same identity.
 
 `after_oauth_login(user, provider, is_new_user)` fires for every successful login, including returning users.
 
 `after_oauth_register(user, user_info)` fires on first-time OAuth signup — use this to prefill name / avatar URL from `user_info.name` / `user_info.picture`.
 
-## The set-password flow for OAuth-only users
+## OAuth-only users setting a password
 
-Users created via OAuth have `has_usable_password=False`. They can't log in with password because there isn't one they know.
+OAuth users have `hashed_password=NULL`. They can't log in with a password because there isn't one to verify against.
 
-`POST /api/v1/auth/set-password` (authenticated, body: `{password}`) sets an initial password and flips `has_usable_password=True`. `change-password` is gated the other way — it rejects users who don't have one.
+`POST /api/v1/auth/change-password` (authenticated, body: `{new_password}` — `current_password` may be omitted) sets the first password. The route accepts the missing `current_password` only when the stored hash is `NULL`; once a password exists, `current_password` is required like any other change.
 
-This is why you don't just call `change-password` for OAuth users: they have no "current password" to supply.
+There's no separate `set-password` route — `/change-password` handles both first-time set and subsequent changes.
 
 ## Writing a custom provider
 

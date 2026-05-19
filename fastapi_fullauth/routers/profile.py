@@ -12,11 +12,9 @@ from fastapi_fullauth.exceptions import (
 )
 from fastapi_fullauth.flows.change_password import change_password
 from fastapi_fullauth.flows.profile import validate_profile_updates
-from fastapi_fullauth.flows.set_password import set_password
 from fastapi_fullauth.routers._schemas import (
     ChangePasswordRequest,
     MessageResponse,
-    SetPasswordRequest,
 )
 from fastapi_fullauth.types import UserSchema, UserSchemaType
 
@@ -86,7 +84,10 @@ def create_profile_router(
         "/change-password",
         status_code=200,
         response_model=MessageResponse,
-        description="Change password. Requires current password.",
+        description=(
+            "Change password. `current_password` is required when the user already "
+            "has one; for OAuth-only users without a stored password it may be omitted."
+        ),
     )
     async def change_password_route(
         data: ChangePasswordRequest,
@@ -97,8 +98,8 @@ def create_profile_router(
             await change_password(
                 adapter=fullauth.adapter,
                 user_id=user.id,
-                current_password=data.current_password,
                 new_password=data.new_password,
+                current_password=data.current_password,
                 hash_algorithm=fullauth.config.PASSWORD_HASH_ALGORITHM,
                 password_validator=fullauth.password_validator,
             )
@@ -109,34 +110,5 @@ def create_profile_router(
 
         await fullauth.hooks.emit("after_password_change", user=user)
         return MessageResponse(detail="Password changed successfully.")
-
-    @router.post(
-        "/set-password",
-        status_code=200,
-        response_model=MessageResponse,
-        description="Set a password for OAuth-only users who don't have one.",
-    )
-    async def set_password_route(
-        data: SetPasswordRequest,
-        user: CurrentUser,
-        fullauth: "FullAuth" = Depends(get_fullauth),
-    ) -> MessageResponse:
-        try:
-            await set_password(
-                adapter=fullauth.adapter,
-                user_id=user.id,
-                new_password=data.new_password,
-                hash_algorithm=fullauth.config.PASSWORD_HASH_ALGORITHM,
-                password_validator=fullauth.password_validator,
-            )
-        except AuthenticationError:
-            raise HTTPException(
-                status_code=400,
-                detail="You already have a password. Use change-password instead.",
-            )
-        except InvalidPasswordError as e:
-            raise HTTPException(status_code=422, detail=str(e))
-
-        return MessageResponse(detail="Password set successfully.")
 
     return router

@@ -146,6 +146,45 @@ async def test_password_reset_email_callback():
 
 
 @pytest.mark.asyncio
+async def test_raising_hook_does_not_break_subsequent_hooks_or_request():
+    engine, session_maker = await _make_db()
+    adapter = make_test_adapter(session_maker)
+    fullauth = FullAuth(
+        config=FullAuthConfig(SECRET_KEY="test-secret-key-that-is-long-enough-32b"),
+        adapter=adapter,
+    )
+
+    fired: list[str] = []
+
+    async def first_hook(user):
+        fired.append("first")
+
+    async def broken_hook(user):
+        raise RuntimeError("simulated hook failure")
+
+    async def third_hook(user):
+        fired.append("third")
+
+    fullauth.hooks.on("after_register", first_hook)
+    fullauth.hooks.on("after_register", broken_hook)
+    fullauth.hooks.on("after_register", third_hook)
+
+    app = FastAPI()
+    fullauth.init_app(app)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        r = await client.post(
+            "/api/v1/auth/register",
+            json={"email": "isolate@test.com", "password": "securepass123"},
+        )
+        assert r.status_code == 201
+
+    assert fired == ["first", "third"]
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
 async def test_email_callback_via_hooks():
     """Register email callback via hooks.on() instead of constructor param."""
     sent = []
