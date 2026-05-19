@@ -116,8 +116,8 @@ def create_passkey_router(
             )
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
-        except Exception as e:
-            logger.error("Passkey registration failed: %s", e)
+        except Exception:
+            logger.exception("Passkey registration failed")
             raise HTTPException(status_code=400, detail="Passkey registration failed")
 
         return PasskeyResponse(
@@ -209,8 +209,8 @@ def create_passkey_router(
             )
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
-        except Exception as e:
-            logger.error("Passkey authentication failed: %s", e)
+        except Exception:
+            logger.exception("Passkey authentication failed")
             raise HTTPException(status_code=401, detail="Passkey authentication failed")
 
         await fullauth.hooks.emit("after_login", user=user)

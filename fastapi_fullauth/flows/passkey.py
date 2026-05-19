@@ -23,7 +23,7 @@ def _b64_encode(data: bytes) -> str:
 
 
 def _b64_decode(data: str) -> bytes:
-    padding = 4 - len(data) % 4
+    padding = (-len(data)) % 4
     return urlsafe_b64decode(data + "=" * padding)
 
 

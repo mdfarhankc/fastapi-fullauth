@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from uuid import UUID
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Text, Uuid
+from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 from uuid_utils import uuid7
 
@@ -29,7 +29,7 @@ class UserMixin:
     __tablename__ = "fullauth_users"
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid7)
-    email: Mapped[str] = mapped_column(unique=True, index=True, nullable=False)
+    email: Mapped[str] = mapped_column(String(320), unique=True, index=True, nullable=False)
     hashed_password: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     is_verified: Mapped[bool] = mapped_column(Boolean, default=False)
