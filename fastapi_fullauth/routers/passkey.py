@@ -6,8 +6,8 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from fastapi_fullauth.adapters.base import PasskeyAdapterMixin
-from fastapi_fullauth.protection.challenges import ChallengeStore
 from fastapi_fullauth.dependencies.current_user import CurrentUser, get_fullauth
+from fastapi_fullauth.protection.challenges import ChallengeStore
 from fastapi_fullauth.routers._schemas import build_login_response_model
 from fastapi_fullauth.types import TokenPair, UserSchema, UserSchemaType
 from fastapi_fullauth.utils import get_client_ip
