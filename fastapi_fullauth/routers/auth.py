@@ -188,7 +188,7 @@ def create_auth_router(
 
         stored = await fullauth.adapter.get_refresh_token(data.refresh_token)
         # Defence in depth: the refresh JWT may decode cleanly (valid signature,
-        # unexpired) and still not correspond to a stored session — e.g. an old
+        # unexpired) and still not correspond to a stored session = e.g. an old
         # row pruned, or a token issued before the row was deleted. Reject so
         # signed-but-unbacked tokens can't mint new access tokens.
         if stored is None:
@@ -200,13 +200,13 @@ def create_auth_router(
 
         if fullauth.config.REFRESH_TOKEN_ROTATION:
             # Compare-and-swap: exactly one concurrent caller flips the token
-            # from not-revoked → revoked. The loser sees rowcount=0 — that's
+            # from not-revoked → revoked. The loser sees rowcount=0 = that's
             # either a reuse attack or a lost concurrency race. Either way,
             # burn the family.
             won = await fullauth.adapter.revoke_refresh_token(data.refresh_token)
             if not won:
                 logger.error(
-                    "refresh token reuse/concurrent use — revoking family: %s",
+                    "refresh token reuse/concurrent use = revoking family: %s",
                     stored.family_id,
                 )
                 await fullauth.adapter.revoke_refresh_token_family(stored.family_id)

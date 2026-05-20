@@ -38,7 +38,7 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
         providers: OAuth providers (GoogleOAuthProvider, GitHubOAuthProvider, etc.).
         backends: Token transport strategies. Defaults to [BearerBackend()].
         password_validator: Custom PasswordValidator. Defaults to min-length from config.
-        on_create_token_claims: async def cb(user) -> dict — extra claims embedded in JWTs.
+        on_create_token_claims: async `(user) -> dict` returning extra claims for JWTs.
     """
 
     def __init__(
@@ -106,7 +106,7 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
         if offenders:
             warnings.warn(
                 f"In-memory backends in use: {', '.join(offenders)}. "
-                "State is per-process — logout/revocation, lockouts, rate limits, and "
+                "State is per-process = logout/revocation, lockouts, rate limits, and "
                 "passkey flows will behave inconsistently under multi-worker deployments. "
                 "Set these to 'redis' (and configure REDIS_URL) in production.",
                 UserWarning,
@@ -246,7 +246,7 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
     ) -> None:
         """Bind FullAuth to a FastAPI app and register auth routers.
 
-        Middleware is intentionally not wired here — import what you want from
+        Middleware is intentionally not wired here = import what you want from
         ``fastapi_fullauth.middleware`` and call ``app.add_middleware(...)``
         yourself.
 
@@ -258,7 +258,7 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
         """
         if getattr(app.state, "_fullauth_app_wired", False):
             warnings.warn(
-                "init_app() called more than once on the same app — ignoring. "
+                "init_app() called more than once on the same app = ignoring. "
                 "Routers are already wired.",
                 UserWarning,
                 stacklevel=2,

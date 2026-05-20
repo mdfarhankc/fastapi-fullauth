@@ -97,10 +97,7 @@ async def _make_superuser(client, adapter, email="admin@test.com"):
     return tokens
 
 
-# ===========================================================================
 # Permission CRUD tests (adapter-level)
-# ===========================================================================
-
 
 @pytest.mark.asyncio
 async def test_adapter_permission_crud():
@@ -162,10 +159,7 @@ async def test_adapter_get_user_permissions():
     await engine.dispose()
 
 
-# ===========================================================================
 # require_permission dependency tests
-# ===========================================================================
-
 
 @pytest.mark.asyncio
 async def test_require_permission_allows_with_permission():
@@ -240,10 +234,7 @@ async def test_require_role_still_works():
     await engine.dispose()
 
 
-# ===========================================================================
 # Admin permission routes
-# ===========================================================================
-
 
 @pytest.mark.asyncio
 async def test_admin_assign_and_list_permissions():
@@ -334,10 +325,7 @@ async def test_admin_permission_routes_require_superuser():
     await engine.dispose()
 
 
-# ===========================================================================
 # Role assignment and removal (from test_roles.py)
-# ===========================================================================
-
 
 @pytest.mark.asyncio
 async def test_assign_role():

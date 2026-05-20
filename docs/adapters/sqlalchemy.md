@@ -1,6 +1,6 @@
 # SQLAlchemy Adapter
 
-Use this adapter if your project already uses SQLAlchemy's declarative base. Bring your own `DeclarativeBase` — the library doesn't ship one.
+Use this adapter if your project already uses SQLAlchemy's declarative base. Bring your own `DeclarativeBase` = the library doesn't ship one.
 
 ## Installation
 
@@ -49,11 +49,11 @@ class User(UserMixin, Base):
     refresh_tokens: Mapped[list[RefreshToken]] = relationship(lazy="noload")
 ```
 
-`UserMixin` provides `id`, `email`, `hashed_password` (nullable — `NULL` for OAuth-only users), `is_active`, `is_verified`, `is_superuser`, `created_at`.
+`UserMixin` provides `id`, `email`, `hashed_password` (nullable = `NULL` for OAuth-only users), `is_active`, `is_verified`, `is_superuser`, `created_at`.
 
 ### 2. Create the adapter
 
-Pass each concrete model class you defined — required for the features you use:
+Pass each concrete model class you defined = required for the features you use:
 
 ```python
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine

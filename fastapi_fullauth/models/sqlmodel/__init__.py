@@ -17,7 +17,7 @@ Combine each mixin with ``table=True`` to register only the tables you need.
     # Passkeys
     from fastapi_fullauth.models.sqlmodel import PasskeyMixin
 
-Mixins are only re-exported when ``sqlmodel`` is installed — a missing
+Mixins are only re-exported when ``sqlmodel`` is installed = a missing
 extra leaves them unbound rather than breaking import.
 """
 

@@ -33,7 +33,7 @@ fix:
 format:
 	uv run ruff format .
 
-# Run all checks (format + lint + tests) — run before committing
+# Run all checks (format + lint + tests) = run before committing
 check: format-check lint test
 
 # Fix all issues then verify

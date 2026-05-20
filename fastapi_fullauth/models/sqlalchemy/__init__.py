@@ -18,7 +18,7 @@ tables you need.
     # Passkeys
     from fastapi_fullauth.models.sqlalchemy import PasskeyMixin
 
-Mixins are only re-exported when ``sqlalchemy`` is installed — a missing
+Mixins are only re-exported when ``sqlalchemy`` is installed = a missing
 extra leaves them unbound rather than breaking import.
 """
 

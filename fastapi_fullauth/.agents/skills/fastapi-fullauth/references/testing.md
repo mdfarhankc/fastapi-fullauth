@@ -61,9 +61,9 @@ async def client(app):
 Key choices:
 
 - **`sqlite+aiosqlite://`** (no path) gives a per-process in-memory DB that dies with the fixture. Zero cleanup needed.
-- **`expire_on_commit=False`** prevents lazy-loads after commit — async code can't do them.
+- **`expire_on_commit=False`** prevents lazy-loads after commit = async code can't do them.
 - **`AUTH_RATE_LIMIT_ENABLED=False`** in tests so hammering the login endpoint doesn't hit `429 Too Many Requests` on the 6th attempt.
-- **No `app.add_middleware(...)` in tests** — `init_app()` doesn't wire middleware automatically (as of v0.10.0), so tests get raw route behavior by default. Add middleware explicitly only in the tests that need to assert on it.
+- **No `app.add_middleware(...)` in tests** = `init_app()` doesn't wire middleware automatically (as of v0.10.0), so tests get raw route behavior by default. Add middleware explicitly only in the tests that need to assert on it.
 
 ## Registered-user and authenticated-headers helpers
 
@@ -90,7 +90,7 @@ Use `auth_headers` for any test that needs an authenticated request.
 
 ## Mocking email hooks
 
-The library doesn't send emails — it emits hooks. Tests should register an in-memory collector:
+The library doesn't send emails = it emits hooks. Tests should register an in-memory collector:
 
 ```python
 @pytest.fixture
@@ -176,7 +176,7 @@ async def test_register_hides_existence():
 
 Default `MAX_LOGIN_ATTEMPTS=5`. Combined with the default `AUTH_RATE_LIMIT_LOGIN=5`, a test that tries 6 wrong passwords will hit the rate limiter first. Two fixes:
 
-- Disable the rate limiter (`AUTH_RATE_LIMIT_ENABLED=False`) — usual choice in tests.
+- Disable the rate limiter (`AUTH_RATE_LIMIT_ENABLED=False`) = usual choice in tests.
 - Lower the lockout threshold (`MAX_LOGIN_ATTEMPTS=2`) to hit lockout faster than the rate limit.
 
 ```python
@@ -192,10 +192,10 @@ fullauth = FullAuth(
 
 ## Testing passkeys
 
-The WebAuthn verification requires a valid signed credential from a real authenticator — you can't easily fake it with plain `httpx`. Two realistic approaches:
+The WebAuthn verification requires a valid signed credential from a real authenticator = you can't easily fake it with plain `httpx`. Two realistic approaches:
 
 1. **Adapter-level tests.** Mock the `webauthn` library calls with `unittest.mock.patch` and assert the adapter wires everything correctly (challenge store, sign-count CAS, userHandle check).
-2. **Playwright integration tests.** Use Chromium's virtual authenticator API to produce real assertions. The library's own test suite in `tests/test_passkey.py` covers challenge store + adapter CAS, not end-to-end browser flow — same approach works in your app.
+2. **Playwright integration tests.** Use Chromium's virtual authenticator API to produce real assertions. The library's own test suite in `tests/test_passkey.py` covers challenge store + adapter CAS, not end-to-end browser flow = same approach works in your app.
 
 ## Testing OAuth
 
@@ -233,6 +233,6 @@ Drive it through `fullauth.oauth_callback` or the router. Change `email_verified
 
 ## Gotchas
 
-- **Clock-sensitive tests** (token expiry, OAuth state expiry) need `JWT_LEEWAY_SECONDS=0` in the config — the default 30-second leeway makes "expires in 1 second, sleep 1.1s, assert rejected" fail.
-- **Warnings in pytest output:** the library emits a `UserWarning` when any backend is `"memory"` and the matching feature is enabled. `pyproject.toml` has a `filterwarnings = ["ignore:In-memory backends in use:UserWarning"]` entry that silences it in-tree — add the same to your app's `pyproject.toml` if you don't want that noise.
-- **Each test gets a fresh DB.** Don't share users across tests — the fixture-scoped engine is per-function.
+- **Clock-sensitive tests** (token expiry, OAuth state expiry) need `JWT_LEEWAY_SECONDS=0` in the config = the default 30-second leeway makes "expires in 1 second, sleep 1.1s, assert rejected" fail.
+- **Warnings in pytest output:** the library emits a `UserWarning` when any backend is `"memory"` and the matching feature is enabled. `pyproject.toml` has a `filterwarnings = ["ignore:In-memory backends in use:UserWarning"]` entry that silences it in-tree = add the same to your app's `pyproject.toml` if you don't want that noise.
+- **Each test gets a fresh DB.** Don't share users across tests = the fixture-scoped engine is per-function.

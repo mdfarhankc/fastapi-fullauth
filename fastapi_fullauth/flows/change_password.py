@@ -23,7 +23,7 @@ async def change_password(
     if hashed is not None and (
         not current_password or not verify_password(current_password, hashed)
     ):
-        logger.warning("Password change failed — wrong current password: user_id=%s", user_id)
+        logger.warning("Password change failed = wrong current password: user_id=%s", user_id)
         raise AuthenticationError("Current password is incorrect")
 
     if password_validator:

@@ -56,7 +56,7 @@ from fastapi_fullauth.dependencies import require_role
 async def editor_panel(user=Depends(require_role("editor"))):
     return {"msg": "welcome, editor"}
 
-# multiple roles — user needs at least one
+# multiple roles = user needs at least one
 @app.get("/content")
 async def content(user=Depends(require_role("editor", "author"))):
     return {"msg": "welcome"}
@@ -64,7 +64,7 @@ async def content(user=Depends(require_role("editor", "author"))):
 
 ### require_permission
 
-Check that the user has at least one of the specified permissions. Permissions are resolved through roles — a user with role `"editor"` gets all permissions assigned to that role.
+Check that the user has at least one of the specified permissions. Permissions are resolved through roles = a user with role `"editor"` gets all permissions assigned to that role.
 
 ```python
 from fastapi import Depends
@@ -74,7 +74,7 @@ from fastapi_fullauth.dependencies import require_permission
 async def delete_post(id: str, user=Depends(require_permission("posts:delete"))):
     ...
 
-# multiple permissions — user needs at least one
+# multiple permissions = user needs at least one
 @app.put("/posts/{id}")
 async def edit_post(id: str, user=Depends(require_permission("posts:edit", "posts:admin"))):
     ...

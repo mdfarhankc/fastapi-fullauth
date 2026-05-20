@@ -1,10 +1,10 @@
-"""Adapters — the persistence seam between FullAuth and your database.
+"""Adapters = the persistence seam between FullAuth and your database.
 
 Two built-ins ship: ``SQLAlchemyAdapter`` and ``SQLModelAdapter``. Each is
 imported only when the matching optional dependency is installed, so a
 missing extra (e.g. you installed ``[sqlalchemy]`` only) leaves the other
 adapter unbound rather than breaking import. Any other ``ImportError``
-inside the adapter module propagates — masking those would hide real bugs.
+inside the adapter module propagates = masking those would hide real bugs.
 
     from fastapi_fullauth.adapters import SQLAlchemyAdapter
     # or

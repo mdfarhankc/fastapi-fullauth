@@ -49,8 +49,8 @@ If your callback returns any of these, a `ValueError` is raised at token creatio
 
 Custom claims are generated on:
 
-- **Login** — embedded in the access token
-- **Token refresh** — regenerated from the current user state
-- **OAuth callback** — embedded after OAuth user creation/linking
+- **Login** = embedded in the access token
+- **Token refresh** = regenerated from the current user state
+- **OAuth callback** = embedded after OAuth user creation/linking
 
 This means claims stay fresh on each refresh. If a user's plan changes, the next token refresh picks it up.

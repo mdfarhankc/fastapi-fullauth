@@ -31,7 +31,7 @@ class ChallengeStore(ABC):
 
 
 class InMemoryChallengeStore(ChallengeStore):
-    """In-memory challenge store. Single-process only — use Redis for multi-worker."""
+    """In-memory challenge store. Single-process only; use Redis for multi-worker."""
 
     def __init__(self) -> None:
         self._store: dict[str, tuple[str, float]] = {}

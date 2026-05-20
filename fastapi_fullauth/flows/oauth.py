@@ -82,12 +82,12 @@ async def link_or_create_user(
         )
         return user, False
 
-    # new provider link — check if email already has an account
+    # new provider link = check if email already has an account
     user = None
     if info.email and auto_link_by_email:
         existing = await adapter.get_user_by_email(info.email)
         if existing is not None:
-            # Only auto-link when the provider confirms email ownership — otherwise
+            # Only auto-link when the provider confirms email ownership = otherwise
             # anyone who signs up at the provider with a victim's email takes the account.
             if not info.email_verified:
                 logger.warning(
@@ -111,14 +111,14 @@ async def link_or_create_user(
                 f"No email returned from {info.provider}. Cannot create account."
             )
 
-        # OAuth users have no password — they auth via the provider. CreateUserSchema
+        # OAuth users have no password = they auth via the provider. CreateUserSchema
         # still requires `password`, but hashed_password=None means it's never persisted.
         data = CreateUserSchema(email=info.email, password=secrets.token_urlsafe(32))
         try:
             user = await adapter.create_user(data, hashed_password=None)
         except UserAlreadyExistsError as e:
             # Lost a race against a concurrent local signup (or another OAuth flow).
-            # Ask the user to retry — the next attempt will find the now-existing account.
+            # Ask the user to retry = the next attempt will find the now-existing account.
             logger.warning(
                 "oauth signup lost a race to concurrent registration (provider=%s)",
                 info.provider,

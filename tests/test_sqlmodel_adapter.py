@@ -212,7 +212,7 @@ async def test_refresh_token_crud(adapter):
     stored = await adapter.get_refresh_token("test-token-123")
     assert stored.revoked is True
 
-    # second revoke returns False — already revoked (the CAS signal)
+    # second revoke returns False = already revoked (the CAS signal)
     assert await adapter.revoke_refresh_token("test-token-123") is False
 
     # revoking an unknown token also returns False

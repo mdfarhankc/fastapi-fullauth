@@ -79,10 +79,10 @@ class TokenEngine:
                 leeway=self.config.JWT_LEEWAY_SECONDS,
             )
         except jwt.ExpiredSignatureError:
-            logger.debug("Token decode failed — expired")
+            logger.debug("Token decode failed = expired")
             raise TokenExpiredError("Token has expired")
         except jwt.InvalidTokenError as e:
-            logger.debug("Token decode failed — invalid: %s", e)
+            logger.debug("Token decode failed = invalid: %s", e)
             raise TokenError(f"Invalid token: {e}")
 
         jti = data.get("jti", "")
