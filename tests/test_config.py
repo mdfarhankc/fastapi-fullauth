@@ -24,10 +24,7 @@ async def _make_db():
     return engine, session_maker
 
 
-# ===========================================================================
 # Password validators
-# ===========================================================================
-
 
 def test_password_validator_min_length():
     v = PasswordValidator(min_length=10)
@@ -102,10 +99,7 @@ async def test_register_rejects_weak_password_via_validator():
     await engine.dispose()
 
 
-# ===========================================================================
 # Composable routers
-# ===========================================================================
-
 
 @pytest.mark.asyncio
 async def test_composable_router_excludes_register():
@@ -142,7 +136,7 @@ async def test_composable_routers_exclude_register():
     )
     app = FastAPI()
     app.state.fullauth = fullauth
-    # only include profile, not auth — so no register/login
+    # only include profile, not auth = so no register/login
     app.include_router(fullauth.profile_router, prefix="/api/v1/auth")
 
     transport = ASGITransport(app=app)
@@ -191,10 +185,7 @@ async def test_me_route_excluded_with_composable_routers():
     await engine.dispose()
 
 
-# ===========================================================================
 # Custom CreateUserSchema
-# ===========================================================================
-
 
 @pytest.mark.asyncio
 async def test_custom_create_user_schema():
@@ -258,10 +249,7 @@ async def test_custom_schema_rejects_missing_field():
     await engine.dispose()
 
 
-# ===========================================================================
 # Custom token claims
-# ===========================================================================
-
 
 @pytest.mark.asyncio
 async def test_custom_token_claims():
@@ -312,10 +300,7 @@ async def test_custom_token_claims():
     await engine.dispose()
 
 
-# ===========================================================================
 # Login response with user
-# ===========================================================================
-
 
 @pytest.mark.asyncio
 async def test_login_includes_user():
@@ -361,10 +346,7 @@ async def test_login_includes_user_by_default(client, registered_user):
     assert data["user"]["email"] == "user@test.com"
 
 
-# ===========================================================================
 # Auto-generate SECRET_KEY
-# ===========================================================================
-
 
 def test_auto_generate_secret_key():
     with warnings.catch_warnings(record=True) as w:
@@ -388,10 +370,7 @@ def test_short_secret_key_rejected():
         FullAuthConfig(SECRET_KEY="too-short")
 
 
-# ===========================================================================
 # Flat config
-# ===========================================================================
-
 
 @pytest.mark.asyncio
 async def test_flat_config_secret_key():
@@ -433,10 +412,7 @@ async def test_no_config_auto_generates_key():
     await engine.dispose()
 
 
-# ===========================================================================
 # Manual middleware wiring
-# ===========================================================================
-
 
 @pytest.mark.asyncio
 async def test_security_headers_when_user_adds_middleware():
@@ -490,10 +466,7 @@ async def test_init_app_does_not_auto_wire_middleware():
     await engine.dispose()
 
 
-# ===========================================================================
 # Built-in /me route
-# ===========================================================================
-
 
 @pytest.mark.asyncio
 async def test_builtin_me_route():
@@ -531,10 +504,7 @@ async def test_builtin_me_route():
     await engine.dispose()
 
 
-# ===========================================================================
 # Typed dependency returns
-# ===========================================================================
-
 
 @pytest.mark.skipif(
     sys.version_info < (3, 14),
@@ -548,10 +518,7 @@ def test_current_user_has_return_annotation():
     assert ann.get("return") == "UserSchema"
 
 
-# ===========================================================================
 # Adapter-level schema configuration
-# ===========================================================================
-
 
 @pytest.mark.asyncio
 async def test_default_create_schema_on_adapter():
@@ -601,10 +568,7 @@ async def test_explicit_schemas_on_adapter():
     await engine.dispose()
 
 
-# ===========================================================================
 # Init idempotency
-# ===========================================================================
-
 
 @pytest.mark.asyncio
 async def test_init_app_twice_is_a_noop_with_warning():
@@ -632,10 +596,7 @@ async def test_init_app_twice_is_a_noop_with_warning():
     await engine.dispose()
 
 
-# ===========================================================================
 # Global BACKEND / ORIGINS propagation
-# ===========================================================================
-
 
 def test_backend_propagates_to_all_backends():
     cfg = FullAuthConfig(
@@ -701,7 +662,7 @@ def test_backend_redis_without_redis_url_fails_at_config():
 
 
 def test_redis_url_not_required_when_feature_disabled():
-    # Only LOCKOUT_BACKEND is redis, but lockout is disabled — REDIS_URL not required
+    # Only LOCKOUT_BACKEND is redis, but lockout is disabled = REDIS_URL not required
     cfg = FullAuthConfig(
         SECRET_KEY="test-secret-key-that-is-long-enough-32b",
         LOCKOUT_BACKEND="redis",

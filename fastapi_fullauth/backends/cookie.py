@@ -23,7 +23,7 @@ class CookieBackend(AbstractBackend):
 
     async def delete_token(self, response: Response) -> None:
         # Browsers ignore the deletion unless the attributes (secure, samesite,
-        # path, domain) match the cookie being replaced — Chrome outright rejects
+        # path, domain) match the cookie being replaced = Chrome outright rejects
         # a SameSite=None set-cookie without Secure.
         response.delete_cookie(key=self.config.COOKIE_NAME, **self._cookie_attrs())
 

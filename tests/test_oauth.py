@@ -235,7 +235,7 @@ async def test_oauth_returning_user(adapter, config):
     engine = TokenEngine(config=config)
     provider = MockOAuthProvider()
 
-    # first login — creates user
+    # first login = creates user
     state1 = generate_oauth_state(engine)
     _, user1, is_new1, _ = await oauth_callback(
         adapter=adapter,
@@ -246,7 +246,7 @@ async def test_oauth_returning_user(adapter, config):
     )
     assert is_new1 is True
 
-    # second login — returning user
+    # second login = returning user
     state2 = generate_oauth_state(engine)
     _, user2, is_new2, _ = await oauth_callback(
         adapter=adapter,

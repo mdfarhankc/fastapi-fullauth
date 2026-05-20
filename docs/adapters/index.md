@@ -11,8 +11,8 @@ Adapters are the database layer for fastapi-fullauth. They implement `AbstractUs
 
 ## Choosing an adapter
 
-- **SQLModel** — recommended for most projects. Clean model definitions, good type support. Use SQLite for prototyping.
-- **SQLAlchemy** — use if your project already uses SQLAlchemy's declarative base.
+- **SQLModel** = recommended for most projects. Clean model definitions, good type support. Use SQLite for prototyping.
+- **SQLAlchemy** = use if your project already uses SQLAlchemy's declarative base.
 
 ## Custom adapters
 
@@ -26,7 +26,7 @@ from fastapi_fullauth.adapters.base import (
     OAuthAdapterMixin,
 )
 
-# Minimal — just auth
+# Minimal = just auth
 class MyAdapter(AbstractUserAdapter):
     async def get_user_by_id(self, user_id): ...
     async def get_user_by_email(self, email): ...

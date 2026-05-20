@@ -56,7 +56,7 @@ async def reset_password(
 
     user = await adapter.get_user_by_id(user_id)
     if user is None:
-        logger.error("Password reset failed — user not found: %s", payload.sub)
+        logger.error("Password reset failed = user not found: %s", payload.sub)
         raise UserNotFoundError("User not found")
 
     hashed = hash_password(new_password, algorithm=hash_algorithm)

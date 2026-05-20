@@ -36,10 +36,7 @@ async def _make_app(adapter=None, **fullauth_kwargs):
     return app, adapter, fullauth, engine
 
 
-# ===========================================================================
 # Basic auth flows (register, login, logout, /me)
-# ===========================================================================
-
 
 @pytest.mark.asyncio
 async def test_register(client):
@@ -164,7 +161,7 @@ async def test_login_locked_account_returns_generic_credentials_error():
                 "/api/v1/auth/login",
                 json={"email": "locked@test.com", "password": "wrong"},
             )
-        # account is now locked — even the correct password must look identical
+        # account is now locked = even the correct password must look identical
         # to "wrong password" (401 + generic detail), not 423 or a locked-specific body
         r = await client.post(
             "/api/v1/auth/login",
@@ -290,10 +287,7 @@ async def test_password_reset_nonexistent_user(client):
     assert r.status_code == 202
 
 
-# ===========================================================================
 # Refresh token persistence, reuse detection, and Redis blacklist
-# ===========================================================================
-
 
 @pytest.mark.asyncio
 async def test_login_persists_refresh_token():
@@ -375,14 +369,14 @@ async def test_refresh_reuse_blocked_by_blacklist():
         )
         old_refresh = r.json()["refresh_token"]
 
-        # first refresh — should succeed
+        # first refresh = should succeed
         r = await client.post(
             "/api/v1/auth/refresh",
             json={"refresh_token": old_refresh},
         )
         assert r.status_code == 200
 
-        # replay the OLD refresh token — blocked by blacklist
+        # replay the OLD refresh token = blocked by blacklist
         r = await client.post(
             "/api/v1/auth/refresh",
             json={"refresh_token": old_refresh},
@@ -408,7 +402,7 @@ async def test_refresh_reuse_revokes_family_when_blacklist_lost():
         )
         old_refresh = r.json()["refresh_token"]
 
-        # first refresh — succeeds, old token revoked in DB
+        # first refresh = succeeds, old token revoked in DB
         r = await client.post(
             "/api/v1/auth/refresh",
             json={"refresh_token": old_refresh},
@@ -419,7 +413,7 @@ async def test_refresh_reuse_revokes_family_when_blacklist_lost():
         # simulate blacklist loss (e.g., server restart with InMemory)
         fullauth.token_engine.blacklist = type(fullauth.token_engine.blacklist)()
 
-        # replay the old token — blacklist doesn't catch it,
+        # replay the old token = blacklist doesn't catch it,
         # but DB reuse detection revokes the family
         r = await client.post(
             "/api/v1/auth/refresh",
@@ -582,10 +576,7 @@ async def test_logout_without_body_still_works():
     await engine.dispose()
 
 
-# ===========================================================================
 # Redis blacklist
-# ===========================================================================
-
 
 @pytest.mark.asyncio
 async def test_redis_blacklist_add_and_check():
@@ -636,10 +627,7 @@ def test_redis_blacklist_requires_redis_package():
             blacklist.RedisTokenBlacklist("redis://localhost")
 
 
-# ===========================================================================
 # Email verification
-# ===========================================================================
-
 
 @pytest.fixture
 def sent_emails():
@@ -747,15 +735,12 @@ async def test_verify_invalid_token(verify_client):
 
 @pytest.mark.asyncio
 async def test_verify_without_callback(client, auth_headers):
-    """No email callback configured — request still returns 202 but no email sent."""
+    """No email callback configured = request still returns 202 but no email sent."""
     r = await client.post("/api/v1/auth/verify-email/request", headers=auth_headers)
     assert r.status_code == 202
 
 
-# ===========================================================================
 # expires_in in token response
-# ===========================================================================
-
 
 @pytest.mark.asyncio
 async def test_login_returns_expires_in():
@@ -801,10 +786,7 @@ async def test_refresh_returns_expires_in():
     await engine.dispose()
 
 
-# ===========================================================================
 # Auth route rate limiting
-# ===========================================================================
-
 
 @pytest.mark.asyncio
 async def test_login_rate_limited():

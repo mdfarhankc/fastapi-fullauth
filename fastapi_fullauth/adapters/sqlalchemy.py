@@ -453,7 +453,7 @@ class SQLAlchemyAdapter(
                 await session.commit()
             except IntegrityError:
                 # Concurrent OAuth callback for the same (provider, provider_user_id)
-                # won the insert. Return the existing row — both callers linked the
+                # won the insert. Return the existing row = both callers linked the
                 # same identity, which is the intended outcome.
                 await session.rollback()
                 result = await session.execute(

@@ -19,10 +19,7 @@ async def _make_db():
     return engine, session_maker
 
 
-# ===========================================================================
 # Lifecycle hooks (register, login, logout)
-# ===========================================================================
-
 
 @pytest.fixture
 def hook_log():
@@ -99,10 +96,7 @@ async def test_hooks_fire_on_logout(hooks_client, hook_log):
     assert any(event == "logout" for event, _ in hook_log)
 
 
-# ===========================================================================
 # Password reset email callback
-# ===========================================================================
-
 
 @pytest.mark.asyncio
 async def test_password_reset_email_callback():
@@ -140,10 +134,7 @@ async def test_password_reset_email_callback():
     await engine.dispose()
 
 
-# ===========================================================================
 # Email callback via hooks (password reset)
-# ===========================================================================
-
 
 @pytest.mark.asyncio
 async def test_raising_hook_does_not_break_subsequent_hooks_or_request():

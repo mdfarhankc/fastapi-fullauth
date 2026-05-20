@@ -1,6 +1,6 @@
 # Middleware
 
-fastapi-fullauth ships three middleware classes. None of them are wired automatically — `init_app()` only mounts routers. Import what you want and call `app.add_middleware(...)` yourself:
+fastapi-fullauth ships three middleware classes. None of them are wired automatically = `init_app()` only mounts routers. Import what you want and call `app.add_middleware(...)` yourself:
 
 ```python
 from fastapi_fullauth.middleware import (
@@ -47,7 +47,7 @@ app.add_middleware(
 
 ## CSRF Protection
 
-Use for cookie-based auth where the frontend and backend share a domain. `secret` must be at least 32 characters — pass `config.CSRF_SECRET` (or fall back to `SECRET_KEY`):
+Use for cookie-based auth where the frontend and backend share a domain. `secret` must be at least 32 characters = pass `config.CSRF_SECRET` (or fall back to `SECRET_KEY`):
 
 ```python
 from fastapi_fullauth import FullAuth, FullAuthConfig

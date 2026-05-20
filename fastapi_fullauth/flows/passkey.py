@@ -203,7 +203,7 @@ async def complete_authentication(
 
     # If the authenticator returned a userHandle (discoverable credentials always do),
     # it must match the user the credential is stored against. This is the server-side
-    # check that the credential and account binding agree — not just our DB mapping.
+    # check that the credential and account binding agree = not just our DB mapping.
     user_handle_b64 = (credential.get("response") or {}).get("userHandle")
     if user_handle_b64:
         try:

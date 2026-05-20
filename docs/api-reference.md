@@ -10,7 +10,7 @@ The main auth manager. Central entry point for the library.
 from fastapi_fullauth import FullAuth, FullAuthConfig
 
 fullauth = FullAuth(
-    adapter=adapter,                # required — database adapter
+    adapter=adapter,                # required = database adapter
     config=FullAuthConfig(...),     # FullAuthConfig object (see Configuration)
     providers=None,                 # list of OAuthProvider instances
     backends=None,                  # [BearerBackend()] by default
@@ -114,9 +114,9 @@ class TokenPayload(BaseModel):
 
 ```python
 from fastapi_fullauth.dependencies import (
-    CurrentUser,        # Annotated type — any authenticated user
-    VerifiedUser,       # Annotated type — verified email required
-    SuperUser,          # Annotated type — superuser required
+    CurrentUser,        # Annotated type = any authenticated user
+    VerifiedUser,       # Annotated type = verified email required
+    SuperUser,          # Annotated type = superuser required
     current_user,       # function form of CurrentUser
     require_role,       # require_role("admin", "editor")
     require_permission, # require_permission("posts:edit", "posts:delete")

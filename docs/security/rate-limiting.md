@@ -2,8 +2,8 @@
 
 fastapi-fullauth provides two levels of rate limiting:
 
-1. **Auth rate limits** — per-route limits on login, register, password reset, passkey-authenticate, and refresh. Baked into the routers, enabled by default via `AUTH_RATE_LIMIT_ENABLED=True`.
-2. **`RateLimitMiddleware`** — a generic per-IP request limiter. **Not wired automatically** — add it yourself with `app.add_middleware(...)`.
+1. **Auth rate limits** = per-route limits on login, register, password reset, passkey-authenticate, and refresh. Baked into the routers, enabled by default via `AUTH_RATE_LIMIT_ENABLED=True`.
+2. **`RateLimitMiddleware`** = a generic per-IP request limiter. **Not wired automatically** = add it yourself with `app.add_middleware(...)`.
 
 Both layers share the same backend (`RATE_LIMIT_BACKEND`: `memory` or `redis`).
 
@@ -86,7 +86,7 @@ app.add_middleware(
 )
 ```
 
-Set `RATE_LIMIT_BACKEND="redis"` and `REDIS_URL=...` on the config to switch to Redis. The in-memory backend is per-process — fine for a single worker, broken on multi-worker / multi-pod.
+Set `RATE_LIMIT_BACKEND="redis"` and `REDIS_URL=...` on the config to switch to Redis. The in-memory backend is per-process = fine for a single worker, broken on multi-worker / multi-pod.
 
 ## Proxy support
 
@@ -100,7 +100,7 @@ config = FullAuthConfig(
 ```
 
 !!! warning
-    Only list headers you trust. If your server is directly exposed to the internet (no proxy), leave this empty — otherwise users can spoof their IP via the header.
+    Only list headers you trust. If your server is directly exposed to the internet (no proxy), leave this empty = otherwise users can spoof their IP via the header.
 
 When `X-Forwarded-For` contains a chain (e.g. `1.2.3.4, 10.0.0.1`), the first IP (original client) is used.
 

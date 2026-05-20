@@ -32,7 +32,7 @@ class AbstractUserAdapter(ABC, Generic[UserSchemaType, CreateUserSchemaType]):
         if field == "email":
             return await self.get_user_by_email(value)
         raise NotImplementedError(
-            f"Lookup by '{field}' not implemented — override get_user_by_field()"
+            f"Lookup by '{field}' not implemented = override get_user_by_field()"
         )
 
     @abstractmethod
@@ -63,7 +63,7 @@ class AbstractUserAdapter(ABC, Generic[UserSchemaType, CreateUserSchemaType]):
         """Atomically flip the token row from not-revoked to revoked. Returns True
         if the caller won the transition (token was present and was not yet revoked),
         False if the token was missing or already revoked. Callers treat False as
-        the reuse/concurrent-use signal — the token family should be revoked.
+        the reuse/concurrent-use signal = the token family should be revoked.
         """
         ...
 

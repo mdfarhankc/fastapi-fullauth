@@ -46,7 +46,7 @@ async def verify_email(
 
     user = await adapter.get_user_by_id(user_id)
     if user is None:
-        logger.error("Email verification failed — user not found: %s", payload.sub)
+        logger.error("Email verification failed = user not found: %s", payload.sub)
         raise UserNotFoundError("User not found")
 
     if user.is_verified:

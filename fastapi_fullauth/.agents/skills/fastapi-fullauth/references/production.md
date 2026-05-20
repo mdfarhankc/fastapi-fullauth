@@ -35,23 +35,23 @@ Install the Redis extra: `uv add 'fastapi-fullauth[redis]'`.
 
 ## 3. Trust the right proxy headers
 
-Rate limit and lockout are keyed on client IP (`utils.get_client_ip`). Behind a load balancer / CDN, `request.client.host` is the LB — so one proxy IP would eat everyone's budget.
+Rate limit and lockout are keyed on client IP (`utils.get_client_ip`). Behind a load balancer / CDN, `request.client.host` is the LB = so one proxy IP would eat everyone's budget.
 
 ```bash
 FULLAUTH_TRUSTED_PROXY_HEADERS=["X-Forwarded-For"]
 ```
 
-Only set this if you actually trust the upstream to rewrite the header. A public-facing deployment without a reverse proxy should leave this empty — otherwise clients can spoof their IP by sending `X-Forwarded-For` themselves.
+Only set this if you actually trust the upstream to rewrite the header. A public-facing deployment without a reverse proxy should leave this empty = otherwise clients can spoof their IP by sending `X-Forwarded-For` themselves.
 
 ## 4. Cookie flags
 
 If you use `CookieBackend` (cookie-based sessions):
 
 ```bash
-FULLAUTH_COOKIE_SECURE=true             # default — don't change this
-FULLAUTH_COOKIE_HTTPONLY=true           # default — don't change this
+FULLAUTH_COOKIE_SECURE=true             # default = don't change this
+FULLAUTH_COOKIE_HTTPONLY=true           # default = don't change this
 FULLAUTH_COOKIE_SAMESITE=lax            # or strict if cross-site flows don't apply
-FULLAUTH_COOKIE_DOMAIN=app.example.com  # explicit — not a leading dot
+FULLAUTH_COOKIE_DOMAIN=app.example.com  # explicit = not a leading dot
 ```
 
 `SameSite=none` requires `Secure=true` and is only right for cross-origin embeds. For most SPAs on the same domain, `lax` is correct.
@@ -59,7 +59,7 @@ FULLAUTH_COOKIE_DOMAIN=app.example.com  # explicit — not a leading dot
 ## 5. Token lifetimes
 
 ```bash
-FULLAUTH_ACCESS_TOKEN_EXPIRE_MINUTES=15      # short — rotations are cheap
+FULLAUTH_ACCESS_TOKEN_EXPIRE_MINUTES=15      # short = rotations are cheap
 FULLAUTH_REFRESH_TOKEN_EXPIRE_DAYS=30
 FULLAUTH_PASSWORD_RESET_EXPIRE_MINUTES=15    # deliberately short
 FULLAUTH_EMAIL_VERIFY_EXPIRE_MINUTES=1440    # 24h
@@ -70,7 +70,7 @@ FULLAUTH_JWT_LEEWAY_SECONDS=30               # default is fine
 
 ## 6. CSRF
 
-Only relevant when you use `CookieBackend` — a bearer-token API that isn't sent automatically by browsers doesn't have CSRF exposure in the first place. There's no `CSRF_ENABLED` flag any more — you opt in by wiring the middleware:
+Only relevant when you use `CookieBackend` = a bearer-token API that isn't sent automatically by browsers doesn't have CSRF exposure in the first place. There's no `CSRF_ENABLED` flag any more = you opt in by wiring the middleware:
 
 ```python
 from fastapi_fullauth.middleware import CSRFMiddleware
@@ -88,15 +88,15 @@ app.add_middleware(
 FULLAUTH_CSRF_SECRET=...   # ≥ 32 chars; falls back to SECRET_KEY when not set
 ```
 
-The middleware uses double-submit-cookie: GET plants a signed CSRF cookie, unsafe methods require both the cookie and a matching `X-CSRF-Token` header. The cookie is deliberately not HttpOnly — your JS needs to read it to populate the header. That's the pattern working as intended.
+The middleware uses double-submit-cookie: GET plants a signed CSRF cookie, unsafe methods require both the cookie and a matching `X-CSRF-Token` header. The cookie is deliberately not HttpOnly = your JS needs to read it to populate the header. That's the pattern working as intended.
 
-## 7. Passkeys — if enabled
+## 7. Passkeys = if enabled
 
 ```bash
 FULLAUTH_PASSKEY_ENABLED=true
 FULLAUTH_PASSKEY_RP_ID=app.example.com                       # bare hostname, no scheme, no path
 FULLAUTH_PASSKEY_ORIGINS='["https://app.example.com"]'
-FULLAUTH_PASSKEY_REQUIRE_USER_VERIFICATION=true              # default — do not flip to false without a reason
+FULLAUTH_PASSKEY_REQUIRE_USER_VERIFICATION=true              # default = do not flip to false without a reason
 FULLAUTH_PASSKEY_CHALLENGE_BACKEND=redis
 FULLAUTH_PASSKEY_CHALLENGE_TTL=60
 ```
@@ -108,7 +108,7 @@ UV enforcement on register AND authenticate is what keeps passkeys as two-factor
 The library ships mixins; your project's `models/` package owns every concrete table and `Base.metadata` (SQLAlchemy) or `SQLModel.metadata` is the source of truth. Alembic env.py:
 
 ```python
-import app.models  # noqa: F401 — registers all concrete tables
+import app.models  # noqa: F401 = registers all concrete tables
 from app.core.db import Base   # your DeclarativeBase
 
 target_metadata = Base.metadata
@@ -116,7 +116,7 @@ target_metadata = Base.metadata
 
 `alembic revision --autogenerate -m "..."` picks up exactly the tables you defined from the mixins. Apps that don't subclass `OAuthAccountMixin` never get a `fullauth_oauth_accounts` table.
 
-**Since v0.8.0:** the OAuth account model has a new composite unique constraint on `(provider, provider_user_id)`. Existing users upgrading from v0.7.0 should autogenerate a migration to add it before deploying — without it, concurrent OAuth callbacks could have created duplicate-identity rows.
+**Since v0.8.0:** the OAuth account model has a new composite unique constraint on `(provider, provider_user_id)`. Existing users upgrading from v0.7.0 should autogenerate a migration to add it before deploying = without it, concurrent OAuth callbacks could have created duplicate-identity rows.
 
 ## 9. Rate limit budgets
 
@@ -129,7 +129,7 @@ FULLAUTH_AUTH_RATE_LIMIT_PASSKEY_AUTH=10
 FULLAUTH_AUTH_RATE_LIMIT_WINDOW_SECONDS=60
 ```
 
-These apply per IP. If your app puts its auth routes behind Cloudflare / another WAF that already rate-limits, you can leave these as is — the two layers compose fine.
+These apply per IP. If your app puts its auth routes behind Cloudflare / another WAF that already rate-limits, you can leave these as is = the two layers compose fine.
 
 ## 10. Sentry / observability (your responsibility)
 
@@ -137,14 +137,14 @@ The library logs to standard loggers: `fastapi_fullauth.login`, `fastapi_fullaut
 
 Events worth alerting on:
 
-- `refresh token reuse/concurrent use — revoking family` (`fastapi_fullauth.router`) — someone replayed a refresh token, or clock-skew is driving concurrent use into looking like an attack.
+- `refresh token reuse/concurrent use = revoking family` (`fastapi_fullauth.router`) = someone replayed a refresh token, or clock-skew is driving concurrent use into looking like an attack.
 - `Passkey authentication failed` (`fastapi_fullauth.routers.passkey`)
-- `oauth auto-link refused: unverified email on existing account` (`fastapi_fullauth.oauth`) — someone's trying to hijack via unverified provider email.
+- `oauth auto-link refused: unverified email on existing account` (`fastapi_fullauth.oauth`) = someone's trying to hijack via unverified provider email.
 - `Auth rate limit exceeded` (`fastapi_fullauth.ratelimit`) at sustained volume.
 
 ## 11. Idempotent init
 
-`init_app()` warns and no-ops on second call. If you see that warning in your logs, you're wiring twice — check your startup path. As of v0.10.0, middleware is **not** wired by `init_app()` — add it yourself via `app.add_middleware(...)` from `fastapi_fullauth.middleware`.
+`init_app()` warns and no-ops on second call. If you see that warning in your logs, you're wiring twice = check your startup path. As of v0.10.0, middleware is **not** wired by `init_app()` = add it yourself via `app.add_middleware(...)` from `fastapi_fullauth.middleware`.
 
 ## 12. Final check before deploy
 

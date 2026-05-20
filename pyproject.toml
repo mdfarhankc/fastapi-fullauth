@@ -42,27 +42,27 @@ classifiers = [
     "Typing :: Typed",
 ]
 dependencies = [
-    "fastapi>=0.136",
-    "pydantic[email]>=2.13",
-    "pydantic-settings>=2.14",
-    "pyjwt>=2.12",
-    "argon2-cffi>=25.1",
-    "uuid-utils>=0.14.1",
+    "fastapi>=0.136.1",
+    "pydantic[email]>=2.13.4",
+    "pydantic-settings>=2.14.1",
+    "pyjwt>=2.12.1",
+    "argon2-cffi>=25.1.0",
+    "uuid-utils>=0.16.0",
 ]
 
 [project.optional-dependencies]
-sqlalchemy = ["sqlalchemy[asyncio]>=2.0.49", "alembic>=1.18"]
-sqlmodel = ["sqlmodel>=0.0.38", "alembic>=1.18"]
-redis = ["redis>=7.4"]
-oauth = ["httpx>=0.28"]
-passkey = ["webauthn>=2.7"]
+sqlalchemy = ["sqlalchemy[asyncio]>=2.0.49", "alembic>=1.18.4"]
+sqlmodel = ["sqlmodel>=0.0.38", "alembic>=1.18.4"]
+redis = ["redis>=7.4.0"]
+oauth = ["httpx>=0.28.1"]
+passkey = ["webauthn>=2.7.1"]
 all = [
     "sqlalchemy[asyncio]>=2.0.49",
-    "alembic>=1.18",
+    "alembic>=1.18.4",
     "sqlmodel>=0.0.38",
-    "redis>=7.4",
-    "httpx>=0.28",
-    "webauthn>=2.7",
+    "redis>=7.4.0",
+    "httpx>=0.28.1",
+    "webauthn>=2.7.1",
 ]
 
 [project.urls]
@@ -77,15 +77,15 @@ build-backend = "hatchling.build"
 [dependency-groups]
 dev = [
     "aiosqlite>=0.22.1",
-    "fakeredis>=2.35",
+    "fakeredis>=2.35.1",
     "httpx>=0.28.1",
     "mkdocs-material>=9.7.6",
-    "mypy>=2.0",
+    "mypy>=2.1.0",
     "pytest>=9.0.3",
-    "pytest-asyncio>=1.3",
-    "pytest-cov>=7.1",
-    "ruff>=0.15.12",
-    "uvicorn>=0.46",
+    "pytest-asyncio>=1.3.0",
+    "pytest-cov>=7.1.0",
+    "ruff>=0.15.13",
+    "uvicorn>=0.47.0",
 ]
 
 [tool.hatch.version]

@@ -47,10 +47,7 @@ async def _register_and_login(client):
     return r.json()
 
 
-# ===========================================================================
 # Change password
-# ===========================================================================
-
 
 @pytest.mark.asyncio
 async def test_change_password():
@@ -122,7 +119,7 @@ async def test_change_password_for_user_without_stored_hash():
     app, adapter, fullauth, engine = await _make_app()
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        # Create a user the way the OAuth flow does — no stored password.
+        # Create a user the way the OAuth flow does = no stored password.
         data = CreateUserSchema(email="oauth@t.com", password="placeholder-unused")
         user = await adapter.create_user(data, hashed_password=None)
         assert await adapter.get_hashed_password(user.id) is None
@@ -169,10 +166,7 @@ async def test_change_password_still_requires_current_when_hash_exists():
     await engine.dispose()
 
 
-# ===========================================================================
 # Update profile
-# ===========================================================================
-
 
 @pytest.mark.asyncio
 async def test_update_profile():
@@ -260,10 +254,7 @@ async def test_update_profile_rejects_protected_fields():
     await engine.dispose()
 
 
-# ===========================================================================
 # Delete account
-# ===========================================================================
-
 
 @pytest.mark.asyncio
 async def test_delete_account():

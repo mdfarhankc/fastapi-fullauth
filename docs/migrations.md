@@ -42,7 +42,7 @@ Import your `models` package so every concrete table you defined registers on `B
 
     ```python
     # alembic/env.py
-    import app.models  # noqa: F401 — registers all your concrete tables
+    import app.models  # noqa: F401 = registers all your concrete tables
     from sqlmodel import SQLModel
 
     target_metadata = SQLModel.metadata

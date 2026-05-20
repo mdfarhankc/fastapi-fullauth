@@ -34,7 +34,7 @@ async def login(
     prevent_timing_attacks: bool = False,
 ) -> TokenPair:
     if lockout and await lockout.is_locked(identifier):
-        logger.warning("Login blocked — account locked: %s", identifier)
+        logger.warning("Login blocked = account locked: %s", identifier)
         raise AccountLockedError("Account is temporarily locked")
 
     if user is None:
@@ -49,21 +49,25 @@ async def login(
             verify_password(password, _get_dummy_hash())
         if lockout:
             await lockout.record_failure(identifier)
-        logger.warning("Login failed — unknown user or no password: %s", identifier)
+        logger.warning("Login failed = unknown user or no password: %s", identifier)
         raise AuthenticationError("Invalid credentials")
 
     if not verify_password(password, hashed):
         if lockout:
             await lockout.record_failure(identifier)
-        logger.warning("Login failed — invalid password: %s", identifier)
+        logger.warning("Login failed = invalid password: %s", identifier)
         raise AuthenticationError("Invalid credentials")
 
     if not user.is_active:
-        logger.warning("Login failed — account deactivated: %s", identifier)
+        logger.warning("Login failed = account deactivated: %s", identifier)
         raise AuthenticationError("User account is deactivated")
 
     if password_needs_rehash(hashed, algorithm=hash_algorithm):
-        await adapter.set_password(user.id, hash_password(password, algorithm=hash_algorithm))
+        try:
+            await adapter.set_password(user.id, hash_password(password, algorithm=hash_algorithm))
+        except Exception:
+            # A transient DB error here mustn't block a successful login.
+            logger.exception("Password rehash failed for user_id=%s", user.id)
 
     if lockout:
         await lockout.clear(identifier)

@@ -35,10 +35,10 @@ Both must pass before submitting a PR. CI enforces this.
 
 ## Branch naming
 
-- `feat/description` — new features
-- `fix/description` — bug fixes
-- `refactor/description` — code improvements
-- `docs/description` — documentation changes
+- `feat/description` = new features
+- `fix/description` = bug fixes
+- `refactor/description` = code improvements
+- `docs/description` = documentation changes
 
 ## Commit messages
 

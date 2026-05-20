@@ -1,6 +1,6 @@
 # OAuth2 social login
 
-The library ships two providers (GitHub, Google) and a base class for the rest. The flow is standard authorization-code with a signed state token — no extra configuration for PKCE or nonces.
+The library ships two providers (GitHub, Google) and a base class for the rest. The flow is standard authorization-code with a signed state token = no extra configuration for PKCE or nonces.
 
 ## Feature matrix
 
@@ -8,7 +8,7 @@ The library ships two providers (GitHub, Google) and a base class for the rest. 
 - **Adapter mixin:** `OAuthAdapterMixin`
 - **Router:** `oauth`
 - **Extra:** `fastapi-fullauth[oauth]` (pulls in `httpx`)
-- **Tables:** `fullauth_oauth_accounts` — registered only when you subclass `OAuthAccountMixin` in your `models/`
+- **Tables:** `fullauth_oauth_accounts` = registered only when you subclass `OAuthAccountMixin` in your `models/`
 
 ## Setup
 
@@ -51,11 +51,11 @@ The `redirect_uris` list is a whitelist. `/oauth/{provider}/authorize?redirect_u
 
 ## Routes
 
-- `GET  /api/v1/auth/oauth/providers` — list configured providers
-- `GET  /api/v1/auth/oauth/{provider}/authorize?redirect_uri=...` — returns the authorization URL to redirect the browser to
-- `POST /api/v1/auth/oauth/{provider}/callback` — body `{code, state}` — exchange code for tokens and log the user in
-- `GET  /api/v1/auth/oauth/accounts` — list OAuth accounts linked to current user (auth required)
-- `DELETE /api/v1/auth/oauth/accounts/{provider}` — unlink a provider (auth required, only works if the user has another login method)
+- `GET  /api/v1/auth/oauth/providers` = list configured providers
+- `GET  /api/v1/auth/oauth/{provider}/authorize?redirect_uri=...` = returns the authorization URL to redirect the browser to
+- `POST /api/v1/auth/oauth/{provider}/callback` = body `{code, state}` = exchange code for tokens and log the user in
+- `GET  /api/v1/auth/oauth/accounts` = list OAuth accounts linked to current user (auth required)
+- `DELETE /api/v1/auth/oauth/accounts/{provider}` = unlink a provider (auth required, only works if the user has another login method)
 
 The SPA flow:
 
@@ -73,7 +73,7 @@ State is a JWT carrying `{"purpose": "oauth_state", "nonce": ..., "redirect_uri"
 
 `OAUTH_AUTO_LINK_BY_EMAIL=True` (default): if an OAuth sign-in resolves to an email that already exists as a local account, the OAuth identity is attached to that account. Useful for "I signed up with password, now I'm adding GitHub" without a separate link step.
 
-**Security caveat** — as of v0.8.0, auto-link only proceeds when `info.email_verified=True` from the provider. Without this gate, anyone who registers a secondary email on GitHub (which GitHub doesn't verify ownership for) could sign in via GitHub and get attached to the victim's local account.
+**Security caveat** = as of v0.8.0, auto-link only proceeds when `info.email_verified=True` from the provider. Without this gate, anyone who registers a secondary email on GitHub (which GitHub doesn't verify ownership for) could sign in via GitHub and get attached to the victim's local account.
 
 When the gate fires, the callback returns a 4xx with:
 
@@ -101,19 +101,19 @@ code + state
 1. Look up existing OAuth account by `(provider, provider_user_id)`. If found → log that user in, update access/refresh tokens.
 2. No existing link but `auto_link_by_email=True` and `info.email_verified=True` and the email matches an existing local user → link that user.
 3. No existing link, email doesn't match or email_verified is False → create a new user with `hashed_password=NULL`.
-4. Insert the OAuth account row. If that fails with `IntegrityError` on the composite unique `(provider, provider_user_id)` (concurrent callback), fetch the existing row and return it — both callers linked the same identity.
+4. Insert the OAuth account row. If that fails with `IntegrityError` on the composite unique `(provider, provider_user_id)` (concurrent callback), fetch the existing row and return it = both callers linked the same identity.
 
 `after_oauth_login(user, provider, is_new_user)` fires for every successful login, including returning users.
 
-`after_oauth_register(user, user_info)` fires on first-time OAuth signup — use this to prefill name / avatar URL from `user_info.name` / `user_info.picture`.
+`after_oauth_register(user, user_info)` fires on first-time OAuth signup = use this to prefill name / avatar URL from `user_info.name` / `user_info.picture`.
 
 ## OAuth-only users setting a password
 
 OAuth users have `hashed_password=NULL`. They can't log in with a password because there isn't one to verify against.
 
-`POST /api/v1/auth/change-password` (authenticated, body: `{new_password}` — `current_password` may be omitted) sets the first password. The route accepts the missing `current_password` only when the stored hash is `NULL`; once a password exists, `current_password` is required like any other change.
+`POST /api/v1/auth/change-password` (authenticated, body: `{new_password}` = `current_password` may be omitted) sets the first password. The route accepts the missing `current_password` only when the stored hash is `NULL`; once a password exists, `current_password` is required like any other change.
 
-There's no separate `set-password` route — `/change-password` handles both first-time set and subsequent changes.
+There's no separate `set-password` route = `/change-password` handles both first-time set and subsequent changes.
 
 ## Writing a custom provider
 
@@ -159,8 +159,8 @@ Instantiate with `client_id`, `client_secret`, `redirect_uris` and pass to `Full
 
 ## Gotchas
 
-- **GitHub's `email_verified`** — fetch the authenticated user's primary email from `/user/emails` and trust only the one with `primary=true, verified=true`. The provider built-in does this; a custom provider needs to do the same.
-- **`redirect_uri` must match exactly** between authorize and callback — the provider enforces it, and the library passes it through to `exchange_code`. Query strings count.
+- **GitHub's `email_verified`** = fetch the authenticated user's primary email from `/user/emails` and trust only the one with `primary=true, verified=true`. The provider built-in does this; a custom provider needs to do the same.
+- **`redirect_uri` must match exactly** between authorize and callback = the provider enforces it, and the library passes it through to `exchange_code`. Query strings count.
 - **State token and access token use the same `SECRET_KEY`.** Don't add custom `aud` logic; the purpose claim plus short TTL is what keeps them distinct.
-- **Unlinking the only login** — `DELETE /oauth/accounts/{provider}` refuses to unlink a provider if it's the user's only remaining login method (no password, no other provider). It returns 400 with "Set a password first."
+- **Unlinking the only login** = `DELETE /oauth/accounts/{provider}` refuses to unlink a provider if it's the user's only remaining login method (no password, no other provider). It returns 400 with "Set a password first."
 - **Composite unique** on `(provider, provider_user_id)` is enforced at the DB level since v0.8.0. If you upgrade from ≤ 0.7.0, autogenerate the Alembic migration before deploying.
