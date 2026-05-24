@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.11.0
+
+### Breaking changes
+
+- **`CurrentUser`, `VerifiedUser`, `SuperUser` removed from public API.** Build your own typed dependencies with `Annotated[YourSchema, Depends(current_user)]`.
+- **Factory functions removed.** `get_current_user_dependency()`, `get_verified_user_dependency()`, `get_superuser_dependency()` are gone. Use `current_user`, `current_active_verified_user`, `current_superuser` directly with `Depends()`.
+
+### Added
+
+- **`get_fullauth` exported** from `fastapi_fullauth.dependencies`. Gives custom dependencies access to the full `FullAuth` instance (adapter, token engine, config, hooks, etc.).
+- **Architecture docs** - explains how the library works internally (token lifecycle, adapters, protection subsystems).
+- **Passkeys docs** - complete WebAuthn guide with setup, registration/authentication flows, frontend integration, clone detection.
+- **Frontend integration guide** - framework-agnostic walkthrough of OAuth, passkey, email verification, and password reset flows.
+- **Testing guide** - how to test apps built with fastapi-fullauth.
+- **Troubleshooting guide** - common errors and solutions.
+- All existing doc pages expanded with explanations, examples, and missing content.
+
 ## 0.10.0
 
 ### Breaking changes
