@@ -49,6 +49,7 @@ async def _register_and_login(client):
 
 # Change password
 
+
 @pytest.mark.asyncio
 async def test_change_password():
     app, adapter, _, engine = await _make_app()
@@ -168,6 +169,7 @@ async def test_change_password_still_requires_current_when_hash_exists():
 
 # Update profile
 
+
 @pytest.mark.asyncio
 async def test_update_profile():
     from fastapi_fullauth.types import CreateUserSchema, UserSchema
@@ -255,6 +257,7 @@ async def test_update_profile_rejects_protected_fields():
 
 
 # Delete account
+
 
 @pytest.mark.asyncio
 async def test_delete_account():

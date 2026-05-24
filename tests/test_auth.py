@@ -38,6 +38,7 @@ async def _make_app(adapter=None, **fullauth_kwargs):
 
 # Basic auth flows (register, login, logout, /me)
 
+
 @pytest.mark.asyncio
 async def test_register(client):
     r = await client.post(
@@ -288,6 +289,7 @@ async def test_password_reset_nonexistent_user(client):
 
 
 # Refresh token persistence, reuse detection, and Redis blacklist
+
 
 @pytest.mark.asyncio
 async def test_login_persists_refresh_token():
@@ -578,6 +580,7 @@ async def test_logout_without_body_still_works():
 
 # Redis blacklist
 
+
 @pytest.mark.asyncio
 async def test_redis_blacklist_add_and_check():
     import fakeredis.aioredis
@@ -628,6 +631,7 @@ def test_redis_blacklist_requires_redis_package():
 
 
 # Email verification
+
 
 @pytest.fixture
 def sent_emails():
@@ -742,6 +746,7 @@ async def test_verify_without_callback(client, auth_headers):
 
 # expires_in in token response
 
+
 @pytest.mark.asyncio
 async def test_login_returns_expires_in():
     app, _, _, engine = await _make_app()
@@ -787,6 +792,7 @@ async def test_refresh_returns_expires_in():
 
 
 # Auth route rate limiting
+
 
 @pytest.mark.asyncio
 async def test_login_rate_limited():

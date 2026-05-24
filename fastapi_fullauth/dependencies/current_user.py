@@ -90,5 +90,3 @@ async def current_superuser(
 
 VerifiedUser = Annotated[UserSchema, Depends(current_active_verified_user)]
 SuperUser = Annotated[UserSchema, Depends(current_superuser)]
-
-
