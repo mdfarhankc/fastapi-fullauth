@@ -42,7 +42,7 @@ class User(UserMixin, table=True):
 `UserMixin` provides `id`, `email`, `hashed_password` (nullable = `NULL` for OAuth-only users), `is_active`, `is_verified`, `is_superuser`, and `created_at`. Add any extra fields you need.
 
 !!! note
-    Define your own schemas extending `UserSchema` and `CreateUserSchema` to include custom fields like `display_name` and `phone`, then pass them to the adapter. See [Custom User Schemas](#custom-user-schemas) below or the [API Reference](api-reference.md).
+    Define your own schemas extending `UserSchema` and `CreateUserSchema` to include custom fields like `display_name` and `phone`, then pass them to the adapter. See [Custom Schemas](adapters/index.md#custom-schemas) or the [API Reference](api-reference.md).
 
 ## 2. Set up the database
 
@@ -196,7 +196,12 @@ curl http://localhost:8000/api/v1/auth/me \
 ## 6. Add protected routes
 
 ```python
-from fastapi_fullauth.dependencies import CurrentUser, VerifiedUser, require_role
+from typing import Annotated
+from fastapi import Depends
+from fastapi_fullauth.dependencies import current_user, current_active_verified_user, require_role
+
+CurrentUser = Annotated[UserSchema, Depends(current_user)]
+VerifiedUser = Annotated[UserSchema, Depends(current_active_verified_user)]
 
 @app.get("/profile")
 async def profile(user: CurrentUser):
@@ -213,9 +218,13 @@ async def admin(user=Depends(require_role("admin"))):
 
 See [Protected Routes](auth/dependencies.md) for all dependency types.
 
-## Next steps
+## What to read next
 
-- [Configuration](configuration.md) = all config options
-- [OAuth2 Social Login](oauth.md) = add Google/GitHub login
-- [Event Hooks](auth/hooks.md) = send emails, log events
-- [Rate Limiting](security/rate-limiting.md) = protect your endpoints
+- **[Architecture](architecture.md)** = understand how the library works (tokens, adapters, protection layers)
+- **[Configuration](configuration.md)** = all config options with production examples
+- **[OAuth2 Social Login](oauth.md)** = add Google/GitHub login
+- **[Passkeys](passkeys.md)** = passwordless login with biometrics
+- **[Event Hooks](auth/hooks.md)** = send emails, log events, sync external systems
+- **[Rate Limiting](security/rate-limiting.md)** = protect your endpoints
+- **[Testing](testing.md)** = test your auth-protected routes
+- **[Troubleshooting](troubleshooting.md)** = common errors and solutions

@@ -77,8 +77,10 @@ from fastapi_fullauth.types import (
 
 ```python
 from fastapi_fullauth.dependencies import (
-    current_user,                   # Annotated dep → UserSchema
-    get_current_user_dependency,    # factory for custom UserSchema
+    current_user,                   # any authenticated user
+    current_active_verified_user,   # verified email required
+    current_superuser,              # superuser required
+    get_fullauth,                   # access FullAuth instance in a dependency
     require_role,                   # require_role("admin")
     require_permission,             # require_permission("posts:create")
 )

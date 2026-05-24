@@ -21,6 +21,7 @@ async def _make_db():
 
 # Lifecycle hooks (register, login, logout)
 
+
 @pytest.fixture
 def hook_log():
     return []
@@ -98,6 +99,7 @@ async def test_hooks_fire_on_logout(hooks_client, hook_log):
 
 # Password reset email callback
 
+
 @pytest.mark.asyncio
 async def test_password_reset_email_callback():
     sent = []
@@ -135,6 +137,7 @@ async def test_password_reset_email_callback():
 
 
 # Email callback via hooks (password reset)
+
 
 @pytest.mark.asyncio
 async def test_raising_hook_does_not_break_subsequent_hooks_or_request():

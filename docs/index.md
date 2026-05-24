@@ -31,8 +31,9 @@ Add a complete authentication and authorization system to your **FastAPI** proje
 - **Refresh token rotation** with reuse detection (revokes entire session family on replay)
 - **Password hashing** via Argon2id (default) or bcrypt
 - **Email verification** and **password reset** flows with event hooks
+- **Passkey (WebAuthn)** = passwordless login with fingerprint, Face ID, security keys
 - **OAuth2 social login** = Google and GitHub, with multi-redirect-URI support
-- **Role-based access control** = `CurrentUser`, `VerifiedUser`, `SuperUser`, `require_role()`
+- **Role-based access control** = `current_user`, `require_role()`, `require_permission()`
 - **Rate limiting** = per-route auth limits + global middleware (memory or Redis)
 - **CSRF protection** and **security headers** middleware
 - **Pluggable adapters** = SQLModel or SQLAlchemy
@@ -140,9 +141,16 @@ app.include_router(fullauth.profile_router, prefix="/api/v1/auth")
 
 </div>
 
-With OAuth enabled, additional routes are registered under `/auth/oauth/`. See [OAuth2 Social Login](oauth.md).
+With OAuth enabled, additional routes are registered under `/auth/oauth/`. With passkeys enabled, routes under `/auth/passkeys/`. See [OAuth2 Social Login](oauth.md) and [Passkeys](passkeys.md).
 
 All routes are prefixed with `/api/v1` by default (configurable via `API_PREFIX`).
+
+## Learn more
+
+- **[Architecture](architecture.md)** = understand how the library works internally
+- **[Getting Started](getting-started.md)** = step-by-step setup tutorial
+- **[Testing](testing.md)** = test apps built with fastapi-fullauth
+- **[Troubleshooting](troubleshooting.md)** = common errors and solutions
 
 ## AI-friendly docs
 

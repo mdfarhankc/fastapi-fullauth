@@ -192,6 +192,22 @@ middleware (`RateLimitMiddleware`) is opt-in = import it from
 | `AUTH_ROUTER_PREFIX` | `str` | `"/auth"` | Auth router sub-prefix. |
 | `ROUTER_TAGS` | `list[str]` | `["Auth"]` | OpenAPI tags for auth routes. |
 
+### Passwords
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `PREVENT_LOGIN_TIMING_ATTACKS` | `bool` | `False` | Run a dummy password hash on failed lookups to mask response time. Prevents email enumeration via timing. |
+
+### Global defaults
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `BACKEND` | `str` | `"memory"` | Default backend for all subsystems (blacklist, lockout, rate limit, challenge store). Individual `*_BACKEND` settings override this. |
+| `ORIGINS` | `list[str]` | `[]` | Default origins list. Propagates to `PASSKEY_ORIGINS` if not explicitly set. |
+
+!!! tip
+    Set `FULLAUTH_BACKEND=redis` and `FULLAUTH_REDIS_URL=redis://...` to switch all subsystems to Redis at once. You can still override individual backends (e.g. `LOCKOUT_BACKEND=memory` for local dev).
+
 ### Passkeys
 
 | Option | Type | Default | Description |
@@ -203,3 +219,39 @@ middleware (`RateLimitMiddleware`) is opt-in = import it from
 | `PASSKEY_CHALLENGE_BACKEND` | `"memory" \| "redis"` | `"memory"` | Challenge store backend. Use `"redis"` in production = `"memory"` is per-process and breaks under `uvicorn --workers N` (begin and complete can land on different workers). |
 | `PASSKEY_CHALLENGE_TTL` | `int` | `60` | Challenge expiry in seconds. |
 | `PASSKEY_REQUIRE_USER_VERIFICATION` | `bool` | `True` | Require user verification (PIN/biometric) on register and authenticate. Set `False` only if you need to allow silent authenticators. |
+
+## Production example
+
+A realistic `.env` file for a production deployment:
+
+```bash
+# .env.production
+FULLAUTH_SECRET_KEY=your-32-char-secret-generated-by-secrets-module
+FULLAUTH_ALGORITHM=HS256
+
+# Tokens
+FULLAUTH_ACCESS_TOKEN_EXPIRE_MINUTES=15
+FULLAUTH_REFRESH_TOKEN_EXPIRE_DAYS=7
+
+# All protection subsystems use Redis
+FULLAUTH_BACKEND=redis
+FULLAUTH_REDIS_URL=redis://redis:6379/0
+
+# Password hashing
+FULLAUTH_PASSWORD_HASH_ALGORITHM=argon2id
+FULLAUTH_PASSWORD_MIN_LENGTH=10
+
+# Lockout
+FULLAUTH_MAX_LOGIN_ATTEMPTS=5
+FULLAUTH_LOCKOUT_DURATION_MINUTES=15
+
+# Rate limiting
+FULLAUTH_AUTH_RATE_LIMIT_LOGIN=10
+FULLAUTH_AUTH_RATE_LIMIT_WINDOW_SECONDS=60
+
+# Routing
+FULLAUTH_API_PREFIX=/api/v1
+
+# Proxy (if behind Nginx/Cloudflare)
+FULLAUTH_TRUSTED_PROXY_HEADERS=["X-Forwarded-For"]
+```

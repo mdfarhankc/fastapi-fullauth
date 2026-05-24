@@ -93,11 +93,9 @@ Response:
   "refresh_token": "eyJ...",
   "token_type": "bearer",
   "expires_in": 1800,
-  "user": { "id": "…", "email": "user@example.com", "is_active": true, "is_verified": true, "is_superuser": false }
+  "user": { "id": "...", "email": "user@example.com", "is_active": true, "is_verified": true }
 }
 ```
-
-`user` contains the full user object on every successful callback.
 
 From this point on, the session works exactly like email/password login. The user can call `/me`, `/refresh`, `/logout`, etc. with the JWT tokens.
 
@@ -107,27 +105,40 @@ From this point on, the session works exactly like email/password login. The use
 2. **Authorization code is exchanged** for provider tokens
 3. **User info is fetched** from the provider (email, name, picture)
 4. **Account linking logic** runs:
-    - If this provider account is already linked → update tokens, return existing user
-    - If an account with the same email exists → link the OAuth account to it
-    - Otherwise → create a new user with a random password
+    - If this provider account is already linked - update tokens, return existing user
+    - If an account with the same email exists and the provider confirms the email is verified - link the OAuth account to it
+    - If the email exists but the provider hasn't verified it - reject the login (security check)
+    - Otherwise - create a new user (marked as verified, since the provider confirmed their email)
 5. **JWT tokens are issued** (same as regular login)
 
-!!! note
-    If the provider reports the email as verified, the user's `is_verified` flag is set to `True` automatically.
+!!! warning
+    Auto-linking only happens when the provider reports `email_verified=True`. This prevents an attacker from creating a provider account with a victim's email and hijacking their local account. If the provider hasn't verified the email, the user must log in with their existing credentials and link the provider manually.
 
 ## Auto-linking by email
 
-By default, if a user registers with `user@example.com` via email/password, then later logs in with Google using the same email, the accounts are linked automatically. Disable this with:
+By default, if a user registers with `user@example.com` via email/password, then later logs in with Google using the same verified email, the accounts are linked automatically. Disable this with:
 
 ```python
-fullauth = FullAuth(
-    adapter=adapter,
-    config=FullAuthConfig(
-        ...,
-        OAUTH_AUTO_LINK_BY_EMAIL=False,
-    ),
+config = FullAuthConfig(
+    SECRET_KEY="...",
+    OAUTH_AUTO_LINK_BY_EMAIL=False,
 )
 ```
+
+## Security model
+
+**State token**: the OAuth `state` parameter is a purpose-scoped JWT with a 5-minute TTL (`OAUTH_STATE_EXPIRE_SECONDS`). It prevents CSRF attacks on the callback endpoint. If the state token is missing, expired, or tampered with, the callback is rejected.
+
+**Redirect URI validation**: the library validates the `redirect_uri` parameter against the provider's configured `redirect_uris` list. Mismatched URIs are rejected with a 400 error.
+
+**Token storage**: provider access and refresh tokens are stored in the `oauth_accounts` table and updated on each login.
+
+## OAuth-only users
+
+Users created through OAuth login have no password hash. They authenticate exclusively through their linked provider.
+
+- To set a password later, use `POST /change-password`. The `current_password` field is not required for users without an existing password.
+- Unlinking a provider is blocked if it's the user's only login method (no password set, no other linked providers). The user must set a password first.
 
 ## Unlinking providers
 
@@ -139,16 +150,65 @@ DELETE /api/v1/auth/oauth/accounts/google
 
 This is blocked if the OAuth account is the user's only login method (no password set, no other OAuth providers). The user must set a password first.
 
+## Adding your own provider
+
+Subclass `OAuthProvider` and implement three methods:
+
+```python
+from fastapi_fullauth.oauth.base import OAuthProvider, OAuthUserInfo
+
+class MyProvider(OAuthProvider):
+    name = "myprovider"
+
+    @property
+    def default_scopes(self) -> list[str]:
+        return ["openid", "email"]
+
+    def get_authorization_url(self, state: str, redirect_uri: str) -> str:
+        # build and return the provider's authorization URL
+        ...
+
+    async def exchange_code(self, code: str, redirect_uri: str) -> dict:
+        # POST the code to the provider's token endpoint
+        # return {"access_token": "...", "refresh_token": "...", ...}
+        ...
+
+    async def get_user_info(self, tokens: dict) -> OAuthUserInfo:
+        # fetch user info from the provider using the access token
+        return OAuthUserInfo(
+            provider=self.name,
+            provider_user_id="...",
+            email="user@example.com",
+            email_verified=True,
+            name="User Name",
+            picture=None,
+            raw={},  # full provider response
+        )
+```
+
+See `GoogleOAuthProvider` and `GitHubOAuthProvider` in the source for complete examples.
+
 ## Event hooks
+
+Two hooks fire during OAuth flows:
+
+- `after_oauth_login` fires on every OAuth login (new and returning users):
 
 ```python
 async def on_oauth_login(user, provider, is_new_user):
     if is_new_user:
         print(f"New user via {provider}: {user.email}")
-    else:
-        print(f"Returning user via {provider}: {user.email}")
 
 fullauth.hooks.on("after_oauth_login", on_oauth_login)
+```
+
+- `after_oauth_register` fires only when a new user is created via OAuth, and includes the provider's user info:
+
+```python
+async def on_oauth_register(user, user_info):
+    print(f"New OAuth user: {user.email}, provider data: {user_info.raw}")
+
+fullauth.hooks.on("after_oauth_register", on_oauth_register)
 ```
 
 The `after_register` hook also fires for new OAuth users.
@@ -174,3 +234,6 @@ Default scopes: `openid`, `email`, `profile`
 4. Copy the Client ID and Client Secret
 
 Default scopes: `read:user`, `user:email`
+
+!!! note
+    GitHub requires a separate API call to fetch the user's verified primary email. The library handles this automatically.

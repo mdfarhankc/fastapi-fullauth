@@ -14,6 +14,7 @@ from fastapi_fullauth.protection.lockout import InMemoryLockoutManager
 
 # Security headers middleware
 
+
 @pytest.fixture
 def security_app():
     app = FastAPI()
@@ -39,6 +40,7 @@ async def test_security_headers(security_app):
 
 
 # CSRF middleware
+
 
 @pytest.fixture
 def csrf_app():
@@ -105,6 +107,7 @@ async def test_csrf_rejects_wrong_token(csrf_app):
 
 # Rate limit middleware
 
+
 @pytest.fixture
 def ratelimit_app():
     app = FastAPI()
@@ -138,6 +141,7 @@ async def test_rate_limit_blocks_over_limit(ratelimit_app):
 
 
 # Proxy header IP extraction
+
 
 @pytest.mark.asyncio
 async def test_rate_limit_uses_x_forwarded_for_when_trusted():
@@ -213,6 +217,7 @@ def test_get_client_ip_falls_back_to_client_host():
 
 
 # Redis rate limiter
+
 
 @pytest.mark.asyncio
 async def test_redis_rate_limiter_allows_and_blocks():
@@ -296,6 +301,7 @@ async def test_redis_rate_limiter_middleware():
 
 
 # Account lockout
+
 
 @pytest.mark.asyncio
 async def test_not_locked_initially():
