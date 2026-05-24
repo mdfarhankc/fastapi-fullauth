@@ -1,48 +1,44 @@
 # Protected Routes
 
-fastapi-fullauth provides FastAPI dependencies to protect your routes. Use them with `Depends()` or the `Annotated` type aliases.
+fastapi-fullauth provides FastAPI dependency functions to protect your routes. Build your own `Annotated` types with `Depends()`.
 
-## Dependency types
+## Setting up dependencies
 
-### CurrentUser
-
-Any authenticated user (active account required).
+Create your typed dependencies once (e.g. in `deps.py`):
 
 ```python
-from fastapi_fullauth.dependencies import CurrentUser
+from typing import Annotated
+from fastapi import Depends
+from fastapi_fullauth.dependencies import current_user, current_active_verified_user, current_superuser
 
+from app.schemas import UserSchema  # your user schema
+
+CurrentUser = Annotated[UserSchema, Depends(current_user)]
+VerifiedUser = Annotated[UserSchema, Depends(current_active_verified_user)]
+SuperUser = Annotated[UserSchema, Depends(current_superuser)]
+```
+
+Then use them in your routes:
+
+```python
 @app.get("/profile")
 async def profile(user: CurrentUser):
     return {"email": user.email, "roles": user.roles}
 ```
 
-### VerifiedUser
+## Dependency functions
 
-Authenticated user with a verified email address.
+### current_user
 
-```python
-from fastapi_fullauth.dependencies import VerifiedUser
+Any authenticated user (active account required). Returns `401` if the token is invalid or the user is inactive.
 
-@app.get("/dashboard")
-async def dashboard(user: VerifiedUser):
-    return {"email": user.email}
-```
+### current_active_verified_user
 
-Returns `403 Forbidden` if the user's email is not verified.
+Authenticated user with a verified email address. Returns `403 Forbidden` if the user's email is not verified.
 
-### SuperUser
+### current_superuser
 
-Authenticated user with `is_superuser=True`.
-
-```python
-from fastapi_fullauth.dependencies import SuperUser
-
-@app.delete("/admin/users/{user_id}")
-async def delete_user(user_id: str, admin: SuperUser):
-    ...
-```
-
-Returns `403 Forbidden` if the user is not a superuser.
+Authenticated user with `is_superuser=True`. Returns `403 Forbidden` if the user is not a superuser.
 
 ### require_role
 
@@ -136,43 +132,68 @@ All dependencies follow the same flow:
 
 If any step fails, a `401 Unauthorized` or `403 Forbidden` response is returned automatically.
 
-## Typed dependencies for custom schemas
+## Custom user schemas
 
-If you use custom user schemas, the default `CurrentUser` type resolves to the base `UserSchema`. Use the factory functions for full type safety:
+When using custom schemas with extra fields, annotate with your schema type. The dependency returns whatever your adapter produces at runtime, so the extra fields are always there:
 
 ```python
 from typing import Annotated
 from fastapi import Depends
-from fastapi_fullauth.dependencies import (
-    get_current_user_dependency,
-    get_verified_user_dependency,
-    get_superuser_dependency,
-)
+from fastapi_fullauth.dependencies import current_user
 
-# your custom schema
-from myapp.schemas import MyUserSchema
+from app.schemas import MyUserSchema
 
-MyCurrentUser = Annotated[MyUserSchema, Depends(get_current_user_dependency(MyUserSchema))]
-MyVerifiedUser = Annotated[MyUserSchema, Depends(get_verified_user_dependency(MyUserSchema))]
-MySuperUser = Annotated[MyUserSchema, Depends(get_superuser_dependency(MyUserSchema))]
+CurrentUser = Annotated[MyUserSchema, Depends(current_user)]
 
 @app.get("/profile")
-async def profile(user: MyCurrentUser):
+async def profile(user: CurrentUser):
     return {"name": user.display_name}  # IDE knows this field exists
 ```
 
-## Using with the function form
+## Writing custom dependencies
 
-If you prefer the function form over `Annotated` types:
+You can write your own dependency functions for full control over the auth flow. There are two approaches:
+
+### Using get_fullauth
+
+`get_fullauth` is a FastAPI dependency that returns the `FullAuth` instance from `app.state`. It gives you access to the adapter, token engine, config, and everything else:
 
 ```python
 from fastapi import Depends
-from fastapi_fullauth.dependencies import current_user, current_active_verified_user, current_superuser
+from fastapi_fullauth.dependencies import get_fullauth
 
-@app.get("/profile")
-async def profile(user=Depends(current_user)):
+async def my_current_user(fullauth=Depends(get_fullauth), token: str = Depends(...)):
+    payload = await fullauth.token_engine.decode_token(token)
+    user = await fullauth.adapter.get_user_by_id(payload.sub)
+    # your custom logic: load relations, check feature flags, etc.
     return user
 ```
+
+This is useful when your dependency lives in a separate module from where you set up FullAuth.
+
+### Using the FullAuth instance directly
+
+If you already have the `FullAuth` instance in scope, just reference it directly:
+
+```python
+auth = FullAuth(adapter=my_adapter, config=config)
+
+async def my_current_user():
+    user = await auth.adapter.get_user_by_id(...)
+    # your custom logic
+    return user
+```
+
+Both approaches give you the same access. Through the `FullAuth` instance you can reach:
+
+- `adapter` - all DB operations (users, roles, permissions, refresh tokens)
+- `token_engine` - decode, create, and blacklist tokens
+- `config` - all settings
+- `hooks` - event hooks
+- `lockout` - account lockout store
+- `auth_rate_limiter` - rate limiter
+- `challenge_store` - passkey challenges
+- `oauth_providers` - registered OAuth providers
 
 ## Role management
 

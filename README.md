@@ -34,7 +34,7 @@ Add a complete authentication and authorization system to your **FastAPI** proje
 - **Email verification** and **password reset** flows with event hooks
 - **Passkey (WebAuthn)** = passwordless login with fingerprint, Face ID, security keys
 - **OAuth2 social login** = Google and GitHub, with multi-redirect-URI support
-- **Role-based access control** = `CurrentUser`, `VerifiedUser`, `SuperUser`, `require_role()`
+- **Role-based access control** = `current_user`, `require_role()`, `require_permission()`
 - **Rate limiting** = per-route auth limits + global middleware (memory or Redis)
 - **CSRF protection** and **security headers** middleware, auto-wired
 - **Pluggable adapters** = SQLModel or SQLAlchemy
@@ -218,25 +218,31 @@ fullauth = FullAuth(
 )
 ```
 
-Full IDE autocompletion and type checking on custom fields. Use `get_current_user_dependency()` for typed dependencies:
+Full IDE autocompletion and type checking on custom fields:
 
 ```python
 from typing import Annotated
 from fastapi import Depends
-from fastapi_fullauth.dependencies import get_current_user_dependency
+from fastapi_fullauth.dependencies import current_user, current_active_verified_user
 
-MyCurrentUser = Annotated[MyUserSchema, Depends(get_current_user_dependency(MyUserSchema))]
+CurrentUser = Annotated[MyUserSchema, Depends(current_user)]
+VerifiedUser = Annotated[MyUserSchema, Depends(current_active_verified_user)]
 
 @app.get("/profile")
-async def profile(user: MyCurrentUser):
+async def profile(user: CurrentUser):
     return {"name": user.display_name}  # IDE knows this field exists
 ```
 
 ## Protected routes
 
 ```python
+from typing import Annotated
 from fastapi import Depends
-from fastapi_fullauth.dependencies import CurrentUser, VerifiedUser, SuperUser, require_role
+from fastapi_fullauth.dependencies import current_user, current_active_verified_user, current_superuser, require_role
+
+CurrentUser = Annotated[UserSchema, Depends(current_user)]
+VerifiedUser = Annotated[UserSchema, Depends(current_active_verified_user)]
+SuperUser = Annotated[UserSchema, Depends(current_superuser)]
 
 @app.get("/profile")
 async def profile(user: CurrentUser):

@@ -114,12 +114,12 @@ class TokenPayload(BaseModel):
 
 ```python
 from fastapi_fullauth.dependencies import (
-    CurrentUser,        # Annotated type = any authenticated user
-    VerifiedUser,       # Annotated type = verified email required
-    SuperUser,          # Annotated type = superuser required
-    current_user,       # function form of CurrentUser
-    require_role,       # require_role("admin", "editor")
-    require_permission, # require_permission("posts:edit", "posts:delete")
+    current_user,                   # any authenticated user
+    current_active_verified_user,   # verified email required
+    current_superuser,              # superuser required
+    get_fullauth,                   # access the FullAuth instance in a dependency
+    require_role,                   # require_role("admin", "editor")
+    require_permission,             # require_permission("posts:edit", "posts:delete")
 )
 ```
 

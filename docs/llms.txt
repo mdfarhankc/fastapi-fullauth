@@ -18,7 +18,7 @@ FastAPI FullAuth is a pluggable authentication and authorization library for Fas
 - [Adapters Overview](https://mdfarhankc.github.io/fastapi-fullauth/adapters/): Adapter architecture, choosing an adapter, custom adapter implementation via AbstractUserAdapter
 - [SQLModel Adapter](https://mdfarhankc.github.io/fastapi-fullauth/adapters/sqlmodel/): Recommended adapter setup with UserMixin fields, session configuration, table schema, custom schemas, and OAuth support
 - [SQLAlchemy Adapter](https://mdfarhankc.github.io/fastapi-fullauth/adapters/sqlalchemy/): SQLAlchemy declarative base adapter setup with user model, table creation, and custom schemas
-- [Protected Routes](https://mdfarhankc.github.io/fastapi-fullauth/auth/dependencies/): CurrentUser, VerifiedUser, SuperUser, require_role, require_permission dependencies and typed custom schema support
+- [Protected Routes](https://mdfarhankc.github.io/fastapi-fullauth/auth/dependencies/): current_user, current_active_verified_user, current_superuser, require_role, require_permission dependencies
 - [Event Hooks](https://mdfarhankc.github.io/fastapi-fullauth/auth/hooks/): Register callbacks for auth events -- after_register, after_login, send_verification_email, after_oauth_login, etc.
 - [Password Validation](https://mdfarhankc.github.io/fastapi-fullauth/auth/passwords/): Custom password rules (length, complexity, blocklist), hashing algorithms, and transparent rehashing
 - [Custom Token Claims](https://mdfarhankc.github.io/fastapi-fullauth/auth/custom-claims/): Embed app-specific data in JWTs via on_create_token_claims callback, accessed through payload.extra
