@@ -13,7 +13,6 @@ from fastapi_fullauth.routers._schemas import (
     PasswordResetRequest,
     VerifyEmailRequest,
 )
-from fastapi_fullauth.utils import get_client_ip
 
 logger = logging.getLogger("fastapi_fullauth.routers")
 
@@ -35,8 +34,7 @@ def create_verify_router() -> APIRouter:
         request: Request,
         fullauth: "FullAuth" = Depends(get_fullauth),
     ) -> MessageResponse:
-        client_ip = get_client_ip(request, fullauth.config.TRUSTED_PROXY_HEADERS)
-        await fullauth.check_auth_rate_limit("password-reset", client_ip)
+        await fullauth.enforce_rate_limit(request, "password-reset")
 
         verify_token = await create_email_verification_token(
             fullauth.adapter, fullauth.token_engine, user.id
@@ -59,8 +57,7 @@ def create_verify_router() -> APIRouter:
         request: Request,
         fullauth: "FullAuth" = Depends(get_fullauth),
     ) -> MessageResponse:
-        client_ip = get_client_ip(request, fullauth.config.TRUSTED_PROXY_HEADERS)
-        await fullauth.check_auth_rate_limit("password-reset", client_ip)
+        await fullauth.enforce_rate_limit(request, "password-reset")
 
         try:
             user = await verify_email(fullauth.adapter, fullauth.token_engine, data.token)
@@ -83,8 +80,7 @@ def create_verify_router() -> APIRouter:
         request: Request,
         fullauth: "FullAuth" = Depends(get_fullauth),
     ) -> MessageResponse:
-        client_ip = get_client_ip(request, fullauth.config.TRUSTED_PROXY_HEADERS)
-        await fullauth.check_auth_rate_limit("password-reset", client_ip)
+        await fullauth.enforce_rate_limit(request, "password-reset")
 
         token = await request_password_reset(fullauth.adapter, fullauth.token_engine, data.email)
 
@@ -104,8 +100,7 @@ def create_verify_router() -> APIRouter:
         request: Request,
         fullauth: "FullAuth" = Depends(get_fullauth),
     ) -> MessageResponse:
-        client_ip = get_client_ip(request, fullauth.config.TRUSTED_PROXY_HEADERS)
-        await fullauth.check_auth_rate_limit("password-reset", client_ip)
+        await fullauth.enforce_rate_limit(request, "password-reset")
 
         try:
             user = await reset_password(

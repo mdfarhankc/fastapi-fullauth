@@ -416,3 +416,64 @@ async def test_role_and_permission_flow(client, adapter):
     await adapter.assign_permission_to_role("editor", "posts:edit")
     r = await client.get("/perm-check", headers=headers)
     assert r.status_code == 200
+
+
+# ── Transaction tests ───────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_transaction_commits_all_steps(adapter):
+    async with adapter.transaction() as tx:
+        user = await tx.create_user(
+            CreateUserSchema(email="tx@test.com", password="pass123"),
+            hashed_password=hash_password("pass123"),
+        )
+        await tx.assign_role(user.id, "editor")
+
+    fetched = await adapter.get_user_by_email("tx@test.com")
+    assert fetched is not None
+    assert "editor" in fetched.roles
+
+
+@pytest.mark.asyncio
+async def test_transaction_rolls_back_on_error(adapter):
+    class BoomError(Exception):
+        pass
+
+    with pytest.raises(BoomError):
+        async with adapter.transaction() as tx:
+            await tx.create_user(
+                CreateUserSchema(email="rollback@test.com", password="pass123"),
+                hashed_password=hash_password("pass123"),
+            )
+            raise BoomError
+
+    assert await adapter.get_user_by_email("rollback@test.com") is None
+
+
+@pytest.mark.asyncio
+async def test_transaction_savepoint_isolates_duplicate(adapter):
+    from fastapi_fullauth.exceptions import UserAlreadyExistsError
+
+    await adapter.create_user(
+        CreateUserSchema(email="exists@test.com", password="pass123"),
+        hashed_password=hash_password("pass123"),
+    )
+
+    async with adapter.transaction() as tx:
+        await tx.create_user(
+            CreateUserSchema(email="before@test.com", password="pass123"),
+            hashed_password=hash_password("pass123"),
+        )
+        with pytest.raises(UserAlreadyExistsError):
+            await tx.create_user(
+                CreateUserSchema(email="exists@test.com", password="pass123"),
+                hashed_password=hash_password("pass123"),
+            )
+        await tx.create_user(
+            CreateUserSchema(email="after@test.com", password="pass123"),
+            hashed_password=hash_password("pass123"),
+        )
+
+    assert await adapter.get_user_by_email("before@test.com") is not None
+    assert await adapter.get_user_by_email("after@test.com") is not None

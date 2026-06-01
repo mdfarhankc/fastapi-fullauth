@@ -5,8 +5,9 @@ from typing import Any, cast
 from fastapi_fullauth.adapters.base import AbstractUserAdapter, OAuthAdapterMixin
 from fastapi_fullauth.core.tokens import TokenEngine
 from fastapi_fullauth.exceptions import OAuthProviderError, UserAlreadyExistsError
+from fastapi_fullauth.flows.tokens import issue_token_pair
 from fastapi_fullauth.oauth.base import OAuthProvider
-from fastapi_fullauth.types import OAuthAccount, OAuthUserInfo, RefreshToken, TokenPair, UserSchema
+from fastapi_fullauth.types import OAuthAccount, OAuthUserInfo, TokenPair, UserSchema
 
 logger = logging.getLogger("fastapi_fullauth.oauth")
 
@@ -153,23 +154,7 @@ async def issue_oauth_tokens(
     user: UserSchema,
 ) -> TokenPair:
     """Issue JWT token pair for an OAuth-authenticated user."""
-    roles = await adapter.get_user_roles(user.id)
-    access, refresh_meta = token_engine.create_token_pair(user_id=str(user.id), roles=roles)
-
-    await adapter.store_refresh_token(
-        RefreshToken(
-            token=refresh_meta.token,
-            user_id=user.id,
-            expires_at=refresh_meta.expires_at,
-            family_id=refresh_meta.family_id,
-        )
-    )
-
-    return TokenPair(
-        access_token=access,
-        refresh_token=refresh_meta.token,
-        expires_in=token_engine.config.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
-    )
+    return await issue_token_pair(adapter, token_engine, user)
 
 
 async def oauth_callback(

@@ -10,7 +10,6 @@ from fastapi_fullauth.dependencies.current_user import CurrentUser, get_fullauth
 from fastapi_fullauth.protection.challenges import ChallengeStore
 from fastapi_fullauth.routers._schemas import build_login_response_model
 from fastapi_fullauth.types import TokenPair, UserSchema, UserSchemaType
-from fastapi_fullauth.utils import get_client_ip
 
 logger = logging.getLogger("fastapi_fullauth.routers.passkey")
 
@@ -147,8 +146,7 @@ def create_passkey_router(
         if not isinstance(fullauth.adapter, PasskeyAdapterMixin):
             raise HTTPException(status_code=501, detail="Adapter does not support passkeys")
 
-        client_ip = get_client_ip(request, fullauth.config.TRUSTED_PROXY_HEADERS)
-        await fullauth.check_auth_rate_limit("passkey-authenticate", client_ip)
+        await fullauth.enforce_rate_limit(request, "passkey-authenticate")
 
         user_id = None
         email_provided = bool(data.email)
@@ -185,8 +183,7 @@ def create_passkey_router(
         if not isinstance(fullauth.adapter, PasskeyAdapterMixin):
             raise HTTPException(status_code=501, detail="Adapter does not support passkeys")
 
-        client_ip = get_client_ip(request, fullauth.config.TRUSTED_PROXY_HEADERS)
-        await fullauth.check_auth_rate_limit("passkey-authenticate", client_ip)
+        await fullauth.enforce_rate_limit(request, "passkey-authenticate")
 
         origins = fullauth.config.PASSKEY_ORIGINS
         if not origins:

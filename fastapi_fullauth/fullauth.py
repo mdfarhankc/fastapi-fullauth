@@ -2,7 +2,7 @@ import logging
 import warnings
 from typing import Any, Generic
 
-from fastapi import APIRouter, FastAPI
+from fastapi import APIRouter, FastAPI, Request
 
 from fastapi_fullauth.adapters.base import (
     AbstractUserAdapter,
@@ -24,6 +24,7 @@ from fastapi_fullauth.types import (
     UserSchema,
     UserSchemaType,
 )
+from fastapi_fullauth.utils import get_client_ip
 from fastapi_fullauth.validators import PasswordValidator
 
 logger = logging.getLogger("fastapi_fullauth")
@@ -132,6 +133,11 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
 
     async def check_auth_rate_limit(self, route_name: str, client_ip: str) -> None:
         await self.auth_rate_limiter.check(route_name, client_ip)
+
+    async def enforce_rate_limit(self, request: Request, route_name: str) -> None:
+        """Resolve the client IP and apply the auth rate limit for ``route_name``."""
+        client_ip = get_client_ip(request, self.config.TRUSTED_PROXY_HEADERS)
+        await self.check_auth_rate_limit(route_name, client_ip)
 
     # ── composable routers ──────────────────────────────────────────
 

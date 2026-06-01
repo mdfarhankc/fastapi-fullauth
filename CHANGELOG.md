@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.12.0
+
+### Added
+
+- **`adapter.transaction()`** on the SQLAlchemy and SQLModel adapters. Runs several adapter calls in one transaction that commits together when the block exits or rolls back entirely on error. Conflict-prone inserts (`create_user`, `create_oauth_account`) use SAVEPOINTs so a unique-constraint hit rolls back only that statement and leaves the surrounding transaction usable. Works as-is on PostgreSQL and MySQL; on SQLite, configure the engine with SQLAlchemy's BEGIN-emulation recipe for correct SAVEPOINT/rollback behavior.
+- **`FullAuth.enforce_rate_limit(request, route_name)`** resolves the client IP and applies the auth rate limit in one call.
+
+### Changed
+
+- Internal: the SQLAlchemy and SQLModel adapters now share a single implementation (`_BaseSQLAlchemyAdapter`). Public adapter classes, signatures, and type hints are unchanged.
+- Internal: login, OAuth, passkey, and refresh-token rotation now share an `issue_token_pair` helper, and the per-route rate-limit plus client-IP boilerplate is centralized on `FullAuth.enforce_rate_limit`.
+
 ## 0.11.0
 
 ### Breaking changes

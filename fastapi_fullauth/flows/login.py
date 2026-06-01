@@ -5,8 +5,9 @@ from fastapi_fullauth.adapters.base import AbstractUserAdapter
 from fastapi_fullauth.core.crypto import hash_password, password_needs_rehash, verify_password
 from fastapi_fullauth.core.tokens import TokenEngine
 from fastapi_fullauth.exceptions import AccountLockedError, AuthenticationError
+from fastapi_fullauth.flows.tokens import issue_token_pair
 from fastapi_fullauth.protection.lockout import LockoutManager
-from fastapi_fullauth.types import RefreshToken, TokenPair, UserSchema
+from fastapi_fullauth.types import TokenPair, UserSchema
 
 logger = logging.getLogger("fastapi_fullauth.login")
 
@@ -73,24 +74,4 @@ async def login(
         await lockout.clear(identifier)
 
     logger.info("Login successful: user_id=%s", user.id)
-    roles = await adapter.get_user_roles(user.id)
-    access, refresh_meta = token_engine.create_token_pair(
-        user_id=str(user.id),
-        roles=roles,
-        extra=extra_claims,
-    )
-
-    await adapter.store_refresh_token(
-        RefreshToken(
-            token=refresh_meta.token,
-            user_id=user.id,
-            expires_at=refresh_meta.expires_at,
-            family_id=refresh_meta.family_id,
-        )
-    )
-
-    return TokenPair(
-        access_token=access,
-        refresh_token=refresh_meta.token,
-        expires_in=token_engine.config.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
-    )
+    return await issue_token_pair(adapter, token_engine, user, extra_claims=extra_claims)

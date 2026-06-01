@@ -107,6 +107,7 @@ warn_unused_configs = true
 # stays strict.
 [[tool.mypy.overrides]]
 module = [
+    "fastapi_fullauth.adapters._sqlalchemy_base",
     "fastapi_fullauth.adapters.sqlmodel",
     "fastapi_fullauth.adapters.sqlalchemy",
 ]

@@ -19,6 +19,7 @@ from fastapi_fullauth.exceptions import (
 from fastapi_fullauth.flows.login import login
 from fastapi_fullauth.flows.logout import logout
 from fastapi_fullauth.flows.register import register
+from fastapi_fullauth.flows.tokens import issue_token_pair
 from fastapi_fullauth.routers._schemas import (
     LogoutRequest,
     MessageResponse,
@@ -29,12 +30,10 @@ from fastapi_fullauth.routers._schemas import (
 from fastapi_fullauth.types import (
     CreateUserSchema,
     CreateUserSchemaType,
-    RefreshToken,
     TokenPair,
     UserSchema,
     UserSchemaType,
 )
-from fastapi_fullauth.utils import get_client_ip
 
 logger = logging.getLogger("fastapi_fullauth.router")
 
@@ -68,8 +67,7 @@ def create_auth_router(
         fullauth: "FullAuth" = Depends(get_fullauth),
         data: create_user_schema = Body(...),  # type: ignore[valid-type]
     ) -> UserSchema | MessageResponse:
-        client_ip = get_client_ip(request, fullauth.config.TRUSTED_PROXY_HEADERS)
-        await fullauth.check_auth_rate_limit("register", client_ip)
+        await fullauth.enforce_rate_limit(request, "register")
 
         anti_enum = fullauth.config.PREVENT_REGISTRATION_ENUMERATION
         generic = MessageResponse(
@@ -111,8 +109,7 @@ def create_auth_router(
         response: Response,
         fullauth: "FullAuth" = Depends(get_fullauth),
     ) -> TokenPair:
-        client_ip = get_client_ip(request, fullauth.config.TRUSTED_PROXY_HEADERS)
-        await fullauth.check_auth_rate_limit("login", client_ip)
+        await fullauth.enforce_rate_limit(request, "login")
 
         # LoginRequest is built dynamically via create_model from `login_field`
         # and "password", so static type checkers can't see either field. Go
@@ -166,8 +163,7 @@ def create_auth_router(
         request: Request,
         fullauth: "FullAuth" = Depends(get_fullauth),
     ) -> TokenPair:
-        client_ip = get_client_ip(request, fullauth.config.TRUSTED_PROXY_HEADERS)
-        await fullauth.check_auth_rate_limit("refresh", client_ip)
+        await fullauth.enforce_rate_limit(request, "refresh")
 
         try:
             payload = await fullauth.token_engine.decode_token(data.refresh_token)
@@ -216,35 +212,25 @@ def create_auth_router(
                 ttl_seconds=fullauth.config.REFRESH_TOKEN_EXPIRE_DAYS * 86400,
             )
 
-            access, refresh_meta = fullauth.token_engine.create_token_pair(
-                user_id=uid,
-                roles=roles,
-                extra=extra_claims,
+            return await issue_token_pair(
+                fullauth.adapter,
+                fullauth.token_engine,
+                user,
+                extra_claims=extra_claims,
                 family_id=payload.family_id,
-            )
-
-            await fullauth.adapter.store_refresh_token(
-                RefreshToken(
-                    token=refresh_meta.token,
-                    user_id=user.id,
-                    expires_at=refresh_meta.expires_at,
-                    family_id=refresh_meta.family_id,
-                )
-            )
-            refresh_token = refresh_meta.token
-        else:
-            if stored.revoked:
-                raise CREDENTIALS_EXCEPTION
-            access = fullauth.token_engine.create_access_token(
-                user_id=uid,
                 roles=roles,
-                extra=extra_claims,
             )
-            refresh_token = data.refresh_token
 
+        if stored.revoked:
+            raise CREDENTIALS_EXCEPTION
+        access = fullauth.token_engine.create_access_token(
+            user_id=uid,
+            roles=roles,
+            extra=extra_claims,
+        )
         return TokenPair(
             access_token=access,
-            refresh_token=refresh_token,
+            refresh_token=data.refresh_token,
             expires_in=fullauth.config.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
         )
 

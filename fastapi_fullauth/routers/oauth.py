@@ -14,7 +14,6 @@ from fastapi_fullauth.exceptions import (
 from fastapi_fullauth.flows.oauth import generate_oauth_state, oauth_callback
 from fastapi_fullauth.routers._schemas import build_login_response_model
 from fastapi_fullauth.types import TokenPair, UserSchema, UserSchemaType
-from fastapi_fullauth.utils import get_client_ip
 
 logger = logging.getLogger("fastapi_fullauth.oauth")
 
@@ -99,8 +98,7 @@ def create_oauth_router(
         response: Response,
         fullauth: "FullAuth" = Depends(get_fullauth),
     ) -> TokenPair:
-        client_ip = get_client_ip(request, fullauth.config.TRUSTED_PROXY_HEADERS)
-        await fullauth.check_auth_rate_limit("login", client_ip)
+        await fullauth.enforce_rate_limit(request, "login")
 
         oauth_provider = fullauth.oauth_providers.get(provider)
         if oauth_provider is None:
