@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from fastapi_fullauth.adapters.base import PasskeyAdapterMixin
 from fastapi_fullauth.dependencies.current_user import CurrentUser, get_fullauth
 from fastapi_fullauth.protection.challenges import ChallengeStore
-from fastapi_fullauth.routers._schemas import build_login_response_model
+from fastapi_fullauth.routers._schemas import LoginResponse, build_login_response_model
 from fastapi_fullauth.types import TokenPair, UserSchema, UserSchemaType
 
 logger = logging.getLogger("fastapi_fullauth.routers.passkey")
@@ -43,8 +43,9 @@ class PasskeyResponse(BaseModel):
 
 def create_passkey_router(
     user_schema: type[UserSchemaType] = UserSchema,  # type: ignore[assignment]
+    login_response_schema: type[LoginResponse] = LoginResponse,
 ) -> APIRouter:
-    LoginResponse = build_login_response_model(user_schema)  # noqa: N806
+    LoginResponse = build_login_response_model(user_schema, base=login_response_schema)  # noqa: N806
     router = APIRouter()
 
     @router.post(

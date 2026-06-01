@@ -21,6 +21,7 @@ from fastapi_fullauth.flows.logout import logout
 from fastapi_fullauth.flows.register import register
 from fastapi_fullauth.flows.tokens import issue_token_pair
 from fastapi_fullauth.routers._schemas import (
+    LoginResponse,
     LogoutRequest,
     MessageResponse,
     RefreshRequest,
@@ -45,15 +46,17 @@ def create_auth_router(
     create_user_schema: type[CreateUserSchemaType] = CreateUserSchema,  # type: ignore[assignment]
     user_schema: type[UserSchemaType] = UserSchema,  # type: ignore[assignment]
     login_field: str = "email",
+    login_response_schema: type[LoginResponse] = LoginResponse,
+    message_response_schema: type[MessageResponse] = MessageResponse,
 ) -> APIRouter:
     LoginRequest = build_login_model(login_field)  # noqa: N806
-    LoginResponse = build_login_response_model(user_schema)  # noqa: N806
+    LoginResponse = build_login_response_model(user_schema, base=login_response_schema)  # noqa: N806
     router = APIRouter()
 
     @router.post(
         "/register",
         status_code=201,
-        response_model=user_schema | MessageResponse,
+        response_model=user_schema | message_response_schema,
         description=(
             "Create a new user account. Returns 201 + user by default. "
             "Setting `PREVENT_REGISTRATION_ENUMERATION=True` makes it always "
@@ -70,7 +73,7 @@ def create_auth_router(
         await fullauth.enforce_rate_limit(request, "register")
 
         anti_enum = fullauth.config.PREVENT_REGISTRATION_ENUMERATION
-        generic = MessageResponse(
+        generic = message_response_schema(
             detail="If this email isn't already registered, a verification email has been sent."
         )
 

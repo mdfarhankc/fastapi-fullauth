@@ -256,6 +256,89 @@ async def test_update_profile_rejects_protected_fields():
     await engine.dispose()
 
 
+@pytest.mark.asyncio
+async def test_profile_update_body_is_typed_in_openapi():
+    """The PATCH /me body is a named schema documenting the updatable fields,
+    not a free-form object."""
+    from fastapi_fullauth.types import CreateUserSchema, UserSchema
+
+    class MyCreate(CreateUserSchema):
+        display_name: str = ""
+
+    class MyUser(UserSchema):
+        display_name: str = ""
+
+    engine, session_maker = await _make_db()
+    adapter = make_test_adapter(
+        session_maker,
+        user_schema=MyUser,
+        create_user_schema=MyCreate,
+    )
+    fullauth = FullAuth(
+        config=FullAuthConfig(
+            SECRET_KEY="test-secret-key-that-is-long-enough-32b",
+            AUTH_RATE_LIMIT_ENABLED=False,
+        ),
+        adapter=adapter,
+    )
+    app = FastAPI()
+    fullauth.init_app(app)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        spec = (await client.get("/openapi.json")).json()
+        schema_ref = spec["paths"]["/api/v1/auth/me"]["patch"]["requestBody"]["content"][
+            "application/json"
+        ]["schema"]["$ref"]
+        model_name = schema_ref.split("/")[-1]
+        properties = spec["components"]["schemas"][model_name]["properties"]
+        assert "display_name" in properties
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_custom_login_response_schema():
+    from fastapi_fullauth import LoginResponse
+
+    class MyLoginResponse(LoginResponse):
+        environment: str = "prod"
+
+    app, _, _, engine = await _make_app(login_response_schema=MyLoginResponse)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        tokens = await _register_and_login(client)
+        assert tokens["access_token"]
+        assert tokens["environment"] == "prod"
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_custom_message_response_schema():
+    from fastapi_fullauth import MessageResponse
+
+    class MyMessage(MessageResponse):
+        code: str = "ok"
+
+    app, _, _, engine = await _make_app(message_response_schema=MyMessage)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        tokens = await _register_and_login(client)
+        headers = {"Authorization": f"Bearer {tokens['access_token']}"}
+
+        r = await client.post(
+            "/api/v1/auth/change-password",
+            json={"current_password": "securepass123", "new_password": "newpass456!!"},
+            headers=headers,
+        )
+        assert r.status_code == 200
+        assert r.json()["detail"] == "Password changed successfully."
+        assert r.json()["code"] == "ok"
+
+    await engine.dispose()
+
+
 # Delete account
 
 
