@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Any, Generic
+from typing import Any, Generic, Protocol, cast
 
 from fastapi_fullauth.types import (
     CreateUserSchemaType,
@@ -9,6 +9,17 @@ from fastapi_fullauth.types import (
     UserID,
     UserSchemaType,
 )
+
+
+class _SupportsUserRoles(Protocol):
+    """The contract PermissionAdapterMixin relies on from its co-mixins.
+
+    AbstractUserAdapter provides a default get_user_roles, and RoleAdapterMixin
+    declares it abstract; a permission adapter is always combined with one of
+    them. This Protocol lets get_user_permissions call it without a type: ignore.
+    """
+
+    async def get_user_roles(self, user_id: UserID) -> list[str]: ...
 
 
 class AbstractUserAdapter(ABC, Generic[UserSchemaType, CreateUserSchemaType]):
@@ -109,7 +120,7 @@ class PermissionAdapterMixin(ABC):
 
     async def get_user_permissions(self, user_id: UserID) -> list[str]:
         """Resolve permissions through the user's roles in a single batch."""
-        roles = await self.get_user_roles(user_id)  # type: ignore[attr-defined]
+        roles = await cast("_SupportsUserRoles", self).get_user_roles(user_id)
         if not roles:
             return []
         return await self.get_permissions_for_roles(roles)

@@ -17,7 +17,7 @@ from typing import Any, TypeVar
 
 from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import selectinload
 
 from fastapi_fullauth.adapters.base import (
@@ -62,7 +62,7 @@ class _BaseSQLAlchemyAdapter(
 
     def _configure(
         self,
-        session_maker: Any,
+        session_maker: async_sessionmaker[AsyncSession],
         *,
         user_model: Any,
         refresh_token_model: Any,

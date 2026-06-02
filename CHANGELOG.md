@@ -15,6 +15,7 @@
 - **Typed profile-update body.** `PATCH /me` now uses a model generated from the user schema's non-protected fields, so the updatable fields appear in the OpenAPI schema instead of a free-form object. Request handling is unchanged: protected fields are ignored and unknown fields still return 422.
 - Internal: the SQLAlchemy and SQLModel adapters now share a single implementation (`_BaseSQLAlchemyAdapter`). Public adapter classes, signatures, and type hints are unchanged.
 - Internal: login, OAuth, passkey, and refresh-token rotation now share an `issue_token_pair` helper, and the per-route rate-limit plus client-IP boilerplate is centralized on `FullAuth.enforce_rate_limit`.
+- Internal: the permission mixin's cross-mixin dependency on `get_user_roles` is now expressed with a `Protocol` instead of a `type: ignore`, and the shared adapter's session factory is precisely typed.
 
 ## 0.11.0
 
