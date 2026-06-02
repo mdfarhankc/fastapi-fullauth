@@ -183,13 +183,13 @@ Tracks failed login attempts per identifier (email by default). After `MAX_LOGIN
 
 Per-route sliding-window rate limiters, keyed by client IP:
 
-| Route | Default limit | Config key |
+| Route | Default limit | `AUTH_RATE_LIMITS` field |
 |-------|:---:|---|
-| login | 5/min | `AUTH_RATE_LIMIT_LOGIN` |
-| register | 3/min | `AUTH_RATE_LIMIT_REGISTER` |
-| password-reset | 3/min | `AUTH_RATE_LIMIT_PASSWORD_RESET` |
-| passkey-authenticate | 10/min | `AUTH_RATE_LIMIT_PASSKEY_AUTH` |
-| refresh | 30/min | `AUTH_RATE_LIMIT_REFRESH` |
+| login | 5/min | `login` |
+| register | 3/min | `register` |
+| password-reset | 3/min | `password_reset` |
+| passkey-authenticate | 10/min | `passkey_auth` |
+| refresh | 30/min | `refresh` |
 
 When a limit is exceeded, the route returns 429 with a `Retry-After` header.
 

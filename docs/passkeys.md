@@ -318,7 +318,7 @@ All settings use the `FULLAUTH_` prefix as environment variables (e.g. `FULLAUTH
 
 - **Challenge store backend**: the in-memory challenge store is per-process. In multi-worker deployments, `begin` and `complete` can hit different workers and the challenge is lost. Use `PASSKEY_CHALLENGE_BACKEND=redis` in production.
 
-- **Rate limiting**: `authenticate/begin` and `authenticate/complete` are rate-limited by `AUTH_RATE_LIMIT_PASSKEY_AUTH` (default 10 per minute per IP).
+- **Rate limiting**: `authenticate/begin` and `authenticate/complete` are rate-limited by `AUTH_RATE_LIMITS.passkey_auth` (default 10 per minute per IP).
 
 - **User verification**: `PASSKEY_REQUIRE_USER_VERIFICATION=True` (default) requires biometric or PIN confirmation on the device. Disabling it allows presence-only checks (just touching the key).
 

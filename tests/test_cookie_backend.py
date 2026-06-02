@@ -17,12 +17,14 @@ async def test_delete_token_matches_write_token_attributes():
     so browsers actually honour the deletion."""
     config = FullAuthConfig(
         SECRET_KEY="test-secret-key-that-is-long-enough-32b",
-        COOKIE_SECURE=True,
-        COOKIE_HTTPONLY=True,
-        COOKIE_SAMESITE="none",
-        COOKIE_DOMAIN="example.com",
     )
-    backend = CookieBackend(config)
+    backend = CookieBackend(
+        config,
+        secure=True,
+        httponly=True,
+        samesite="none",
+        domain="example.com",
+    )
 
     write = Response()
     await backend.write_token(write, "some.jwt.token")

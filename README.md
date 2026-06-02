@@ -141,7 +141,7 @@ from fastapi_fullauth.middleware import (
 )
 
 app.add_middleware(SecurityHeadersMiddleware)
-app.add_middleware(CSRFMiddleware, secret=fullauth.config.CSRF_SECRET or fullauth.config.SECRET_KEY)
+app.add_middleware(CSRFMiddleware, secret=fullauth.config.SECRET_KEY)
 app.add_middleware(RateLimitMiddleware, max_requests=60, window_seconds=60)
 ```
 

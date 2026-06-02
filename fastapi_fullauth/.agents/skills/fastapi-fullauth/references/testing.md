@@ -174,7 +174,7 @@ async def test_register_hides_existence():
 
 ## Testing lockout
 
-Default `MAX_LOGIN_ATTEMPTS=5`. Combined with the default `AUTH_RATE_LIMIT_LOGIN=5`, a test that tries 6 wrong passwords will hit the rate limiter first. Two fixes:
+Default `MAX_LOGIN_ATTEMPTS=5`. Combined with the default `AUTH_RATE_LIMITS.login=5`, a test that tries 6 wrong passwords will hit the rate limiter first. Two fixes:
 
 - Disable the rate limiter (`AUTH_RATE_LIMIT_ENABLED=False`); usual choice in tests.
 - Lower the lockout threshold (`MAX_LOGIN_ATTEMPTS=2`) to hit lockout faster than the rate limit.

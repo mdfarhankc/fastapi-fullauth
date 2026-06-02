@@ -251,7 +251,7 @@ Use Redis in production. The library emits a startup `UserWarning` when `PASSKEY
 
 ## Rate limiting `authenticate/begin`
 
-`authenticate/begin` is unauthenticated and issues a fresh challenge every call. It's rate-limited by `AUTH_RATE_LIMIT_PASSKEY_AUTH` (default 10 req/min per IP); without it an attacker could flood the challenge store.
+`authenticate/begin` is unauthenticated and issues a fresh challenge every call. It's rate-limited by `AUTH_RATE_LIMITS.passkey_auth` (default 10 req/min per IP); without it an attacker could flood the challenge store.
 
 Registering passkeys isn't rate-limited (register endpoints require auth; the authenticated identity is the rate limit key).
 

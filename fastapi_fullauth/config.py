@@ -1,8 +1,40 @@
+import json
 import warnings
-from typing import Any, Literal
+from dataclasses import dataclass
+from typing import Annotated, Any, Literal
 
-from pydantic import model_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field, field_validator, model_validator
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
+
+
+def _parse_csv_list(value: Any) -> Any:
+    """Accept a comma-separated string for a list field, in addition to a JSON
+    array. ``FULLAUTH_ORIGINS=https://a.com,https://b.com`` and the JSON form
+    ``["https://a.com","https://b.com"]`` both work; anything that already
+    looks like JSON (starts with ``[`` or ``{``) is parsed as JSON."""
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return []
+        if text[0] in "[{":
+            return json.loads(text)
+        return [part.strip() for part in text.split(",") if part.strip()]
+    return value
+
+
+@dataclass
+class AuthRateLimits:
+    """Per-route request caps for the auth endpoints, applied over
+    ``AUTH_RATE_LIMIT_WINDOW_SECONDS``. Attribute access keeps IDE
+    autocomplete; override individual routes in Python
+    (``AUTH_RATE_LIMITS=AuthRateLimits(login=10)``) or via env JSON
+    (``FULLAUTH_AUTH_RATE_LIMITS='{"login": 10}'``)."""
+
+    login: int = 5
+    register: int = 3
+    password_reset: int = 3
+    passkey_auth: int = 10
+    refresh: int = 30
 
 
 class FullAuthConfig(BaseSettings):
@@ -15,9 +47,12 @@ class FullAuthConfig(BaseSettings):
     )
 
     # Single source-of-truth defaults. Each per-feature setting below
-    # inherits these when not explicitly set.
+    # inherits these when not explicitly set. When BACKEND is left unset
+    # and REDIS_URL is provided, the effective backend becomes "redis";
+    # set BACKEND="memory" explicitly to keep auth features in-memory
+    # even though REDIS_URL is configured.
     BACKEND: Literal["memory", "redis"] = "memory"
-    ORIGINS: list[str] = []
+    ORIGINS: Annotated[list[str], NoDecode] = []
 
     SECRET_KEY: str | None = None
     ALGORITHM: Literal["HS256", "HS384", "HS512"] = "HS256"
@@ -45,28 +80,16 @@ class FullAuthConfig(BaseSettings):
     LOCKOUT_DURATION_MINUTES: int = 15
 
     RATE_LIMIT_BACKEND: Literal["memory", "redis"] = "memory"
-    TRUSTED_PROXY_HEADERS: list[str] = []
+    TRUSTED_PROXY_HEADERS: Annotated[list[str], NoDecode] = []
 
     AUTH_RATE_LIMIT_ENABLED: bool = True
-    AUTH_RATE_LIMIT_LOGIN: int = 5
-    AUTH_RATE_LIMIT_REGISTER: int = 3
-    AUTH_RATE_LIMIT_PASSWORD_RESET: int = 3
-    AUTH_RATE_LIMIT_PASSKEY_AUTH: int = 10
-    AUTH_RATE_LIMIT_REFRESH: int = 30
+    AUTH_RATE_LIMITS: AuthRateLimits = Field(default_factory=AuthRateLimits)
     AUTH_RATE_LIMIT_WINDOW_SECONDS: int = 60
 
     REDIS_URL: str | None = None
 
     BLACKLIST_ENABLED: bool = True
     BLACKLIST_BACKEND: Literal["memory", "redis"] = "memory"
-
-    CSRF_SECRET: str | None = None
-
-    COOKIE_NAME: str = "fullauth_access"
-    COOKIE_SECURE: bool = True
-    COOKIE_HTTPONLY: bool = True
-    COOKIE_SAMESITE: Literal["lax", "strict", "none"] = "lax"
-    COOKIE_DOMAIN: str | None = None
 
     OAUTH_STATE_EXPIRE_SECONDS: int = 300
     OAUTH_AUTO_LINK_BY_EMAIL: bool = True
@@ -77,14 +100,21 @@ class FullAuthConfig(BaseSettings):
     PASSKEY_ENABLED: bool = False
     PASSKEY_RP_ID: str | None = None
     PASSKEY_RP_NAME: str | None = None
-    PASSKEY_ORIGINS: list[str] = []
+    PASSKEY_ORIGINS: Annotated[list[str], NoDecode] = []
     PASSKEY_CHALLENGE_BACKEND: Literal["memory", "redis"] = "memory"
     PASSKEY_CHALLENGE_TTL: int = 60
     PASSKEY_REQUIRE_USER_VERIFICATION: bool = True
 
     API_PREFIX: str = "/api/v1"
     AUTH_ROUTER_PREFIX: str = "/auth"
-    ROUTER_TAGS: list[str] = ["Auth"]
+    ROUTER_TAGS: Annotated[list[str], NoDecode] = ["Auth"]
+
+    @field_validator(
+        "ORIGINS", "TRUSTED_PROXY_HEADERS", "PASSKEY_ORIGINS", "ROUTER_TAGS", mode="before"
+    )
+    @classmethod
+    def _split_list_fields(cls, value: Any) -> Any:
+        return _parse_csv_list(value)
 
     @model_validator(mode="before")
     @classmethod
@@ -92,11 +122,19 @@ class FullAuthConfig(BaseSettings):
         """Propagate ``BACKEND`` → individual ``*_BACKEND`` settings and
         ``ORIGINS`` → ``PASSKEY_ORIGINS`` when the specific setting isn't set.
         ``setdefault`` means explicit per-feature overrides win.
+
+        When ``BACKEND`` is not set explicitly but ``REDIS_URL`` is, the
+        effective backend becomes ``redis`` so configuring Redis actually
+        switches the features over instead of silently staying in-memory.
+        An explicit ``BACKEND`` (including ``memory``) always takes priority.
         """
         if not isinstance(values, dict):
             return values
 
         backend = values.get("BACKEND")
+        if not backend and values.get("REDIS_URL"):
+            backend = "redis"
+            values["BACKEND"] = backend
         if backend:
             for key in (
                 "BLACKLIST_BACKEND",
@@ -109,6 +147,12 @@ class FullAuthConfig(BaseSettings):
         origins = values.get("ORIGINS")
         if origins:
             values.setdefault("PASSKEY_ORIGINS", origins)
+
+        # Setting PASSKEY_RP_ID is a clear opt-in to passkeys; enable the
+        # feature unless PASSKEY_ENABLED is given explicitly (set it to False
+        # to configure passkeys but keep the routes off).
+        if "PASSKEY_ENABLED" not in values and values.get("PASSKEY_RP_ID"):
+            values["PASSKEY_ENABLED"] = True
 
         return values
 
@@ -145,8 +189,7 @@ class FullAuthConfig(BaseSettings):
             )
         elif len(self.SECRET_KEY) < 32:
             raise ValueError(
-                "SECRET_KEY must be at least 32 characters. "
-                "Generate one with: python -c 'import secrets; print(secrets.token_urlsafe(64))'"
+                "SECRET_KEY must be at least 32 characters. Generate one with: fullauth secret"
             )
         return self
 

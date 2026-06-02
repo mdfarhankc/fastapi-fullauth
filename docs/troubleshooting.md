@@ -25,7 +25,7 @@ app.include_router(auth.auth_router, prefix="/api/v1/auth")
 Your secret key is too short. Generate a secure one:
 
 ```bash
-python -c "import secrets; print(secrets.token_urlsafe(32))"
+fullauth secret
 ```
 
 Set it via environment variable or config:

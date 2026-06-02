@@ -650,9 +650,7 @@ Use a different file via `FullAuthConfig(_env_file=".env.production")` or by sub
 | `RATE_LIMIT_BACKEND` | `"memory" \| "redis"` | `"memory"` | Rate limiter storage backend. Use `"redis"` in production; `"memory"` is per-process. |
 | `TRUSTED_PROXY_HEADERS` | `list[str]` | `[]` | Headers to read real client IP from (e.g. `["X-Forwarded-For"]`). |
 | `AUTH_RATE_LIMIT_ENABLED` | `bool` | `True` | Enable per-route auth rate limits. |
-| `AUTH_RATE_LIMIT_LOGIN` | `int` | `5` | Max login attempts per window. |
-| `AUTH_RATE_LIMIT_REGISTER` | `int` | `3` | Max registrations per window. |
-| `AUTH_RATE_LIMIT_PASSWORD_RESET` | `int` | `3` | Max password reset requests per window. |
+| `AUTH_RATE_LIMITS` | `AuthRateLimits` | see desc | Per-route caps: `login=5`, `register=3`, `password_reset=3`, `passkey_auth=10`, `refresh=30`. Override in Python with `AuthRateLimits(login=10)` or env JSON `{"login": 10}`. |
 | `AUTH_RATE_LIMIT_WINDOW_SECONDS` | `int` | `60` | Rate limit window in seconds. |
 
 ### Redis
@@ -670,19 +668,13 @@ Use a different file via `FullAuthConfig(_env_file=".env.production")` or by sub
 
 ### Middleware
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `CSRF_SECRET` | `str \| None` | `None` | CSRF signing secret. Falls back to `SECRET_KEY`. |
+`CSRFMiddleware` takes its signing key directly (≥ 32 chars); there is no config
+field. Pass `config.SECRET_KEY` or a dedicated key: `app.add_middleware(CSRFMiddleware, secret=config.SECRET_KEY)`.
 
 ### Cookies
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `COOKIE_NAME` | `str` | `"fullauth_access"` | Access token cookie name. |
-| `COOKIE_SECURE` | `bool` | `True` | Set Secure flag on cookies. |
-| `COOKIE_HTTPONLY` | `bool` | `True` | Set HttpOnly flag on cookies. |
-| `COOKIE_SAMESITE` | `"lax" \| "strict" \| "none"` | `"lax"` | SameSite cookie policy. |
-| `COOKIE_DOMAIN` | `str \| None` | `None` | Cookie domain. |
+Cookie attributes are constructor args on `CookieBackend` (opt-in), not config:
+`CookieBackend(config, *, name="fullauth_access", secure=True, httponly=True, samesite="lax", domain=None)`.
 
 ### OAuth
 
@@ -704,8 +696,8 @@ Use a different file via `FullAuthConfig(_env_file=".env.production")` or by sub
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `PASSKEY_ENABLED` | `bool` | `False` | Enable passkey (WebAuthn) routes. |
-| `PASSKEY_RP_ID` | `str \| None` | `None` | Relying Party ID (your domain). |
+| `PASSKEY_ENABLED` | `bool` | `False` | Enable passkey (WebAuthn) routes. Inferred `True` when `PASSKEY_RP_ID` is set; set `False` explicitly to keep routes off. |
+| `PASSKEY_RP_ID` | `str \| None` | `None` | Relying Party ID (your domain). Setting it turns passkeys on. |
 | `PASSKEY_RP_NAME` | `str \| None` | `None` | Relying Party display name. |
 | `PASSKEY_ORIGINS` | `list[str]` | `[]` | Allowed origins (e.g. `["https://example.com", "https://m.example.com"]`). |
 | `PASSKEY_CHALLENGE_BACKEND` | `"memory" \| "redis"` | `"memory"` | Challenge store backend. Use `"redis"` in production; `"memory"` is per-process and breaks under multi-worker deployments. |
@@ -1521,7 +1513,7 @@ from fastapi_fullauth.middleware import (
 )
 
 app.add_middleware(SecurityHeadersMiddleware)
-app.add_middleware(CSRFMiddleware, secret=fullauth.config.CSRF_SECRET or fullauth.config.SECRET_KEY)
+app.add_middleware(CSRFMiddleware, secret=fullauth.config.SECRET_KEY)
 fullauth.init_app(app)
 ```
 
@@ -1556,17 +1548,12 @@ app.add_middleware(
 
 ## CSRF Protection
 
-Useful for cookie-based auth where the frontend and backend share a domain. Wire it manually; `secret` must be ≥ 32 chars:
+Useful for cookie-based auth where the frontend and backend share a domain. Wire it manually; `secret` must be ≥ 32 chars and is passed straight to the middleware (no config field):
 
 ```python
-from fastapi_fullauth import FullAuth, FullAuthConfig
+from fastapi_fullauth.middleware import CSRFMiddleware
 
-fullauth = FullAuth(
-    adapter=adapter,
-    config=FullAuthConfig(
-        SECRET_KEY="...",        CSRF_SECRET="optional-separate-secret",  # falls back to SECRET_KEY
-    ),
-)
+app.add_middleware(CSRFMiddleware, secret=config.SECRET_KEY)  # or a dedicated key
 ```
 
 ### How it works
@@ -1631,22 +1618,23 @@ Both support in-memory and Redis backends.
 
 Enabled by default. Protects auth endpoints from brute force:
 
-| Route | Default limit | Config |
+| Route | Default limit | `AUTH_RATE_LIMITS` field |
 |-------|--------------|--------|
-| Login | 5 per minute | `AUTH_RATE_LIMIT_LOGIN` |
-| Register | 3 per minute | `AUTH_RATE_LIMIT_REGISTER` |
-| Password reset | 3 per minute | `AUTH_RATE_LIMIT_PASSWORD_RESET` |
+| Login | 5 per minute | `login` |
+| Register | 3 per minute | `register` |
+| Password reset | 3 per minute | `password_reset` |
+| Passkey authenticate | 10 per minute | `passkey_auth` |
+| Refresh | 30 per minute | `refresh` |
 
 ```python
-from fastapi_fullauth import FullAuth, FullAuthConfig
+from fastapi_fullauth import AuthRateLimits, FullAuth, FullAuthConfig
 
 fullauth = FullAuth(
     adapter=adapter,
     config=FullAuthConfig(
         SECRET_KEY="...",
-        AUTH_RATE_LIMIT_LOGIN=10,           # 10 login attempts per window
-        AUTH_RATE_LIMIT_REGISTER=5,         # 5 registrations per window
-        AUTH_RATE_LIMIT_WINDOW_SECONDS=120, # 2-minute window
+        AUTH_RATE_LIMITS=AuthRateLimits(login=10, register=5),  # unset routes keep defaults
+        AUTH_RATE_LIMIT_WINDOW_SECONDS=120,  # 2-minute window
     ),
 )
 ```

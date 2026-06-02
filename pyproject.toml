@@ -55,6 +55,9 @@ Documentation = "https://mdfarhankc.github.io/fastapi-fullauth"
 Homepage = "https://github.com/mdfarhankc/fastapi-fullauth"
 Repository = "https://github.com/mdfarhankc/fastapi-fullauth"
 
+[project.scripts]
+fullauth = "fastapi_fullauth.cli:main"
+
 [project.optional-dependencies]
 oauth = ["httpx>=0.28.1"]
 passkey = ["webauthn>=2.7.1"]
