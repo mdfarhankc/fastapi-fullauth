@@ -9,6 +9,11 @@ if TYPE_CHECKING:
 
 class OAuthProvider(ABC):
     name: str
+    # Whether this provider supports PKCE (RFC 7636). When True, the OAuth flow
+    # sends a code_challenge on authorize and a code_verifier on token exchange.
+    # Left False for custom providers so their existing method signatures keep
+    # working without the PKCE keyword arguments.
+    supports_pkce: bool = False
     # Class-level default so aclose()/_client() are safe even on subclasses that
     # don't call super().__init__().
     _http_client: "httpx.AsyncClient | None" = None
@@ -32,10 +37,14 @@ class OAuthProvider(ABC):
     def default_scopes(self) -> list[str]: ...
 
     @abstractmethod
-    def get_authorization_url(self, state: str, redirect_uri: str) -> str: ...
+    def get_authorization_url(
+        self, state: str, redirect_uri: str, code_challenge: str | None = None
+    ) -> str: ...
 
     @abstractmethod
-    async def exchange_code(self, code: str, redirect_uri: str) -> dict[str, Any]: ...
+    async def exchange_code(
+        self, code: str, redirect_uri: str, code_verifier: str | None = None
+    ) -> dict[str, Any]: ...
 
     @abstractmethod
     async def get_user_info(self, tokens: dict[str, Any]) -> OAuthUserInfo: ...

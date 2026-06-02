@@ -46,6 +46,46 @@ class MockOAuthProvider(OAuthProvider):
         return self._user_info
 
 
+class PkceMockProvider(OAuthProvider):
+    name = "pkce-mock"
+    supports_pkce = True
+
+    def __init__(self) -> None:
+        self.client_id = "test-id"
+        self.client_secret = "test-secret"
+        self.redirect_uris = ["http://localhost/callback"]
+        self.scopes = self.default_scopes
+        self.seen_state: str | None = None
+        self.seen_challenge: str | None = None
+        self.seen_verifier: str | None = None
+
+    @property
+    def default_scopes(self) -> list[str]:
+        return ["email"]
+
+    def get_authorization_url(
+        self, state: str, redirect_uri: str, code_challenge: str | None = None
+    ) -> str:
+        self.seen_state = state
+        self.seen_challenge = code_challenge
+        return f"https://pkce.provider/auth?state={state}&code_challenge={code_challenge}"
+
+    async def exchange_code(
+        self, code: str, redirect_uri: str, code_verifier: str | None = None
+    ) -> dict:
+        self.seen_verifier = code_verifier
+        return {"access_token": "mock-access-token", "refresh_token": "mock-refresh-token"}
+
+    async def get_user_info(self, tokens: dict) -> OAuthUserInfo:
+        return OAuthUserInfo(
+            provider="pkce-mock",
+            provider_user_id="pkce-user-1",
+            email="pkce@example.com",
+            email_verified=True,
+            name="PKCE User",
+        )
+
+
 # ── Fixtures ─────────────────────────────────────────────────────────
 
 
@@ -319,6 +359,97 @@ async def test_callback_invalid_state(oauth_app):
             json={"code": "test-code", "state": "bad-state"},
         )
         assert r.status_code == 400
+
+
+# ── PKCE tests ───────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_pkce_challenge_matches_verifier_end_to_end(adapter, config):
+    """authorize sends an S256 challenge; callback derives the matching verifier."""
+    from fastapi_fullauth.core.tokens import TokenEngine
+    from fastapi_fullauth.flows.oauth import (
+        _pkce_code_challenge,
+        build_authorization_url,
+        oauth_callback,
+    )
+
+    engine = TokenEngine(config=config)
+    provider = PkceMockProvider()
+
+    url = build_authorization_url(engine, provider, "http://localhost/callback", pkce_enabled=True)
+    assert "code_challenge=" in url
+    assert provider.seen_challenge is not None
+    assert provider.seen_state is not None
+
+    await oauth_callback(
+        adapter=adapter,
+        token_engine=engine,
+        provider=provider,
+        code="test-code",
+        state=provider.seen_state,
+        pkce_enabled=True,
+    )
+
+    assert provider.seen_verifier is not None
+    # The verifier the provider received at token exchange must hash to the
+    # challenge it was given at authorize time.
+    assert _pkce_code_challenge(provider.seen_verifier) == provider.seen_challenge
+
+
+@pytest.mark.asyncio
+async def test_pkce_disabled_sends_no_challenge_or_verifier(adapter):
+    from fastapi_fullauth.core.tokens import TokenEngine
+    from fastapi_fullauth.flows.oauth import build_authorization_url, oauth_callback
+
+    config = FullAuthConfig(
+        SECRET_KEY="test-secret-key-that-is-long-enough-32b",
+        JWT_LEEWAY_SECONDS=0,
+        OAUTH_PKCE_ENABLED=False,
+    )
+    engine = TokenEngine(config=config)
+    provider = PkceMockProvider()
+
+    build_authorization_url(engine, provider, "http://localhost/callback", pkce_enabled=False)
+    assert provider.seen_challenge is None
+
+    await oauth_callback(
+        adapter=adapter,
+        token_engine=engine,
+        provider=provider,
+        code="test-code",
+        state=provider.seen_state,
+        pkce_enabled=False,
+    )
+    assert provider.seen_verifier is None
+
+
+@pytest.mark.asyncio
+async def test_pkce_skipped_for_provider_without_support(adapter, config):
+    """Providers that don't opt in keep their old two-argument signatures."""
+    from fastapi_fullauth.core.tokens import TokenEngine
+    from fastapi_fullauth.flows.oauth import build_authorization_url
+
+    engine = TokenEngine(config=config)
+    provider = MockOAuthProvider()  # supports_pkce is False
+    url = build_authorization_url(engine, provider, "http://localhost/callback", pkce_enabled=True)
+    assert "code_challenge" not in url
+
+
+@pytest.mark.asyncio
+async def test_google_authorization_url_includes_pkce(config):
+    from fastapi_fullauth.core.tokens import TokenEngine
+    from fastapi_fullauth.flows.oauth import build_authorization_url
+    from fastapi_fullauth.oauth.google import GoogleOAuthProvider
+
+    engine = TokenEngine(config=config)
+    provider = GoogleOAuthProvider(
+        client_id="id", client_secret="secret", redirect_uris=["http://localhost/cb"]
+    )
+    url = build_authorization_url(engine, provider, "http://localhost/cb")
+    assert "code_challenge=" in url
+    assert "code_challenge_method=S256" in url
+    await provider.aclose()
 
 
 # ── Adapter tests ────────────────────────────────────────────────────

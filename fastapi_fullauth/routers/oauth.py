@@ -11,7 +11,7 @@ from fastapi_fullauth.exceptions import (
     OAuthProviderError,
     TokenError,
 )
-from fastapi_fullauth.flows.oauth import generate_oauth_state, oauth_callback
+from fastapi_fullauth.flows.oauth import build_authorization_url, oauth_callback
 from fastapi_fullauth.routers._schemas import LoginResponse, build_login_response_model
 from fastapi_fullauth.types import TokenPair, UserSchema, UserSchemaType
 
@@ -78,12 +78,13 @@ def create_oauth_router(
         if redirect_uri not in oauth_provider.redirect_uris:
             raise HTTPException(status_code=400, detail="Invalid redirect URI")
 
-        state = generate_oauth_state(
+        url = build_authorization_url(
             fullauth.token_engine,
+            oauth_provider,
+            redirect_uri,
             ttl_seconds=fullauth.config.OAUTH_STATE_EXPIRE_SECONDS,
-            redirect_uri=redirect_uri,
+            pkce_enabled=fullauth.config.OAUTH_PKCE_ENABLED,
         )
-        url = oauth_provider.get_authorization_url(state, redirect_uri)
         return OAuthAuthorizeResponse(authorization_url=url)
 
     @router.post(
@@ -115,6 +116,7 @@ def create_oauth_router(
                 code=data.code,
                 state=data.state,
                 auto_link_by_email=fullauth.config.OAUTH_AUTO_LINK_BY_EMAIL,
+                pkce_enabled=fullauth.config.OAUTH_PKCE_ENABLED,
             )
         except (OAuthProviderError, TokenError):
             raise OAUTH_ERROR_EXCEPTION

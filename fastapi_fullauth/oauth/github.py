@@ -11,6 +11,7 @@ logger = logging.getLogger("fastapi_fullauth.oauth.github")
 
 class GitHubOAuthProvider(OAuthProvider):
     name = "github"
+    supports_pkce = True
     authorization_endpoint = "https://github.com/login/oauth/authorize"
     token_endpoint = "https://github.com/login/oauth/access_token"
     userinfo_endpoint = "https://api.github.com/user"
@@ -20,24 +21,34 @@ class GitHubOAuthProvider(OAuthProvider):
     def default_scopes(self) -> list[str]:
         return ["read:user", "user:email"]
 
-    def get_authorization_url(self, state: str, redirect_uri: str) -> str:
+    def get_authorization_url(
+        self, state: str, redirect_uri: str, code_challenge: str | None = None
+    ) -> str:
         params = {
             "client_id": self.client_id,
             "redirect_uri": redirect_uri,
             "scope": " ".join(self.scopes),
             "state": state,
         }
+        if code_challenge:
+            params["code_challenge"] = code_challenge
+            params["code_challenge_method"] = "S256"
         return f"{self.authorization_endpoint}?{urlencode(params)}"
 
-    async def exchange_code(self, code: str, redirect_uri: str) -> dict[str, Any]:
+    async def exchange_code(
+        self, code: str, redirect_uri: str, code_verifier: str | None = None
+    ) -> dict[str, Any]:
+        body = {
+            "client_id": self.client_id,
+            "client_secret": self.client_secret,
+            "code": code,
+        }
+        if code_verifier:
+            body["code_verifier"] = code_verifier
         client = self._client()
         resp = await client.post(
             self.token_endpoint,
-            data={
-                "client_id": self.client_id,
-                "client_secret": self.client_secret,
-                "code": code,
-            },
+            data=body,
             headers={"Accept": "application/json"},
         )
         if resp.status_code != 200:
