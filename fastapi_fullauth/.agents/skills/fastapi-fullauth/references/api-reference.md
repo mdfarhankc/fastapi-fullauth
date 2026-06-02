@@ -198,7 +198,7 @@ from fastapi_fullauth.middleware.ratelimit import RateLimitMiddleware
 from fastapi_fullauth.middleware.security_headers import SecurityHeadersMiddleware
 ```
 
-None of these are wired by `init_app()`; call `app.add_middleware(...)` yourself. The `CSRFMiddleware` constructor requires `secret` (≥ 32 chars); pass `fullauth.config.CSRF_SECRET or fullauth.config.SECRET_KEY`.
+None of these are wired by `init_app()`; call `app.add_middleware(...)` yourself. The `CSRFMiddleware` constructor requires `secret` (≥ 32 chars); pass `fullauth.config.SECRET_KEY` or your own dedicated key.
 
 ## Hooks
 
@@ -300,11 +300,7 @@ Grouped for readability. All read from env with `FULLAUTH_` prefix.
 - `RATE_LIMIT_BACKEND: "memory" | "redis" = "memory"`  (used by `AuthRateLimiter` and `create_rate_limiter()`)
 - `TRUSTED_PROXY_HEADERS: list[str] = []`
 - `AUTH_RATE_LIMIT_ENABLED: bool = True`
-- `AUTH_RATE_LIMIT_LOGIN: int = 5`
-- `AUTH_RATE_LIMIT_REGISTER: int = 3`
-- `AUTH_RATE_LIMIT_PASSWORD_RESET: int = 3`
-- `AUTH_RATE_LIMIT_PASSKEY_AUTH: int = 10`
-- `AUTH_RATE_LIMIT_REFRESH: int = 30`
+- `AUTH_RATE_LIMITS: AuthRateLimits = AuthRateLimits()`  (fields `login=5`, `register=3`, `password_reset=3`, `passkey_auth=10`, `refresh=30`; pass `AuthRateLimits(login=...)` or env JSON `{"login": ...}`)
 - `AUTH_RATE_LIMIT_WINDOW_SECONDS: int = 60`
 
 ### Redis
@@ -315,15 +311,11 @@ Grouped for readability. All read from env with `FULLAUTH_` prefix.
 - `BLACKLIST_BACKEND: "memory" | "redis" = "memory"`
 
 ### Middleware
-- `CSRF_SECRET: str | None = None`  (≥ 32 chars; pass to `CSRFMiddleware(secret=...)`. Falls back to `SECRET_KEY`.)
+- `CSRFMiddleware(secret=...)` takes its signing key directly (≥ 32 chars); there's no config field. Pass `config.SECRET_KEY` or your own key.
 - Middleware is opt-in: `app.add_middleware(SecurityHeadersMiddleware | CSRFMiddleware | RateLimitMiddleware)`. `init_app()` does not wire anything.
 
-### Cookies (when using `CookieBackend`)
-- `COOKIE_NAME: str = "fullauth_access"`
-- `COOKIE_SECURE: bool = True`
-- `COOKIE_HTTPONLY: bool = True`
-- `COOKIE_SAMESITE: "lax" | "strict" | "none" = "lax"`
-- `COOKIE_DOMAIN: str | None = None`
+### Cookies (constructor args on `CookieBackend`, not config)
+- `CookieBackend(config, *, name="fullauth_access", secure=True, httponly=True, samesite="lax", domain=None)`
 
 ### OAuth
 - `OAUTH_STATE_EXPIRE_SECONDS: int = 300`

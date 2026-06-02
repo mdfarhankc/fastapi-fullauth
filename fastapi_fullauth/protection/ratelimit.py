@@ -193,19 +193,16 @@ class AuthRateLimiter:
             return
 
         window = config.AUTH_RATE_LIMIT_WINDOW_SECONDS
-        self._limiters["login"] = create_rate_limiter(config, config.AUTH_RATE_LIMIT_LOGIN, window)
-        self._limiters["register"] = create_rate_limiter(
-            config, config.AUTH_RATE_LIMIT_REGISTER, window
-        )
+        limits = config.AUTH_RATE_LIMITS
+        self._limiters["login"] = create_rate_limiter(config, limits.login, window)
+        self._limiters["register"] = create_rate_limiter(config, limits.register, window)
         self._limiters["password-reset"] = create_rate_limiter(
-            config, config.AUTH_RATE_LIMIT_PASSWORD_RESET, window
+            config, limits.password_reset, window
         )
         self._limiters["passkey-authenticate"] = create_rate_limiter(
-            config, config.AUTH_RATE_LIMIT_PASSKEY_AUTH, window
+            config, limits.passkey_auth, window
         )
-        self._limiters["refresh"] = create_rate_limiter(
-            config, config.AUTH_RATE_LIMIT_REFRESH, window
-        )
+        self._limiters["refresh"] = create_rate_limiter(config, limits.refresh, window)
 
     async def aclose(self) -> None:
         for limiter in self._limiters.values():

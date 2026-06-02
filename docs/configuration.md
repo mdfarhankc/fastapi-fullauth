@@ -43,11 +43,31 @@ Pass config inline or as an object:
 # .env
 FULLAUTH_SECRET_KEY=replace-me-with-32-random-bytes
 FULLAUTH_ACCESS_TOKEN_EXPIRE_MINUTES=15
-FULLAUTH_BLACKLIST_BACKEND=redis
+# Setting REDIS_URL switches all subsystems to Redis automatically.
 FULLAUTH_REDIS_URL=redis://localhost:6379/0
 ```
 
 Then `FullAuthConfig()` picks it up; no extra wiring needed.
+
+!!! tip "List settings take a comma-separated string"
+    `ORIGINS`, `TRUSTED_PROXY_HEADERS`, `PASSKEY_ORIGINS`, and `ROUTER_TAGS` accept a
+    plain comma-separated value from the environment, so you don't have to write JSON:
+
+    ```bash
+    FULLAUTH_ORIGINS=https://app.example.com,https://m.example.com
+    FULLAUTH_TRUSTED_PROXY_HEADERS=X-Forwarded-For
+    ```
+
+    The JSON-array form (`["https://app.example.com"]`) still works for values that need it.
+
+### Generating a secret key
+
+```bash
+fullauth secret
+```
+
+Prints a random key suitable for `FULLAUTH_SECRET_KEY`. The `fullauth` command ships
+with the package.
 
 ### Precedence
 
@@ -137,18 +157,31 @@ middleware (`RateLimitMiddleware`) is opt-in; import it from
 | `RATE_LIMIT_BACKEND` | `"memory" \| "redis"` | `"memory"` | Backend used by `AuthRateLimiter` and `create_rate_limiter()`. Use `"redis"` in production; `"memory"` is per-process, so the effective limit is multiplied by the worker count. |
 | `TRUSTED_PROXY_HEADERS` | `list[str]` | `[]` | Headers to read real client IP from (e.g. `["X-Forwarded-For"]`). |
 | `AUTH_RATE_LIMIT_ENABLED` | `bool` | `True` | Enable per-route auth rate limits. |
-| `AUTH_RATE_LIMIT_LOGIN` | `int` | `5` | Max login attempts per window. |
-| `AUTH_RATE_LIMIT_REGISTER` | `int` | `3` | Max registrations per window. |
-| `AUTH_RATE_LIMIT_PASSWORD_RESET` | `int` | `3` | Max password reset requests per window. |
-| `AUTH_RATE_LIMIT_PASSKEY_AUTH` | `int` | `10` | Max passkey authenticate/begin requests per window. |
-| `AUTH_RATE_LIMIT_REFRESH` | `int` | `30` | Max token refresh requests per window. |
+| `AUTH_RATE_LIMITS` | `AuthRateLimits` | see below | Per-route request caps: `login=5`, `register=3`, `password_reset=3`, `passkey_auth=10`, `refresh=30`. |
 | `AUTH_RATE_LIMIT_WINDOW_SECONDS` | `int` | `60` | Rate limit window in seconds. |
+
+Override individual routes without touching the others. In Python, pass an
+`AuthRateLimits` (importable from `fastapi_fullauth`); unset fields keep their
+defaults:
+
+```python
+from fastapi_fullauth import AuthRateLimits, FullAuthConfig
+
+config = FullAuthConfig(AUTH_RATE_LIMITS=AuthRateLimits(login=10, refresh=60))
+```
+
+From the environment, set the field as a JSON object (only the keys you want to
+change):
+
+```bash
+FULLAUTH_AUTH_RATE_LIMITS='{"login": 10, "refresh": 60}'
+```
 
 ### Redis
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `REDIS_URL` | `str \| None` | `None` | Redis connection URL. Required when using Redis backends. |
+| `REDIS_URL` | `str \| None` | `None` | Redis connection URL. Required when using Redis backends. Setting it switches all subsystems to Redis unless `BACKEND` or an individual `*_BACKEND` is explicitly set to `memory`. |
 
 ### Token Blacklist
 
@@ -163,19 +196,32 @@ middleware (`RateLimitMiddleware`) is opt-in; import it from
 `fastapi_fullauth.middleware` (`SecurityHeadersMiddleware`, `CSRFMiddleware`,
 `RateLimitMiddleware`) and `app.add_middleware(...)` it yourself.
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `CSRF_SECRET` | `str \| None` | `None` | CSRF signing secret. Pass `config.CSRF_SECRET or config.SECRET_KEY` to `CSRFMiddleware` (≥ 32 chars). |
+`CSRFMiddleware` takes its signing key directly; there's no config field for it.
+Pass `config.SECRET_KEY` (≥ 32 chars), or a dedicated key if you want to rotate
+it independently:
+
+```python
+app.add_middleware(CSRFMiddleware, secret=config.SECRET_KEY)
+```
 
 ### Cookies
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `COOKIE_NAME` | `str` | `"fullauth_access"` | Access token cookie name. |
-| `COOKIE_SECURE` | `bool` | `True` | Set Secure flag on cookies. |
-| `COOKIE_HTTPONLY` | `bool` | `True` | Set HttpOnly flag on cookies. |
-| `COOKIE_SAMESITE` | `"lax" \| "strict" \| "none"` | `"lax"` | SameSite cookie policy. |
-| `COOKIE_DOMAIN` | `str \| None` | `None` | Cookie domain. |
+Cookie attributes live on the `CookieBackend` constructor (the cookie backend
+is opt-in), not on `FullAuthConfig`. Pass them when you wire it up:
+
+```python
+from fastapi_fullauth.backends import CookieBackend
+
+backend = CookieBackend(
+    config,
+    name="fullauth_access",   # default
+    secure=True,              # default
+    httponly=True,            # default
+    samesite="lax",           # default
+    domain=None,              # default
+)
+fullauth = FullAuth(config=config, adapter=adapter, backends=[backend])
+```
 
 ### OAuth
 
@@ -204,18 +250,18 @@ middleware (`RateLimitMiddleware`) is opt-in; import it from
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `BACKEND` | `str` | `"memory"` | Default backend for all subsystems (blacklist, lockout, rate limit, challenge store). Individual `*_BACKEND` settings override this. |
+| `BACKEND` | `str` | `"memory"` | Default backend for all subsystems (blacklist, lockout, rate limit, challenge store). Individual `*_BACKEND` settings override this. Left unset, it follows `REDIS_URL`: `redis` when a URL is set, `memory` otherwise. |
 | `ORIGINS` | `list[str]` | `[]` | Default origins list. Propagates to `PASSKEY_ORIGINS` if not explicitly set. |
 
 !!! tip
-    Set `FULLAUTH_BACKEND=redis` and `FULLAUTH_REDIS_URL=redis://...` to switch all subsystems to Redis at once. You can still override individual backends (e.g. `LOCKOUT_BACKEND=memory` for local dev).
+    Setting `FULLAUTH_REDIS_URL=redis://...` switches all subsystems to Redis at once; you don't also need `FULLAUTH_BACKEND=redis`. Override individual backends as needed (e.g. `LOCKOUT_BACKEND=memory` for local dev), or set `FULLAUTH_BACKEND=memory` to keep everything in-memory despite the URL.
 
 ### Passkeys
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `PASSKEY_ENABLED` | `bool` | `False` | Enable passkey (WebAuthn) routes. |
-| `PASSKEY_RP_ID` | `str \| None` | `None` | Relying Party ID (your domain, e.g. `"example.com"`). |
+| `PASSKEY_ENABLED` | `bool` | `False` | Enable passkey (WebAuthn) routes. Inferred `True` when `PASSKEY_RP_ID` is set; set it to `False` explicitly to configure passkeys but keep the routes off. |
+| `PASSKEY_RP_ID` | `str \| None` | `None` | Relying Party ID (your domain, e.g. `"example.com"`). Setting it turns passkeys on. |
 | `PASSKEY_RP_NAME` | `str \| None` | `None` | Relying Party display name (e.g. `"My App"`). |
 | `PASSKEY_ORIGINS` | `list[str]` | `[]` | Allowed origins (e.g. `["https://example.com", "https://m.example.com"]`). |
 | `PASSKEY_CHALLENGE_BACKEND` | `"memory" \| "redis"` | `"memory"` | Challenge store backend. Use `"redis"` in production; `"memory"` is per-process and breaks under `uvicorn --workers N` (begin and complete can land on different workers). |
@@ -235,8 +281,7 @@ FULLAUTH_ALGORITHM=HS256
 FULLAUTH_ACCESS_TOKEN_EXPIRE_MINUTES=15
 FULLAUTH_REFRESH_TOKEN_EXPIRE_DAYS=7
 
-# All protection subsystems use Redis
-FULLAUTH_BACKEND=redis
+# All protection subsystems use Redis (REDIS_URL alone is enough)
 FULLAUTH_REDIS_URL=redis://redis:6379/0
 
 # Password hashing
@@ -247,8 +292,8 @@ FULLAUTH_PASSWORD_MIN_LENGTH=10
 FULLAUTH_MAX_LOGIN_ATTEMPTS=5
 FULLAUTH_LOCKOUT_DURATION_MINUTES=15
 
-# Rate limiting
-FULLAUTH_AUTH_RATE_LIMIT_LOGIN=10
+# Rate limiting (per-route caps as a JSON object; unset keys keep defaults)
+FULLAUTH_AUTH_RATE_LIMITS={"login": 10}
 FULLAUTH_AUTH_RATE_LIMIT_WINDOW_SECONDS=60
 
 # Routing

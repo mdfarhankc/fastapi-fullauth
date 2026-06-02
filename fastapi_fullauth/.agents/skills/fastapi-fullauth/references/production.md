@@ -7,10 +7,11 @@ What changes between `uv run uvicorn app:app --reload` and "live". Each item bel
 Unset → the library generates a random key and emits a `UserWarning`. Every process restart invalidates every issued token. Every worker gets a different key and can't decode tokens issued by another.
 
 ```bash
-export FULLAUTH_SECRET_KEY="$(openssl rand -hex 32)"
+export FULLAUTH_SECRET_KEY="$(openssl rand -hex 32)"   # or: fullauth secret
 ```
 
-Minimum 32 random bytes. Keep it in your secret manager, not the repo.
+Minimum 32 random bytes. Keep it in your secret manager, not the repo. The
+bundled `fullauth secret` command prints a suitable key.
 
 ## 2. Swap every in-memory backend for Redis
 
@@ -45,16 +46,21 @@ Only set this if you actually trust the upstream to rewrite the header. A public
 
 ## 4. Cookie flags
 
-If you use `CookieBackend` (cookie-based sessions):
+If you use `CookieBackend` (cookie-based sessions), set the flags on the backend constructor:
 
-```bash
-FULLAUTH_COOKIE_SECURE=true             # default, don't change this
-FULLAUTH_COOKIE_HTTPONLY=true           # default, don't change this
-FULLAUTH_COOKIE_SAMESITE=lax            # or strict if cross-site flows don't apply
-FULLAUTH_COOKIE_DOMAIN=app.example.com  # explicit, not a leading dot
+```python
+from fastapi_fullauth.backends import CookieBackend
+
+backend = CookieBackend(
+    config,
+    secure=True,                # default, don't change this
+    httponly=True,              # default, don't change this
+    samesite="lax",             # or "strict" if cross-site flows don't apply
+    domain="app.example.com",   # explicit, not a leading dot
+)
 ```
 
-`SameSite=none` requires `Secure=true` and is only right for cross-origin embeds. For most SPAs on the same domain, `lax` is correct.
+`SameSite=none` requires `secure=True` and is only right for cross-origin embeds. For most SPAs on the same domain, `lax` is correct.
 
 ## 5. Token lifetimes
 
@@ -77,16 +83,15 @@ from fastapi_fullauth.middleware import CSRFMiddleware
 
 app.add_middleware(
     CSRFMiddleware,
-    secret=fullauth.config.CSRF_SECRET or fullauth.config.SECRET_KEY,
-    cookie_secure=fullauth.config.COOKIE_SECURE,
-    cookie_samesite=fullauth.config.COOKIE_SAMESITE,
-    cookie_domain=fullauth.config.COOKIE_DOMAIN,
+    secret=fullauth.config.SECRET_KEY,   # or a dedicated ≥ 32-char key
+    cookie_secure=True,
+    cookie_samesite="lax",
+    cookie_domain="app.example.com",
 )
 ```
 
-```bash
-FULLAUTH_CSRF_SECRET=...   # ≥ 32 chars; falls back to SECRET_KEY when not set
-```
+Match the cookie attributes to whatever you passed your `CookieBackend`. There's
+no `CSRF_SECRET` config field; pass the secret straight to the middleware.
 
 The middleware uses double-submit-cookie: GET plants a signed CSRF cookie, unsafe methods require both the cookie and a matching `X-CSRF-Token` header. The cookie is deliberately not HttpOnly; your JS needs to read it to populate the header. That's the pattern working as intended.
 
@@ -122,10 +127,8 @@ target_metadata = Base.metadata
 
 ```bash
 FULLAUTH_AUTH_RATE_LIMIT_ENABLED=true     # default
-FULLAUTH_AUTH_RATE_LIMIT_LOGIN=5          # per IP per minute
-FULLAUTH_AUTH_RATE_LIMIT_REGISTER=3
-FULLAUTH_AUTH_RATE_LIMIT_PASSWORD_RESET=3
-FULLAUTH_AUTH_RATE_LIMIT_PASSKEY_AUTH=10
+# Per-route caps as a JSON object; only the keys you set change (per IP per minute).
+FULLAUTH_AUTH_RATE_LIMITS={"login": 5, "register": 3, "password_reset": 3, "passkey_auth": 10}
 FULLAUTH_AUTH_RATE_LIMIT_WINDOW_SECONDS=60
 ```
 

@@ -86,6 +86,9 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
         self.hooks = EventHooks()
         self.oauth_providers: dict[str, OAuthProvider] = {p.name: p for p in (providers or [])}
 
+        self._warn_adapter_feature_mismatch()
+        self._log_effective_config(config)
+
         self._auth_router: APIRouter | None = None
         self._profile_router: APIRouter | None = None
         self._verify_router: APIRouter | None = None
@@ -122,6 +125,61 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
                 UserWarning,
                 stacklevel=3,
             )
+
+    def _warn_adapter_feature_mismatch(self) -> None:
+        # A feature can be configured while the adapter doesn't implement the
+        # matching mixin. The router build silently skips those routes, so the
+        # symptom is a 404 with no explanation. Surface it at construction.
+        if self.config.PASSKEY_ENABLED and not isinstance(self.adapter, PasskeyAdapterMixin):
+            warnings.warn(
+                "PASSKEY_ENABLED is set but the adapter does not implement "
+                "PasskeyAdapterMixin; passkey routes will not be registered.",
+                UserWarning,
+                stacklevel=3,
+            )
+        if self.oauth_providers and not isinstance(self.adapter, OAuthAdapterMixin):
+            warnings.warn(
+                "OAuth providers are configured but the adapter does not implement "
+                "OAuthAdapterMixin; OAuth routes will not be registered.",
+                UserWarning,
+                stacklevel=3,
+            )
+
+    def _log_effective_config(self, config: FullAuthConfig) -> None:
+        # One line showing the resolved state, since BACKEND/PASSKEY_ENABLED are
+        # now inferred from REDIS_URL/PASSKEY_RP_ID and aren't otherwise visible.
+        parts = [
+            f"blacklist={config.BLACKLIST_BACKEND if config.BLACKLIST_ENABLED else 'off'}",
+            f"lockout={config.LOCKOUT_BACKEND if config.LOCKOUT_ENABLED else 'off'}",
+            f"ratelimit={config.RATE_LIMIT_BACKEND if config.AUTH_RATE_LIMIT_ENABLED else 'off'}",
+        ]
+        if config.PASSKEY_ENABLED:
+            parts.append(f"passkey={config.PASSKEY_CHALLENGE_BACKEND}")
+        logger.info(
+            "fullauth ready: %s | passkeys=%s | oauth=%s",
+            " ".join(parts),
+            "on" if config.PASSKEY_ENABLED else "off",
+            ",".join(self.oauth_providers) or "none",
+        )
+
+    def _warn_cookie_backend_without_csrf(self, app: FastAPI) -> None:
+        from fastapi_fullauth.backends import CookieBackend
+        from fastapi_fullauth.middleware.csrf import CSRFMiddleware
+
+        if not any(isinstance(b, CookieBackend) for b in self.backends):
+            return
+        # Starlette types m.cls as a middleware factory, so mypy can't see the
+        # identity overlap with the concrete class; the check itself is correct.
+        if any(m.cls is CSRFMiddleware for m in app.user_middleware):  # type: ignore[comparison-overlap]
+            return
+        warnings.warn(
+            "CookieBackend is in use but CSRFMiddleware is not wired on this app; "
+            "cookie-based sessions are exposed to CSRF. Add "
+            "app.add_middleware(CSRFMiddleware, secret=config.SECRET_KEY). "
+            "Ignore this if you wire the middleware after init_app().",
+            UserWarning,
+            stacklevel=3,
+        )
 
     async def get_custom_claims(self, user: UserSchema) -> dict[str, Any]:
         if not self.on_create_token_claims:
@@ -311,6 +369,7 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
 
         self.bind(app)
         app.router.add_event_handler("shutdown", self.aclose)
+        self._warn_cookie_backend_without_csrf(app)
 
         if include_routers is None:
             app.include_router(self.router)

@@ -10,24 +10,29 @@ fastapi-fullauth provides two levels of rate limiting, plus account lockout for 
 
 Enabled by default. Protects auth endpoints from brute force:
 
-| Route | Default limit | Config |
+| Route | Default limit | `AUTH_RATE_LIMITS` field |
 |-------|:---:|---|
-| Login | 5/min | `AUTH_RATE_LIMIT_LOGIN` |
-| Register | 3/min | `AUTH_RATE_LIMIT_REGISTER` |
-| Password reset / email verify | 3/min | `AUTH_RATE_LIMIT_PASSWORD_RESET` |
-| Passkey authenticate | 10/min | `AUTH_RATE_LIMIT_PASSKEY_AUTH` |
-| Refresh | 30/min | `AUTH_RATE_LIMIT_REFRESH` |
+| Login | 5/min | `login` |
+| Register | 3/min | `register` |
+| Password reset / email verify | 3/min | `password_reset` |
+| Passkey authenticate | 10/min | `passkey_auth` |
+| Refresh | 30/min | `refresh` |
 
 All routes share the same window (`AUTH_RATE_LIMIT_WINDOW_SECONDS`, default 60). The algorithm is sliding-window: it tracks request timestamps and counts how many fall within the current window.
 
+The per-route caps are grouped under `AUTH_RATE_LIMITS`. Pass an `AuthRateLimits` and only set the routes you want to change; the rest keep their defaults:
+
 ```python
+from fastapi_fullauth import AuthRateLimits, FullAuthConfig
+
 config = FullAuthConfig(
     SECRET_KEY="...",
-    AUTH_RATE_LIMIT_LOGIN=10,           # 10 login attempts per window
-    AUTH_RATE_LIMIT_REGISTER=5,         # 5 registrations per window
-    AUTH_RATE_LIMIT_WINDOW_SECONDS=120, # 2-minute window
+    AUTH_RATE_LIMITS=AuthRateLimits(login=10, register=5),
+    AUTH_RATE_LIMIT_WINDOW_SECONDS=120,  # 2-minute window
 )
 ```
+
+From the environment, set it as a JSON object: `FULLAUTH_AUTH_RATE_LIMITS='{"login": 10, "register": 5}'`.
 
 When a limit is exceeded, the route returns `429 Too Many Requests` with a `Retry-After` header.
 

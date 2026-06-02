@@ -10,7 +10,7 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlmodel import SQLModel
 
-from fastapi_fullauth import FullAuth, FullAuthConfig, PasswordValidator
+from fastapi_fullauth import AuthRateLimits, FullAuth, FullAuthConfig, PasswordValidator
 from fastapi_fullauth.dependencies import current_user
 from fastapi_fullauth.types import CreateUserSchema, UserSchema
 from tests.conftest import make_test_adapter
@@ -674,6 +674,46 @@ def test_backend_redis_without_redis_url_fails_at_config():
         )
 
 
+def test_redis_url_implies_redis_backend():
+    # REDIS_URL alone, no BACKEND set: every subsystem switches to redis.
+    cfg = FullAuthConfig(
+        SECRET_KEY="test-secret-key-that-is-long-enough-32b",
+        REDIS_URL="redis://localhost:6379/0",
+    )
+    assert cfg.BACKEND == "redis"
+    assert cfg.BLACKLIST_BACKEND == "redis"
+    assert cfg.LOCKOUT_BACKEND == "redis"
+    assert cfg.RATE_LIMIT_BACKEND == "redis"
+    assert cfg.PASSKEY_CHALLENGE_BACKEND == "redis"
+
+
+def test_explicit_backend_memory_overrides_redis_url():
+    # An explicit BACKEND=memory keeps everything in-memory despite REDIS_URL.
+    cfg = FullAuthConfig(
+        SECRET_KEY="test-secret-key-that-is-long-enough-32b",
+        BACKEND="memory",
+        REDIS_URL="redis://localhost:6379/0",
+    )
+    assert cfg.BACKEND == "memory"
+    assert cfg.BLACKLIST_BACKEND == "memory"
+    assert cfg.LOCKOUT_BACKEND == "memory"
+    assert cfg.RATE_LIMIT_BACKEND == "memory"
+    assert cfg.PASSKEY_CHALLENGE_BACKEND == "memory"
+
+
+def test_redis_url_with_per_feature_memory_override():
+    # REDIS_URL implies redis, but a single feature can opt back to memory.
+    cfg = FullAuthConfig(
+        SECRET_KEY="test-secret-key-that-is-long-enough-32b",
+        REDIS_URL="redis://localhost:6379/0",
+        PASSKEY_CHALLENGE_BACKEND="memory",
+    )
+    assert cfg.BLACKLIST_BACKEND == "redis"
+    assert cfg.LOCKOUT_BACKEND == "redis"
+    assert cfg.RATE_LIMIT_BACKEND == "redis"
+    assert cfg.PASSKEY_CHALLENGE_BACKEND == "memory"
+
+
 def test_redis_url_not_required_when_feature_disabled():
     # Only LOCKOUT_BACKEND is redis, but lockout is disabled = REDIS_URL not required
     cfg = FullAuthConfig(
@@ -684,3 +724,122 @@ def test_redis_url_not_required_when_feature_disabled():
     )
     assert cfg.LOCKOUT_BACKEND == "redis"
     assert cfg.REDIS_URL is None
+
+
+# PASSKEY_ENABLED inference
+
+
+def test_passkey_enabled_inferred_from_rp_id():
+    cfg = FullAuthConfig(
+        SECRET_KEY="test-secret-key-that-is-long-enough-32b",
+        PASSKEY_RP_ID="example.com",
+        PASSKEY_ORIGINS=["https://example.com"],
+    )
+    assert cfg.PASSKEY_ENABLED is True
+
+
+def test_passkey_explicit_disabled_overrides_rp_id():
+    cfg = FullAuthConfig(
+        SECRET_KEY="test-secret-key-that-is-long-enough-32b",
+        PASSKEY_ENABLED=False,
+        PASSKEY_RP_ID="example.com",
+    )
+    assert cfg.PASSKEY_ENABLED is False
+
+
+# AUTH_RATE_LIMITS typed overrides
+
+
+def test_auth_rate_limits_defaults():
+    cfg = FullAuthConfig(SECRET_KEY="test-secret-key-that-is-long-enough-32b")
+    assert cfg.AUTH_RATE_LIMITS.login == 5
+    assert cfg.AUTH_RATE_LIMITS.register == 3
+    assert cfg.AUTH_RATE_LIMITS.refresh == 30
+
+
+def test_auth_rate_limits_partial_override_keeps_other_defaults():
+    cfg = FullAuthConfig(
+        SECRET_KEY="test-secret-key-that-is-long-enough-32b",
+        AUTH_RATE_LIMITS=AuthRateLimits(login=1),
+    )
+    assert cfg.AUTH_RATE_LIMITS.login == 1
+    assert cfg.AUTH_RATE_LIMITS.register == 3
+
+
+def test_auth_rate_limits_accepts_dict():
+    cfg = FullAuthConfig(
+        SECRET_KEY="test-secret-key-that-is-long-enough-32b",
+        AUTH_RATE_LIMITS={"login": 2, "refresh": 7},
+    )
+    assert cfg.AUTH_RATE_LIMITS.login == 2
+    assert cfg.AUTH_RATE_LIMITS.refresh == 7
+    assert cfg.AUTH_RATE_LIMITS.register == 3
+
+
+def test_origins_accepts_comma_separated_string():
+    cfg = FullAuthConfig(
+        SECRET_KEY="test-secret-key-that-is-long-enough-32b",
+        ORIGINS="https://a.com, https://b.com",
+    )
+    assert cfg.ORIGINS == ["https://a.com", "https://b.com"]
+
+
+def test_origins_accepts_json_string():
+    cfg = FullAuthConfig(
+        SECRET_KEY="test-secret-key-that-is-long-enough-32b",
+        ORIGINS='["https://a.com","https://b.com"]',
+    )
+    assert cfg.ORIGINS == ["https://a.com", "https://b.com"]
+
+
+def test_list_field_from_env_comma_separated(monkeypatch):
+    monkeypatch.setenv("FULLAUTH_SECRET_KEY", "test-secret-key-that-is-long-enough-32b")
+    monkeypatch.setenv("FULLAUTH_TRUSTED_PROXY_HEADERS", "X-Forwarded-For, X-Real-IP")
+    cfg = FullAuthConfig()
+    assert cfg.TRUSTED_PROXY_HEADERS == ["X-Forwarded-For", "X-Real-IP"]
+
+
+def test_cli_secret_prints_key(capsys):
+    from fastapi_fullauth.cli import main
+
+    rc = main(["secret"])
+    out = capsys.readouterr().out.strip()
+    assert rc == 0
+    assert len(out) >= 32
+
+
+def test_passkey_enabled_without_passkey_adapter_warns():
+    from fastapi_fullauth.adapters.base import AbstractUserAdapter
+
+    class _Fake(AbstractUserAdapter):
+        pass
+
+    _Fake.__abstractmethods__ = frozenset()
+    cfg = FullAuthConfig(
+        SECRET_KEY="test-secret-key-that-is-long-enough-32b",
+        PASSKEY_RP_ID="example.com",
+        PASSKEY_ORIGINS=["https://example.com"],
+    )
+    with pytest.warns(UserWarning, match="PasskeyAdapterMixin"):
+        FullAuth(config=cfg, adapter=_Fake())
+
+
+async def test_cookie_backend_without_csrf_warns(config, adapter):
+    from fastapi_fullauth.backends import CookieBackend
+
+    fa = FullAuth(config=config, adapter=adapter, backends=[CookieBackend(config)])
+    app = FastAPI()
+    with pytest.warns(UserWarning, match="CSRFMiddleware is not wired"):
+        fa.init_app(app)
+
+
+async def test_cookie_backend_with_csrf_no_warning(config, adapter):
+    from fastapi_fullauth.backends import CookieBackend
+    from fastapi_fullauth.middleware.csrf import CSRFMiddleware
+
+    fa = FullAuth(config=config, adapter=adapter, backends=[CookieBackend(config)])
+    app = FastAPI()
+    app.add_middleware(CSRFMiddleware, secret=config.SECRET_KEY)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        fa.init_app(app)

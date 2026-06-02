@@ -57,7 +57,7 @@ class CSRFMiddleware(BaseHTTPMiddleware):
         if not secret or len(secret) < 32:
             raise ValueError(
                 "CSRFMiddleware requires a `secret` of at least 32 characters. "
-                "Pass CSRF_SECRET from your FullAuthConfig (or SECRET_KEY as a fallback)."
+                "Pass your FullAuthConfig SECRET_KEY (or a dedicated key)."
             )
 
         self.secret = secret

@@ -80,14 +80,14 @@ Uses the **double-submit cookie** pattern:
 ```python
 app.add_middleware(
     CSRFMiddleware,
-    secret=config.CSRF_SECRET or config.SECRET_KEY,
-    cookie_secure=config.COOKIE_SECURE,
-    cookie_samesite=config.COOKIE_SAMESITE,
-    cookie_domain=config.COOKIE_DOMAIN,
+    secret=config.SECRET_KEY,
+    cookie_secure=True,
+    cookie_samesite="lax",
+    cookie_domain=None,
 )
 ```
 
-The `secret` must be at least 32 characters. You can use `CSRF_SECRET` for a separate key, or fall back to `SECRET_KEY`.
+The `secret` must be at least 32 characters. Pass `config.SECRET_KEY`, or your own dedicated key if you want to rotate it independently. Match the cookie attributes to whatever you pass your `CookieBackend`.
 
 ### Frontend integration
 

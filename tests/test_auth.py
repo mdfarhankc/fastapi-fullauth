@@ -7,7 +7,7 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlmodel import SQLModel
 
-from fastapi_fullauth import FullAuth, FullAuthConfig
+from fastapi_fullauth import AuthRateLimits, FullAuth, FullAuthConfig
 from fastapi_fullauth.dependencies import current_user
 from tests.conftest import make_test_adapter
 
@@ -802,7 +802,7 @@ async def test_login_rate_limited():
         config=FullAuthConfig(
             SECRET_KEY="test-secret-key-that-is-long-enough-32b",
             AUTH_RATE_LIMIT_ENABLED=True,
-            AUTH_RATE_LIMIT_LOGIN=2,
+            AUTH_RATE_LIMITS=AuthRateLimits(login=2),
             AUTH_RATE_LIMIT_WINDOW_SECONDS=60,
         ),
         adapter=adapter,
@@ -846,7 +846,7 @@ async def test_register_rate_limited():
         config=FullAuthConfig(
             SECRET_KEY="test-secret-key-that-is-long-enough-32b",
             AUTH_RATE_LIMIT_ENABLED=True,
-            AUTH_RATE_LIMIT_REGISTER=1,
+            AUTH_RATE_LIMITS=AuthRateLimits(register=1),
             AUTH_RATE_LIMIT_WINDOW_SECONDS=60,
         ),
         adapter=adapter,
@@ -877,7 +877,7 @@ async def test_refresh_rate_limited():
         config=FullAuthConfig(
             SECRET_KEY="test-secret-key-that-is-long-enough-32b",
             AUTH_RATE_LIMIT_ENABLED=True,
-            AUTH_RATE_LIMIT_REFRESH=1,
+            AUTH_RATE_LIMITS=AuthRateLimits(refresh=1),
             AUTH_RATE_LIMIT_WINDOW_SECONDS=60,
         ),
         adapter=adapter,

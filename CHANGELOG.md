@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.13.0
+
+### Added
+
+- **`fullauth secret` CLI.** A console command that prints a random `SECRET_KEY` for `FULLAUTH_SECRET_KEY`, so first-run setup no longer needs the `python -c 'import secrets; ...'` one-liner.
+- **List settings accept a comma-separated string from the environment.** `ORIGINS`, `TRUSTED_PROXY_HEADERS`, `PASSKEY_ORIGINS`, and `ROUTER_TAGS` now take `FULLAUTH_ORIGINS=https://a.com,https://b.com` in addition to the JSON-array form. JSON still works for values that need it.
+- **Startup warnings for silent misconfiguration.** Enabling passkeys (or passing OAuth providers) with an adapter that doesn't implement the matching mixin now warns instead of silently dropping those routes, and wiring a `CookieBackend` without `CSRFMiddleware` warns about the CSRF exposure.
+- **Effective-config log line at init.** `FullAuth` logs the resolved backend per subsystem plus passkey/OAuth status at `INFO`, so the inference from `REDIS_URL` and `PASSKEY_RP_ID` is auditable at a glance.
+
+### Changed
+
+- **Cookie settings moved to the `CookieBackend` constructor (breaking).** `COOKIE_NAME`, `COOKIE_SECURE`, `COOKIE_HTTPONLY`, `COOKIE_SAMESITE`, and `COOKIE_DOMAIN` are gone from `FullAuthConfig`. Pass them when you build the (opt-in) cookie backend: `CookieBackend(config, secure=..., samesite=..., domain=...)`. Bearer-token users, the default, no longer carry five cookie settings they never use.
+- **Per-route rate limits collapsed into `AUTH_RATE_LIMITS` (breaking).** The five `AUTH_RATE_LIMIT_LOGIN` / `_REGISTER` / `_PASSWORD_RESET` / `_PASSKEY_AUTH` / `_REFRESH` fields are replaced by one typed `AuthRateLimits` object with `login` / `register` / `password_reset` / `passkey_auth` / `refresh` attributes (importable from `fastapi_fullauth`). Set only the routes you want to change; the rest keep their defaults. Override in Python with `AUTH_RATE_LIMITS=AuthRateLimits(login=10)` or from the environment with `FULLAUTH_AUTH_RATE_LIMITS='{"login": 10}'`. `AUTH_RATE_LIMIT_ENABLED` and `AUTH_RATE_LIMIT_WINDOW_SECONDS` are unchanged.
+- **`PASSKEY_ENABLED` is inferred from `PASSKEY_RP_ID`.** Setting `PASSKEY_RP_ID` now turns passkeys on without also setting `PASSKEY_ENABLED=True`. Set `PASSKEY_ENABLED=False` explicitly to configure passkeys while keeping the routes off.
+- **Removed `CSRF_SECRET` from config (breaking).** The library never read it; only the opt-in `CSRFMiddleware` needs a secret, and it already takes one. Wire it directly: `app.add_middleware(CSRFMiddleware, secret=config.SECRET_KEY)` (or pass your own key).
+- **`REDIS_URL` now switches the backends on by itself.** When `BACKEND` is left unset and `REDIS_URL` is configured, the effective backend becomes `redis` for the blacklist, lockout, rate limiter, and passkey challenge store. Previously a `REDIS_URL` without `BACKEND=redis` was silently ignored and every subsystem stayed in-memory, which on a multi-worker deploy meant logout did not revoke across workers and lockout/rate-limit counters were per-process. An explicit `BACKEND` still wins: set `BACKEND=memory` to keep everything in-memory despite a configured `REDIS_URL`, and individual `*_BACKEND` settings continue to override per feature.
+
 ## 0.12.0
 
 ### Added
