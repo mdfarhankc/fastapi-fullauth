@@ -16,6 +16,8 @@ fullauth = FullAuth(
     backends=None,                  # [BearerBackend()] by default
     password_validator=None,        # PasswordValidator instance
     on_create_token_claims=None,    # async callback for custom JWT claims
+    login_response_schema=None,     # custom LoginResponse subclass
+    message_response_schema=None,   # custom MessageResponse subclass
 )
 ```
 
@@ -25,6 +27,8 @@ fullauth = FullAuth(
 |--------|-------------|
 | `init_app(app, *, include_routers=None)` | Bind FullAuth to a FastAPI app and mount routes. `include_routers=None` (default) registers every available router; pass a list (e.g. `["auth", "profile"]`) to register only those. Does **not** wire middleware. |
 | `bind(app)` | Bind FullAuth to a FastAPI app (sets `app.state.fullauth`). Required when using composable routers without `init_app()`. |
+| `enforce_rate_limit(request, route_name)` | Resolve the client IP and apply the auth rate limit for `route_name`. |
+| `aclose()` | Release pooled resources (Redis connections, OAuth HTTP clients). Registered on app shutdown by `init_app()`; call it yourself under a custom `lifespan`. Idempotent. |
 | `hooks.on(event, callback)` | Register an event hook |
 
 ### Properties

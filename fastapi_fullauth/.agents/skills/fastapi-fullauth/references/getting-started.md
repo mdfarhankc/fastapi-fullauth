@@ -114,17 +114,18 @@ fullauth.init_app(app, include_routers=["auth", "profile", "verify"])
 ## 6. Protecting your own routes
 
 ```python
+from fastapi import Depends
 from fastapi_fullauth.dependencies import current_user, require_role, require_permission
 
 @app.get("/things")
-async def list_things(user=current_user):
+async def list_things(user=Depends(current_user)):
     return [...]
 
-@app.delete("/things/{id}", dependencies=[require_role("admin")])
+@app.delete("/things/{id}", dependencies=[Depends(require_role("admin"))])
 async def delete_thing(id: int):
     ...
 
-@app.post("/posts", dependencies=[require_permission("posts:create")])
+@app.post("/posts", dependencies=[Depends(require_permission("posts:create"))])
 async def create_post():
     ...
 ```

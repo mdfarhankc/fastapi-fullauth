@@ -36,7 +36,7 @@ Add a complete authentication and authorization system to your **FastAPI** proje
 - **OAuth2 social login** = Google and GitHub, with multi-redirect-URI support
 - **Role-based access control** = `current_user`, `require_role()`, `require_permission()`
 - **Rate limiting** = per-route auth limits + global middleware (memory or Redis)
-- **CSRF protection** and **security headers** middleware, auto-wired
+- **CSRF protection** and **security headers** middleware
 - **Pluggable adapters** = SQLModel or SQLAlchemy
 - **Generic type parameters** = define your own schemas with full IDE support and type safety
 - **Composable routers** = include only the route groups you need
@@ -304,7 +304,7 @@ fullauth.hooks.on("after_register", welcome)
 fullauth.hooks.on("send_verification_email", send_verify)
 ```
 
-Events: `after_register`, `after_login`, `after_logout`, `after_password_change`, `after_password_reset`, `after_email_verify`, `send_verification_email`, `send_password_reset_email`, `after_oauth_login`
+Events: `after_register`, `after_login`, `after_logout`, `after_password_change`, `after_password_reset`, `after_email_verify`, `send_verification_email`, `send_password_reset_email`, `after_oauth_login`, `after_oauth_register`
 
 ## Configuration
 

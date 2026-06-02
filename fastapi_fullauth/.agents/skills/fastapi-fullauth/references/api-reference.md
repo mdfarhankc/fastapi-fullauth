@@ -111,13 +111,13 @@ Pass `backends=[...]` to `FullAuth(...)`.
 ## OAuth
 
 ```python
-from fastapi_fullauth.oauth import GithubProvider, GoogleProvider
+from fastapi_fullauth.oauth import GitHubOAuthProvider, GoogleOAuthProvider
 from fastapi_fullauth.oauth.base import OAuthProvider
 
 fullauth = FullAuth(
     config=...,
     adapter=...,
-    providers=[GithubProvider(client_id=..., client_secret=..., redirect_uris=[...])],
+    providers=[GitHubOAuthProvider(client_id=..., client_secret=..., redirect_uris=[...])],
 )
 ```
 
@@ -130,7 +130,7 @@ from fastapi_fullauth.flows.login import login
 from fastapi_fullauth.flows.register import register
 from fastapi_fullauth.flows.logout import logout
 from fastapi_fullauth.flows.change_password import change_password
-from fastapi_fullauth.flows.update_profile import update_profile
+from fastapi_fullauth.flows.profile import validate_profile_updates
 from fastapi_fullauth.flows.email_verify import (
     create_email_verification_token,
     verify_email,
@@ -211,11 +211,11 @@ Every hook is an async callable registered on `fullauth.hooks`:
 | `after_logout`            | `(user_id: UserID) -> None`                     |
 | `after_oauth_login`       | `(user, provider: str, is_new_user: bool) -> None` |
 | `after_oauth_register`    | `(user, user_info: OAuthUserInfo) -> None`      |
-| `send_email_verification` | `(user: UserSchema, token: str) -> None`        |
-| `send_password_reset`     | `(user: UserSchema, token: str) -> None`        |
+| `send_verification_email` | `(email: str, token: str) -> None`              |
+| `send_password_reset_email` | `(email: str, token: str) -> None`            |
 
 ```python
-fullauth.hooks.on("send_email_verification", send_verification_email_async)
+fullauth.hooks.on("send_verification_email", send_verification_email_async)
 ```
 
 ## Utilities
@@ -328,6 +328,7 @@ Grouped for readability. All read from env with `FULLAUTH_` prefix.
 ### OAuth
 - `OAUTH_STATE_EXPIRE_SECONDS: int = 300`
 - `OAUTH_AUTO_LINK_BY_EMAIL: bool = True`
+- `OAUTH_PKCE_ENABLED: bool = True`
 
 ### Registration hardening
 - `PREVENT_REGISTRATION_ENUMERATION: bool = False`

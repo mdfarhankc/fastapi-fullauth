@@ -29,8 +29,8 @@ You can register multiple handlers per event. They run in insertion order, seque
 | `after_logout`          | `(user_id)`                                          | `/logout` succeeds |
 | `after_oauth_login`     | `(user, provider, is_new_user)`                      | OAuth callback completes; `is_new_user` distinguishes sign-in vs first-signup |
 | `after_oauth_register`  | `(user, user_info)`                                  | OAuth first-signup only = `user_info` is the full `OAuthUserInfo` including `name`, `picture`, `raw` payload |
-| `send_email_verification` | `(user, token)`                                    | Verification token issued = **you must implement this** to actually send the email |
-| `send_password_reset`   | `(user, token)`                                      | Password-reset token issued = same, implement to send |
+| `send_verification_email` | `(email, token)`                                 | Verification token issued = **you must implement this** to actually send the email |
+| `send_password_reset_email` | `(email, token)`                                | Password-reset token issued = same, implement to send |
 
 The two `send_*` events are expected hook points, not optional extras. The library doesn't ship an email sender = hook one up or password reset / email verify are no-ops on the user side.
 
@@ -52,7 +52,7 @@ class AfterOAuthRegisterHook(Protocol):
     async def __call__(self, user: UserSchema, user_info: OAuthUserInfo) -> None: ...
 
 class EmailHook(Protocol):
-    async def __call__(self, user: UserSchema, token: str) -> None: ...
+    async def __call__(self, email: str, token: str) -> None: ...
 ```
 
 Your callable matches the Protocol structurally = no base class to inherit.
@@ -70,24 +70,24 @@ Implications:
 ## Typical wire-up for email
 
 ```python
-async def send_verification_email(user, token):
+async def send_verification_email(email, token):
     url = f"https://app.example.com/verify?token={token}"
     await ses_client.send(
-        to=user.email,
+        to=email,
         subject="Verify your email",
         body=f"Click to verify: {url}",
     )
 
-async def send_password_reset_email(user, token):
+async def send_password_reset_email(email, token):
     url = f"https://app.example.com/reset?token={token}"
     await ses_client.send(
-        to=user.email,
+        to=email,
         subject="Reset your password",
         body=f"Click to reset: {url}",
     )
 
-fullauth.hooks.on("send_email_verification", send_verification_email)
-fullauth.hooks.on("send_password_reset", send_password_reset_email)
+fullauth.hooks.on("send_verification_email", send_verification_email)
+fullauth.hooks.on("send_password_reset_email", send_password_reset_email)
 ```
 
 Without these hooks, the `/verify/request` and `/password-reset/request` endpoints still succeed (returning 204 to avoid user enumeration), they just never produce an email the user receives.

@@ -7,7 +7,7 @@
 - **`adapter.transaction()`** on the SQLAlchemy and SQLModel adapters. Runs several adapter calls in one transaction that commits together when the block exits or rolls back entirely on error. Conflict-prone inserts (`create_user`, `create_oauth_account`) use SAVEPOINTs so a unique-constraint hit rolls back only that statement and leaves the surrounding transaction usable. Works as-is on PostgreSQL and MySQL; on SQLite, configure the engine with SQLAlchemy's BEGIN-emulation recipe for correct SAVEPOINT/rollback behavior.
 - **Injectable response schemas.** `FullAuth(..., login_response_schema=..., message_response_schema=...)` accept custom `LoginResponse`/`MessageResponse` subclasses (add optional fields to extend the token or message bodies). `LoginResponse`, `MessageResponse`, and `TokenPair` are now exported from the top-level package.
 - **`FullAuth.enforce_rate_limit(request, route_name)`** resolves the client IP and applies the auth rate limit in one call.
-- **PKCE for OAuth (RFC 7636).** The authorization-code flow now sends an S256 `code_challenge` on authorize and the matching `code_verifier` on token exchange for providers that support it (Google and GitHub). The verifier is derived from the signed state token's nonce, so the flow stays stateless and the verifier never travels through the browser. Enabled by default via `OAUTH_PKCE_ENABLED`; custom providers opt in with `supports_pkce = True`.
+- **PKCE for OAuth.** The authorization-code flow sends an S256 `code_challenge` on authorize and the matching `code_verifier` on token exchange for providers that support it (Google and GitHub). The verifier is derived from the signed state token's nonce keyed by `SECRET_KEY`, so the flow stays stateless and the verifier never travels through the browser. This is defense-in-depth for a confidential client that already sends a `client_secret`; it is not a substitute for binding the OAuth `state` to the browser session. Enabled by default via `OAUTH_PKCE_ENABLED`; custom providers opt in with `supports_pkce = True`.
 - **Resource cleanup via `FullAuth.aclose()`.** Closes pooled resources: Redis connections (blacklist, lockout, rate limiter, challenge store) and OAuth HTTP clients. `init_app()` registers it on app shutdown automatically; call it yourself if you pass a custom `lifespan` to FastAPI. OAuth providers now reuse a single pooled `httpx.AsyncClient` across requests instead of opening one per call.
 
 ### Changed
@@ -16,6 +16,11 @@
 - Internal: the SQLAlchemy and SQLModel adapters now share a single implementation (`_BaseSQLAlchemyAdapter`). Public adapter classes, signatures, and type hints are unchanged.
 - Internal: login, OAuth, passkey, and refresh-token rotation now share an `issue_token_pair` helper, and the per-route rate-limit plus client-IP boilerplate is centralized on `FullAuth.enforce_rate_limit`.
 - Internal: the permission mixin's cross-mixin dependency on `get_user_roles` is now expressed with a `Protocol` instead of a `type: ignore`, and the shared adapter's session factory is precisely typed.
+
+### Fixed
+
+- **bcrypt hashes with `$2a$` and `$2y$` prefixes now verify.** Password verification previously recognized only the `$2b$` prefix, so bcrypt hashes imported from other implementations or older versions were rejected and the user could not log in. All three prefixes are now accepted.
+- **`decode_token` now requires the `exp`, `iat`, and `sub` claims.** A validly signed token missing one of these raises `TokenError` instead of surfacing an unhandled error.
 
 ## 0.11.0
 

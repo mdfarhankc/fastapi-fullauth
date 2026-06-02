@@ -146,7 +146,29 @@ Events worth alerting on:
 
 `init_app()` warns and no-ops on second call. If you see that warning in your logs, you're wiring twice = check your startup path. As of v0.10.0, middleware is **not** wired by `init_app()` = add it yourself via `app.add_middleware(...)` from `fastapi_fullauth.middleware`.
 
-## 12. Final check before deploy
+## 12. Resource cleanup on shutdown
+
+`FullAuth.aclose()` closes pooled resources: Redis connections (blacklist, lockout, rate limiter, challenge store) and the OAuth HTTP client. `init_app()` registers it on the app's shutdown event automatically.
+
+If you pass your own `lifespan` to FastAPI, Starlette does not run those shutdown handlers, so call it yourself:
+
+```python
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def lifespan(app):
+    fullauth.init_app(app)
+    yield
+    await fullauth.aclose()
+```
+
+## 13. OAuth state and PKCE
+
+PKCE (S256) is on by default for Google and GitHub via `OAUTH_PKCE_ENABLED`. The `code_verifier` is derived from the signed state token's nonce keyed by `SECRET_KEY`, so it never travels through the browser. Treat it as defense-in-depth for a confidential client that already sends a `client_secret`, not as a replacement for binding the OAuth state to the browser session.
+
+The OAuth `state` token is signed but not bound to the browser session, so on its own it does not prevent login-CSRF / account fixation. Put the OAuth routes behind your own CSRF protection if that matters. State is replayable within `OAUTH_STATE_EXPIRE_SECONDS` (the authorization code itself is single-use at the provider).
+
+## 14. Final check before deploy
 
 - [ ] `FULLAUTH_SECRET_KEY` set, long, not in version control
 - [ ] All four `*_BACKEND` settings set to `redis` (or whichever custom backend you registered)

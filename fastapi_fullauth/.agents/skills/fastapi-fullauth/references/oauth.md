@@ -1,10 +1,10 @@
 # OAuth2 social login
 
-The library ships two providers (GitHub, Google) and a base class for the rest. The flow is standard authorization-code with a signed state token = no extra configuration for PKCE or nonces.
+The library ships two providers (GitHub, Google) and a base class for the rest. The flow is standard authorization-code with a signed state token.
 
 ## Feature matrix
 
-- **Built-in providers:** `GithubProvider`, `GoogleProvider`
+- **Built-in providers:** `GitHubOAuthProvider`, `GoogleOAuthProvider`
 - **Adapter mixin:** `OAuthAdapterMixin`
 - **Router:** `oauth`
 - **Extra:** `fastapi-fullauth[oauth]` (pulls in `httpx`)
@@ -16,20 +16,20 @@ The library ships two providers (GitHub, Google) and a base class for the rest. 
 from fastapi_fullauth import FullAuth, FullAuthConfig
 from fastapi_fullauth.adapters.sqlmodel import SQLModelAdapter
 from fastapi_fullauth.models.sqlmodel import OAuthAccountMixin
-from fastapi_fullauth.oauth import GithubProvider, GoogleProvider
+from fastapi_fullauth.oauth import GitHubOAuthProvider, GoogleOAuthProvider
 
 
 class OAuthAccount(OAuthAccountMixin, table=True):
     pass
 
 
-github = GithubProvider(
+github = GitHubOAuthProvider(
     client_id=os.environ["GITHUB_CLIENT_ID"],
     client_secret=os.environ["GITHUB_CLIENT_SECRET"],
     redirect_uris=["https://app.example.com/auth/oauth/github/callback"],
 )
 
-google = GoogleProvider(
+google = GoogleOAuthProvider(
     client_id=os.environ["GOOGLE_CLIENT_ID"],
     client_secret=os.environ["GOOGLE_CLIENT_SECRET"],
     redirect_uris=["https://app.example.com/auth/oauth/google/callback"],
@@ -68,6 +68,10 @@ The SPA flow:
 ## State and redirect_uri
 
 State is a JWT carrying `{"purpose": "oauth_state", "nonce": ..., "redirect_uri": ...}`, signed with `SECRET_KEY`. TTL defaults to 300 s (`OAUTH_STATE_EXPIRE_SECONDS`). The `/callback` route validates the state's purpose and expiry; mismatches return 401.
+
+## PKCE
+
+PKCE (S256) is enabled by default for providers that support it (Google, GitHub) via the `OAUTH_PKCE_ENABLED` setting. The flow stays stateless: the `code_verifier` is derived from the signed state token's nonce keyed by `SECRET_KEY`, so it never travels through the browser. Treat this as defense-in-depth for a confidential client that already sends a `client_secret`, not as a replacement for binding the OAuth state to the browser session. A custom provider opts in by setting `supports_pkce = True` and accepting the `code_challenge` (on `get_authorization_url`) and `code_verifier` (on `exchange_code`) keyword arguments; providers that leave `supports_pkce = False` keep the two-argument method signatures.
 
 ## Auto-link-by-email and the email_verified gate
 

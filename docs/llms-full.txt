@@ -47,7 +47,7 @@ Add a complete authentication and authorization system to your **FastAPI** proje
 - **OAuth2 social login** = Google and GitHub, with multi-redirect-URI support
 - **Role-based access control** = `current_user`, `require_role()`, `require_permission()`
 - **Rate limiting** = per-route auth limits + global middleware (memory or Redis)
-- **CSRF protection** and **security headers** middleware, auto-wired
+- **CSRF protection** and **security headers** middleware
 - **Pluggable adapters** = SQLModel or SQLAlchemy
 - **Generic type parameters** = define your own schemas with full IDE support and type safety
 - **Composable routers** = include only the route groups you need

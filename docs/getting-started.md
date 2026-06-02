@@ -98,11 +98,14 @@ async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         await conn.run_sync(SQLModel.metadata.create_all)
     yield
+    await fullauth.aclose()
     await engine.dispose()
 
 app = FastAPI(lifespan=lifespan)
 fullauth.init_app(app)
 ```
+
+`init_app()`'s shutdown handler does not run under a custom `lifespan`, so call `await fullauth.aclose()` yourself to release pooled Redis connections and OAuth HTTP clients.
 
 That's it. Start the server and you have a full auth system:
 

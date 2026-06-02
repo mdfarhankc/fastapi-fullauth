@@ -102,14 +102,14 @@ async def sent_emails():
 def fullauth(adapter, sent_emails):
     fa = FullAuth(config=..., adapter=adapter)
 
-    async def capture(user, token):
-        sent_emails.append({"type": "verify", "to": user.email, "token": token})
+    async def capture(email, token):
+        sent_emails.append({"type": "verify", "to": email, "token": token})
 
-    fa.hooks.on("send_email_verification", capture)
+    fa.hooks.on("send_verification_email", capture)
     fa.hooks.on(
-        "send_password_reset",
-        lambda user, token: sent_emails.append(
-            {"type": "reset", "to": user.email, "token": token}
+        "send_password_reset_email",
+        lambda email, token: sent_emails.append(
+            {"type": "reset", "to": email, "token": token}
         ),
     )
     return fa

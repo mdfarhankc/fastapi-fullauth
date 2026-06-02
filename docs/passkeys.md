@@ -7,10 +7,10 @@ Passkeys are phishing-resistant because the browser validates the origin before 
 ## Prerequisites
 
 ```bash
-pip install fastapi-fullauth[sqlmodel]  # or [sqlalchemy]
+pip install fastapi-fullauth[sqlmodel,passkey]  # or [sqlalchemy,passkey]
 ```
 
-The `webauthn` package is included as a dependency. You also need:
+The `webauthn` package ships in the `passkey` extra, not the core install, so include it above. You also need:
 
 - A `PasskeyMixin` model for storing credentials
 - `PasskeyAdapterMixin` on your adapter
@@ -42,7 +42,7 @@ The `webauthn` package is included as a dependency. You also need:
 
 ```python
 adapter = SQLModelAdapter(
-    session_factory=session_factory,
+    session_maker=session_maker,
     user_model=User,
     refresh_token_model=RefreshToken,
     passkey_model=Passkey,           # enables passkey support

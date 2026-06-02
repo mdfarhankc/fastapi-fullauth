@@ -65,3 +65,21 @@ async def test_invalid_token(engine):
 
     with pytest.raises(TokenError):
         await engine.decode_token("garbage.token.here")
+
+
+@pytest.mark.asyncio
+async def test_missing_required_claim_rejected(engine):
+    from datetime import datetime, timedelta, timezone
+
+    import jwt
+
+    from fastapi_fullauth.exceptions import TokenError
+
+    now = datetime.now(timezone.utc)
+    token = jwt.encode(
+        {"exp": now + timedelta(minutes=5), "iat": now},  # no sub
+        engine.config.SECRET_KEY,
+        algorithm=engine.config.ALGORITHM,
+    )
+    with pytest.raises(TokenError):
+        await engine.decode_token(token)

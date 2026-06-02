@@ -77,6 +77,7 @@ class TokenEngine:
                 self.config.SECRET_KEY,
                 algorithms=[self.config.ALGORITHM],
                 leeway=self.config.JWT_LEEWAY_SECONDS,
+                options={"require": ["exp", "iat", "sub"]},
             )
         except jwt.ExpiredSignatureError:
             logger.debug("Token decode failed = expired")

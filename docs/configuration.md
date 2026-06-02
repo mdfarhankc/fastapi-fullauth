@@ -141,6 +141,7 @@ middleware (`RateLimitMiddleware`) is opt-in = import it from
 | `AUTH_RATE_LIMIT_REGISTER` | `int` | `3` | Max registrations per window. |
 | `AUTH_RATE_LIMIT_PASSWORD_RESET` | `int` | `3` | Max password reset requests per window. |
 | `AUTH_RATE_LIMIT_PASSKEY_AUTH` | `int` | `10` | Max passkey authenticate/begin requests per window. |
+| `AUTH_RATE_LIMIT_REFRESH` | `int` | `30` | Max token refresh requests per window. |
 | `AUTH_RATE_LIMIT_WINDOW_SECONDS` | `int` | `60` | Rate limit window in seconds. |
 
 ### Redis
@@ -182,6 +183,7 @@ middleware (`RateLimitMiddleware`) is opt-in = import it from
 |--------|------|---------|-------------|
 | `OAUTH_STATE_EXPIRE_SECONDS` | `int` | `300` | OAuth state token TTL (5 min). |
 | `OAUTH_AUTO_LINK_BY_EMAIL` | `bool` | `True` | Auto-link OAuth accounts to existing users by email. |
+| `OAUTH_PKCE_ENABLED` | `bool` | `True` | Send PKCE (S256) on providers that support it (Google, GitHub). |
 | `PREVENT_REGISTRATION_ENUMERATION` | `bool` | `False` | When `True`, `/register` always returns `202` + a generic message whether or not the email is already registered = an attacker can't use registration responses to probe the user table. Opt-in because the default `201` + user / `409` conflict behavior is simpler for client apps. |
 
 ### Routing
