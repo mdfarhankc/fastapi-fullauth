@@ -1,11 +1,11 @@
-# RBAC = roles and permissions
+# RBAC: roles and permissions
 
-Role-based access control is optional. If you're building something that doesn't need admins and regular users distinguished = a personal finance app, a single-tenant API = you can skip this whole feature set and the library won't force any of it on you.
+Role-based access control is optional. If you're building something that doesn't need admins and regular users distinguished (a personal finance app, a single-tenant API), you can skip this whole feature set and the library won't force any of it on you.
 
 ## Two mixins, layered
 
-- **`RoleAdapterMixin`** = users have roles (`list[str]`). That's enough for "is this user an admin?"
-- **`PermissionAdapterMixin`** = roles have permissions (`list[str]`). Finer-grained: "can this user edit posts?"
+- **`RoleAdapterMixin`**: users have roles (`list[str]`). That's enough for "is this user an admin?"
+- **`PermissionAdapterMixin`**: roles have permissions (`list[str]`). Finer-grained: "can this user edit posts?"
 
 Permissions are resolved *through* roles, so if you use `PermissionAdapterMixin` you also need `RoleAdapterMixin`. The built-in adapters inherit both.
 
@@ -77,19 +77,19 @@ Both must pass. Superuser short-circuits both.
 
 When `RoleAdapterMixin` is present, `init_app` includes the `admin` router:
 
-- `GET    /api/v1/auth/admin/users` = list all users (paginated)
-- `GET    /api/v1/auth/admin/users/{id}` = get one
-- `PATCH  /api/v1/auth/admin/users/{id}` = update (activate/deactivate, verify, set superuser, update fields)
-- `DELETE /api/v1/auth/admin/users/{id}` = delete
-- `POST   /api/v1/auth/admin/users/{id}/roles` = assign role
-- `DELETE /api/v1/auth/admin/users/{id}/roles/{role}` = remove role
+- `GET    /api/v1/auth/admin/users`: list all users (paginated)
+- `GET    /api/v1/auth/admin/users/{id}`: get one
+- `PATCH  /api/v1/auth/admin/users/{id}`: update (activate/deactivate, verify, set superuser, update fields)
+- `DELETE /api/v1/auth/admin/users/{id}`: delete
+- `POST   /api/v1/auth/admin/users/{id}/roles`: assign role
+- `DELETE /api/v1/auth/admin/users/{id}/roles/{role}`: remove role
 
 When `PermissionAdapterMixin` is also present, role<->permission management routes are added:
 
-- `POST   /api/v1/auth/admin/roles/{role}/permissions` = assign permission
-- `DELETE /api/v1/auth/admin/roles/{role}/permissions/{permission}` = remove
+- `POST   /api/v1/auth/admin/roles/{role}/permissions`: assign permission
+- `DELETE /api/v1/auth/admin/roles/{role}/permissions/{permission}`: remove
 
-Every admin route requires `require_role("admin")` or `is_superuser=True`. You can't bypass by role-assigning yourself = writes to role tables go through the mixin methods that also enforce the dependency.
+Every admin route requires `require_role("admin")` or `is_superuser=True`. You can't bypass by role-assigning yourself; writes to role tables go through the mixin methods that also enforce the dependency.
 
 ## Creating the first admin
 
@@ -119,11 +119,11 @@ class MyAdapter(AbstractUserAdapter[MyUser, MyCreateUser], RoleAdapterMixin, Per
     async def assign_permission_to_role(self, role_name, permission): ...
     async def remove_permission_from_role(self, role_name, permission): ...
 
-    # Optional but recommended = single query instead of N+1 via the default
+    # Optional but recommended: single query instead of N+1 via the default
     async def get_permissions_for_roles(self, role_names):
         ...
 
-    # Composable through the above two = default implementation is usually fine
+    # Composable through the above two; default implementation is usually fine
     # async def get_user_permissions(self, user_id): ...
 ```
 
@@ -131,11 +131,11 @@ class MyAdapter(AbstractUserAdapter[MyUser, MyCreateUser], RoleAdapterMixin, Per
 
 `roles` land in the JWT access token as the `roles` claim, populated from `adapter.get_user_roles(user.id)` at login and refresh time. `require_role` reads from the decoded token's `roles` list (via the `UserSchema` returned by `get_current_user`). That means role changes don't take effect until the user's access token is refreshed.
 
-Typical pattern: set a short access-token lifetime (15 min) and let token rotation propagate role changes organically. For instant revocation, blacklist the user's refresh token = next refresh fails, user is logged out.
+Typical pattern: set a short access-token lifetime (15 min) and let token rotation propagate role changes organically. For instant revocation, blacklist the user's refresh token; next refresh fails, user is logged out.
 
 ## Common misuses
 
-- **`roles` on the default `UserSchema`** = the project deliberately keeps it off. Don't add it upstream unless you actually intend RBAC everywhere.
-- **Putting permissions directly on users** = not supported. The model is user → roles → permissions. If you want per-user overrides, model them as "give each user a unique role."
-- **Hierarchical roles** = not in the library. `admin` doesn't inherit `user`'s permissions unless you explicitly assign them. If you want hierarchy, build a `get_permissions_for_roles` override that expands a role map.
-- **Scopes ≠ permissions** = OAuth scopes describe what an OAuth token can do at the provider. Permissions here describe what a user can do in your app. Different concepts; don't conflate them.
+- **`roles` on the default `UserSchema`**: the project deliberately keeps it off. Don't add it upstream unless you actually intend RBAC everywhere.
+- **Putting permissions directly on users**: not supported. The model is user → roles → permissions. If you want per-user overrides, model them as "give each user a unique role."
+- **Hierarchical roles**: not in the library. `admin` doesn't inherit `user`'s permissions unless you explicitly assign them. If you want hierarchy, build a `get_permissions_for_roles` override that expands a role map.
+- **Scopes ≠ permissions**: OAuth scopes describe what an OAuth token can do at the provider. Permissions here describe what a user can do in your app. Different concepts; don't conflate them.

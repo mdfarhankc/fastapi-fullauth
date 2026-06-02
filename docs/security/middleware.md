@@ -1,6 +1,6 @@
 # Middleware
 
-fastapi-fullauth ships three middleware classes. None of them are wired automatically = `init_app()` only mounts routers. Import what you want and call `app.add_middleware(...)` yourself.
+fastapi-fullauth ships three middleware classes. None of them are wired automatically; `init_app()` only mounts routers. Import what you want and call `app.add_middleware(...)` yourself.
 
 ## Middleware order
 

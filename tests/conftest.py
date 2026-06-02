@@ -1,6 +1,7 @@
 import pytest
 from fastapi import Depends, FastAPI
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import event
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlmodel import Field, Relationship, SQLModel
 
@@ -64,6 +65,18 @@ class User(UserMixin, table=True):
 @pytest.fixture
 async def db():
     engine = create_async_engine("sqlite+aiosqlite://", echo=False)
+
+    # pysqlite/aiosqlite emit BEGIN lazily, which breaks SAVEPOINT and rollback
+    # semantics. Apply SQLAlchemy's documented recipe: disable the driver's
+    # implicit BEGIN and emit it ourselves.
+    @event.listens_for(engine.sync_engine, "connect")
+    def _sqlite_disable_implicit_begin(dbapi_connection, connection_record):
+        dbapi_connection.isolation_level = None
+
+    @event.listens_for(engine.sync_engine, "begin")
+    def _sqlite_emit_begin(conn):
+        conn.exec_driver_sql("BEGIN")
+
     session_maker = async_sessionmaker(engine, expire_on_commit=False)
     async with engine.begin() as conn:
         await conn.run_sync(SQLModel.metadata.create_all)

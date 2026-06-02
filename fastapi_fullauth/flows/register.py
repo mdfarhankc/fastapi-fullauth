@@ -22,7 +22,7 @@ async def register(
 
     existing = await adapter.get_user_by_email(data.email)
     if existing is not None:
-        logger.warning("Registration rejected = email exists: %s", data.email)
+        logger.warning("Registration rejected; email exists: %s", data.email)
         raise UserAlreadyExistsError(f"User with email {data.email} already exists")
 
     if login_field != "email":

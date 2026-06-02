@@ -2,7 +2,7 @@ import logging
 import warnings
 from typing import Any, Generic
 
-from fastapi import APIRouter, FastAPI
+from fastapi import APIRouter, FastAPI, Request
 
 from fastapi_fullauth.adapters.base import (
     AbstractUserAdapter,
@@ -17,6 +17,7 @@ from fastapi_fullauth.hooks import EventHooks
 from fastapi_fullauth.oauth.base import OAuthProvider
 from fastapi_fullauth.protection.lockout import create_lockout
 from fastapi_fullauth.protection.ratelimit import AuthRateLimiter
+from fastapi_fullauth.routers._schemas import LoginResponse, MessageResponse
 from fastapi_fullauth.types import (
     CreateUserSchemaType,
     RouterName,
@@ -24,6 +25,7 @@ from fastapi_fullauth.types import (
     UserSchema,
     UserSchemaType,
 )
+from fastapi_fullauth.utils import get_client_ip
 from fastapi_fullauth.validators import PasswordValidator
 
 logger = logging.getLogger("fastapi_fullauth")
@@ -39,6 +41,10 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
         backends: Token transport strategies. Defaults to [BearerBackend()].
         password_validator: Custom PasswordValidator. Defaults to min-length from config.
         on_create_token_claims: async `(user) -> dict` returning extra claims for JWTs.
+        login_response_schema: Custom `LoginResponse` subclass for the login/OAuth/passkey
+            token responses. Add optional fields to extend the body.
+        message_response_schema: Custom `MessageResponse` subclass for endpoints that return
+            a `{detail: ...}` body.
     """
 
     def __init__(
@@ -50,6 +56,8 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
         backends: list[AbstractBackend] | None = None,
         password_validator: PasswordValidator | None = None,
         on_create_token_claims: TokenClaimsBuilder | None = None,
+        login_response_schema: type[LoginResponse] | None = None,
+        message_response_schema: type[MessageResponse] | None = None,
     ) -> None:
         if config is None:
             config = FullAuthConfig()
@@ -73,6 +81,8 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
             min_length=config.PASSWORD_MIN_LENGTH
         )
         self.on_create_token_claims = on_create_token_claims
+        self.login_response_schema = login_response_schema or LoginResponse
+        self.message_response_schema = message_response_schema or MessageResponse
         self.hooks = EventHooks()
         self.oauth_providers: dict[str, OAuthProvider] = {p.name: p for p in (providers or [])}
 
@@ -106,7 +116,7 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
         if offenders:
             warnings.warn(
                 f"In-memory backends in use: {', '.join(offenders)}. "
-                "State is per-process = logout/revocation, lockouts, rate limits, and "
+                "State is per-process; logout/revocation, lockouts, rate limits, and "
                 "passkey flows will behave inconsistently under multi-worker deployments. "
                 "Set these to 'redis' (and configure REDIS_URL) in production.",
                 UserWarning,
@@ -133,6 +143,27 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
     async def check_auth_rate_limit(self, route_name: str, client_ip: str) -> None:
         await self.auth_rate_limiter.check(route_name, client_ip)
 
+    async def enforce_rate_limit(self, request: Request, route_name: str) -> None:
+        """Resolve the client IP and apply the auth rate limit for ``route_name``."""
+        client_ip = get_client_ip(request, self.config.TRUSTED_PROXY_HEADERS)
+        await self.check_auth_rate_limit(route_name, client_ip)
+
+    async def aclose(self) -> None:
+        """Close pooled resources: Redis connections and OAuth HTTP clients.
+
+        Idempotent. ``init_app()`` registers this on app shutdown. Call it
+        yourself if you pass a custom ``lifespan`` to FastAPI, since Starlette
+        ignores shutdown event handlers when a lifespan is provided.
+        """
+        await self.token_engine.blacklist.aclose()
+        if self.lockout is not None:
+            await self.lockout.aclose()
+        await self.auth_rate_limiter.aclose()
+        if self.challenge_store is not None:
+            await self.challenge_store.aclose()
+        for provider in self.oauth_providers.values():
+            await provider.aclose()
+
     # ── composable routers ──────────────────────────────────────────
 
     @property
@@ -144,6 +175,8 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
                 create_user_schema=self.adapter._create_user_schema,
                 user_schema=self.adapter._user_schema,
                 login_field=self.config.LOGIN_FIELD,
+                login_response_schema=self.login_response_schema,
+                message_response_schema=self.message_response_schema,
             )
         return self._auth_router
 
@@ -154,6 +187,7 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
 
             self._profile_router = create_profile_router(
                 user_schema=self.adapter._user_schema,
+                message_response_schema=self.message_response_schema,
             )
         return self._profile_router
 
@@ -162,7 +196,9 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
         if self._verify_router is None:
             from fastapi_fullauth.routers.verify import create_verify_router
 
-            self._verify_router = create_verify_router()
+            self._verify_router = create_verify_router(
+                message_response_schema=self.message_response_schema,
+            )
         return self._verify_router
 
     @property
@@ -179,7 +215,10 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
             return None
         from fastapi_fullauth.routers.oauth import create_oauth_router
 
-        return create_oauth_router(user_schema=self.adapter._user_schema)
+        return create_oauth_router(
+            user_schema=self.adapter._user_schema,
+            login_response_schema=self.login_response_schema,
+        )
 
     @property
     def passkey_router(self) -> APIRouter | None:
@@ -190,6 +229,7 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
 
             self._passkey_router = create_passkey_router(
                 user_schema=self.adapter._user_schema,
+                login_response_schema=self.login_response_schema,
             )
         return self._passkey_router
 
@@ -250,6 +290,9 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
         ``fastapi_fullauth.middleware`` and call ``app.add_middleware(...)``
         yourself.
 
+        Registers ``aclose()`` on app shutdown to release pooled resources. If
+        you use a custom ``lifespan``, call ``await fullauth.aclose()`` yourself.
+
         Args:
             app: The FastAPI application.
             include_routers: Allowlist of router names to register. ``None``
@@ -258,7 +301,7 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
         """
         if getattr(app.state, "_fullauth_app_wired", False):
             warnings.warn(
-                "init_app() called more than once on the same app = ignoring. "
+                "init_app() called more than once on the same app; ignoring. "
                 "Routers are already wired.",
                 UserWarning,
                 stacklevel=2,
@@ -267,6 +310,7 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
         app.state._fullauth_app_wired = True
 
         self.bind(app)
+        app.router.add_event_handler("shutdown", self.aclose)
 
         if include_routers is None:
             app.include_router(self.router)

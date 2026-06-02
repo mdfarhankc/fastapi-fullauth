@@ -54,6 +54,9 @@ class RateLimiter:
     def reset(self, key: str) -> None:
         self._hits.pop(key, None)
 
+    async def aclose(self) -> None:
+        """Release any held resources. No-op for the in-memory limiter."""
+
 
 class RedisRateLimiter:
     """Redis-backed sliding window rate limiter using sorted sets."""
@@ -124,6 +127,9 @@ class RedisRateLimiter:
 
     async def reset(self, key: str) -> None:
         await self._redis.delete(f"{self._prefix}{key}")
+
+    async def aclose(self) -> None:
+        await self._redis.aclose()
 
 
 _rate_limiter_registry: dict[str, type[RateLimiter] | type[RedisRateLimiter]] = {
@@ -200,6 +206,14 @@ class AuthRateLimiter:
         self._limiters["refresh"] = create_rate_limiter(
             config, config.AUTH_RATE_LIMIT_REFRESH, window
         )
+
+    async def aclose(self) -> None:
+        for limiter in self._limiters.values():
+            # Custom backends registered via register_rate_limiter_backend()
+            # aren't required to subclass the built-ins, so aclose is optional.
+            close = getattr(limiter, "aclose", None)
+            if close is not None:
+                await close()
 
     async def check(self, route_name: str, client_ip: str) -> None:
         limiter = self._limiters.get(route_name)

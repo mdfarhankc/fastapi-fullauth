@@ -83,7 +83,7 @@ You can use either SQLAlchemy's `AsyncSession` or SQLModel's `AsyncSession`:
     session_maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     ```
 
-Then create the adapter = pass every concrete class you defined:
+Then create the adapter; pass every concrete class you defined:
 
 ```python
 from fastapi_fullauth.adapters import SQLModelAdapter

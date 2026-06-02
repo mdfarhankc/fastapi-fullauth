@@ -15,8 +15,8 @@ The library ships adapters for SQLModel and SQLAlchemy. You can write your own f
 
 ## Choosing an adapter
 
-- **SQLModel** = recommended for most projects. Clean model definitions, good type support. Use SQLite for prototyping.
-- **SQLAlchemy** = use if your project already uses SQLAlchemy's declarative base.
+- **SQLModel**: recommended for most projects. Clean model definitions, good type support. Use SQLite for prototyping.
+- **SQLAlchemy**: use if your project already uses SQLAlchemy's declarative base.
 
 Both adapters support the same features. The difference is in model definition style.
 
@@ -50,7 +50,8 @@ The library provides SQLAlchemy declarative mixins for database tables. You subc
 |-------|-------------------|---------|
 | `UserMixin` | `fullauth_users` | User accounts |
 | `RefreshTokenMixin` | `fullauth_refresh_tokens` | Stored refresh tokens |
-| `RoleMixin` | `fullauth_roles` | User-role assignments |
+| `RoleMixin` | `fullauth_roles` | Role definitions |
+| `UserRoleMixin` | `fullauth_user_roles` | User-role assignments |
 | `OAuthAccountMixin` | `fullauth_oauth_accounts` | Linked OAuth providers |
 | `PasskeyMixin` | `fullauth_passkeys` | WebAuthn credentials |
 | `PermissionMixin` | `fullauth_permissions` | Permission definitions |
@@ -103,8 +104,9 @@ class MyCreateSchema(CreateUserSchema):
     display_name: str = ""
 
 adapter = SQLModelAdapter(
-    session_factory=session_factory,
+    session_maker=session_maker,
     user_model=User,
+    refresh_token_model=RefreshToken,
     user_schema=MyUserSchema,
     create_user_schema=MyCreateSchema,
 )

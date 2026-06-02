@@ -36,7 +36,7 @@ class FullAuthConfig(BaseSettings):
     LOGIN_FIELD: str = "email"
     # When True, login runs a dummy password verify on unknown-user / no-password
     # paths so responses take roughly the same time as a real wrong-password attempt.
-    # Defaults off = adds ~argon2 hashing time to every failed lookup.
+    # Defaults off; adds ~argon2 hashing time to every failed lookup.
     PREVENT_LOGIN_TIMING_ATTACKS: bool = False
 
     LOCKOUT_ENABLED: bool = True
@@ -70,6 +70,7 @@ class FullAuthConfig(BaseSettings):
 
     OAUTH_STATE_EXPIRE_SECONDS: int = 300
     OAUTH_AUTO_LINK_BY_EMAIL: bool = True
+    OAUTH_PKCE_ENABLED: bool = True
 
     PREVENT_REGISTRATION_ENUMERATION: bool = False
 

@@ -1,10 +1,12 @@
-__version__ = "0.11.0"
+__version__ = "0.12.0"
 
 from fastapi_fullauth.config import FullAuthConfig
 from fastapi_fullauth.fullauth import FullAuth
+from fastapi_fullauth.routers._schemas import LoginResponse, MessageResponse
 from fastapi_fullauth.types import (
     CreateUserSchema,
     CreateUserSchemaType,
+    TokenPair,
     UserSchema,
     UserSchemaType,
 )
@@ -16,7 +18,10 @@ __all__ = [
     "CreateUserSchemaType",
     "FullAuth",
     "FullAuthConfig",
+    "LoginResponse",
+    "MessageResponse",
     "PasswordValidator",
+    "TokenPair",
     "UserSchema",
     "UserSchemaType",
     "create_superuser",

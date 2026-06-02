@@ -3,7 +3,7 @@
 import pytest
 from fastapi import Depends, FastAPI
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import String
+from sqlalchemy import String, event
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -66,6 +66,18 @@ class User(UserMixin, Base):
 @pytest.fixture
 async def db():
     engine = create_async_engine("sqlite+aiosqlite://", echo=False)
+
+    # pysqlite/aiosqlite emit BEGIN lazily, which breaks SAVEPOINT and rollback
+    # semantics. Apply SQLAlchemy's documented recipe: disable the driver's
+    # implicit BEGIN and emit it ourselves.
+    @event.listens_for(engine.sync_engine, "connect")
+    def _sqlite_disable_implicit_begin(dbapi_connection, connection_record):
+        dbapi_connection.isolation_level = None
+
+    @event.listens_for(engine.sync_engine, "begin")
+    def _sqlite_emit_begin(conn):
+        conn.exec_driver_sql("BEGIN")
+
     session_maker = async_sessionmaker(engine, expire_on_commit=False)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
@@ -435,3 +447,101 @@ async def test_role_and_permission_flow(client, adapter):
     # assign permission → 200
     await adapter.assign_permission_to_role("editor", "posts:edit")
     assert (await client.get("/perm-check", headers=headers)).status_code == 200
+
+
+# ── Transaction tests ───────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_transaction_commits_all_steps(adapter):
+    async with adapter.transaction() as tx:
+        user = await tx.create_user(
+            CreateUserSchema(email="tx@test.com", password="pass123"),
+            hashed_password=hash_password("pass123"),
+        )
+        await tx.assign_role(user.id, "editor")
+
+    fetched = await adapter.get_user_by_email("tx@test.com")
+    assert fetched is not None
+    assert "editor" in fetched.roles
+
+
+@pytest.mark.asyncio
+async def test_transaction_rolls_back_on_error(adapter):
+    class BoomError(Exception):
+        pass
+
+    with pytest.raises(BoomError):
+        async with adapter.transaction() as tx:
+            user = await tx.create_user(
+                CreateUserSchema(email="rollback@test.com", password="pass123"),
+                hashed_password=hash_password("pass123"),
+            )
+            await tx.assign_role(user.id, "editor")
+            raise BoomError
+
+    assert await adapter.get_user_by_email("rollback@test.com") is None
+
+
+@pytest.mark.asyncio
+async def test_transaction_savepoint_isolates_duplicate(adapter):
+    """A unique-constraint violation inside a transaction rolls back only that
+    statement; the surrounding transaction stays usable and still commits."""
+    from fastapi_fullauth.exceptions import UserAlreadyExistsError
+
+    await adapter.create_user(
+        CreateUserSchema(email="exists@test.com", password="pass123"),
+        hashed_password=hash_password("pass123"),
+    )
+
+    async with adapter.transaction() as tx:
+        await tx.create_user(
+            CreateUserSchema(email="before@test.com", password="pass123"),
+            hashed_password=hash_password("pass123"),
+        )
+        with pytest.raises(UserAlreadyExistsError):
+            await tx.create_user(
+                CreateUserSchema(email="exists@test.com", password="pass123"),
+                hashed_password=hash_password("pass123"),
+            )
+        await tx.create_user(
+            CreateUserSchema(email="after@test.com", password="pass123"),
+            hashed_password=hash_password("pass123"),
+        )
+
+    assert await adapter.get_user_by_email("before@test.com") is not None
+    assert await adapter.get_user_by_email("after@test.com") is not None
+
+
+@pytest.mark.asyncio
+async def test_transaction_oauth_duplicate_returns_existing(adapter):
+    from fastapi_fullauth.types import OAuthAccount
+
+    user = await adapter.create_user(
+        CreateUserSchema(email="oauthtx@test.com", password="pass123"),
+        hashed_password=hash_password("pass123"),
+    )
+    account = OAuthAccount(
+        provider="github",
+        provider_user_id="dup-1",
+        user_id=user.id,
+        provider_email="oauthtx@test.com",
+    )
+    await adapter.create_oauth_account(account)
+
+    async with adapter.transaction() as tx:
+        again = await tx.create_oauth_account(account)
+        assert again.provider_user_id == "dup-1"
+        await tx.assign_role(user.id, "editor")
+
+    assert len(await adapter.get_user_oauth_accounts(user.id)) == 1
+    fetched = await adapter.get_user_by_email("oauthtx@test.com")
+    assert "editor" in fetched.roles
+
+
+@pytest.mark.asyncio
+async def test_transaction_cannot_nest(adapter):
+    async with adapter.transaction() as tx:
+        with pytest.raises(RuntimeError):
+            async with tx.transaction():
+                pass

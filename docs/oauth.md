@@ -37,7 +37,7 @@ fullauth = FullAuth(
 ```
 
 !!! tip
-    `redirect_uris` is the list of allowed callback URLs. The client must pass `redirect_uri` as a query parameter in the authorize request = the library validates it against this list.
+    `redirect_uris` is the list of allowed callback URLs. The client must pass `redirect_uri` as a query parameter in the authorize request; the library validates it against this list.
 
 ## Routes
 
@@ -132,6 +132,12 @@ config = FullAuthConfig(
 **Redirect URI validation**: the library validates the `redirect_uri` parameter against the provider's configured `redirect_uris` list. Mismatched URIs are rejected with a 400 error.
 
 **Token storage**: provider access and refresh tokens are stored in the `oauth_accounts` table and updated on each login.
+
+**PKCE**: PKCE (S256) is enabled by default for providers that support it (Google, GitHub) via the `OAUTH_PKCE_ENABLED` setting. The flow stays stateless: the `code_verifier` is derived from the signed state token's nonce keyed by `SECRET_KEY`, so it never travels through the browser. Treat this as defense-in-depth for a confidential client that already sends a `client_secret`, not as a replacement for binding the OAuth state to the browser session. A custom provider opts in by setting `supports_pkce = True` and accepting the `code_challenge`/`code_verifier` keyword arguments.
+
+### Known limitations
+
+The OAuth `state` token is signed but not bound to the browser session, so on its own it does not prevent login-CSRF / account fixation; put the OAuth routes behind your own CSRF protection if that is a concern. The state is replayable within `OAUTH_STATE_EXPIRE_SECONDS` (the authorization code itself is single-use at the provider).
 
 ## OAuth-only users
 

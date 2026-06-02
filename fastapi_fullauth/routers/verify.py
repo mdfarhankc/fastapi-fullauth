@@ -13,7 +13,6 @@ from fastapi_fullauth.routers._schemas import (
     PasswordResetRequest,
     VerifyEmailRequest,
 )
-from fastapi_fullauth.utils import get_client_ip
 
 logger = logging.getLogger("fastapi_fullauth.routers")
 
@@ -21,13 +20,15 @@ if TYPE_CHECKING:
     from fastapi_fullauth.fullauth import FullAuth
 
 
-def create_verify_router() -> APIRouter:
+def create_verify_router(
+    message_response_schema: type[MessageResponse] = MessageResponse,
+) -> APIRouter:
     router = APIRouter()
 
     @router.post(
         "/verify-email/request",
         status_code=202,
-        response_model=MessageResponse,
+        response_model=message_response_schema,
         description="Send a verification email to the current user.",
     )
     async def verify_email_request_route(
@@ -35,8 +36,7 @@ def create_verify_router() -> APIRouter:
         request: Request,
         fullauth: "FullAuth" = Depends(get_fullauth),
     ) -> MessageResponse:
-        client_ip = get_client_ip(request, fullauth.config.TRUSTED_PROXY_HEADERS)
-        await fullauth.check_auth_rate_limit("password-reset", client_ip)
+        await fullauth.enforce_rate_limit(request, "password-reset")
 
         verify_token = await create_email_verification_token(
             fullauth.adapter, fullauth.token_engine, user.id
@@ -46,12 +46,12 @@ def create_verify_router() -> APIRouter:
                 "send_verification_email", email=user.email, token=verify_token
             )
 
-        return MessageResponse(detail="If eligible, a verification email has been sent.")
+        return message_response_schema(detail="If eligible, a verification email has been sent.")
 
     @router.post(
         "/verify-email/confirm",
         status_code=200,
-        response_model=MessageResponse,
+        response_model=message_response_schema,
         description="Confirm email verification with the token.",
     )
     async def verify_email_confirm_route(
@@ -59,8 +59,7 @@ def create_verify_router() -> APIRouter:
         request: Request,
         fullauth: "FullAuth" = Depends(get_fullauth),
     ) -> MessageResponse:
-        client_ip = get_client_ip(request, fullauth.config.TRUSTED_PROXY_HEADERS)
-        await fullauth.check_auth_rate_limit("password-reset", client_ip)
+        await fullauth.enforce_rate_limit(request, "password-reset")
 
         try:
             user = await verify_email(fullauth.adapter, fullauth.token_engine, data.token)
@@ -70,12 +69,12 @@ def create_verify_router() -> APIRouter:
         if user:
             await fullauth.hooks.emit("after_email_verify", user=user)
 
-        return MessageResponse(detail="Email verified.")
+        return message_response_schema(detail="Email verified.")
 
     @router.post(
         "/password-reset/request",
         status_code=202,
-        response_model=MessageResponse,
+        response_model=message_response_schema,
         description="Request a password reset email.",
     )
     async def password_reset_request_route(
@@ -83,20 +82,19 @@ def create_verify_router() -> APIRouter:
         request: Request,
         fullauth: "FullAuth" = Depends(get_fullauth),
     ) -> MessageResponse:
-        client_ip = get_client_ip(request, fullauth.config.TRUSTED_PROXY_HEADERS)
-        await fullauth.check_auth_rate_limit("password-reset", client_ip)
+        await fullauth.enforce_rate_limit(request, "password-reset")
 
         token = await request_password_reset(fullauth.adapter, fullauth.token_engine, data.email)
 
         if token:
             await fullauth.hooks.emit("send_password_reset_email", email=data.email, token=token)
 
-        return MessageResponse(detail="If the email exists, a reset link has been sent.")
+        return message_response_schema(detail="If the email exists, a reset link has been sent.")
 
     @router.post(
         "/password-reset/confirm",
         status_code=200,
-        response_model=MessageResponse,
+        response_model=message_response_schema,
         description="Set a new password using the reset token.",
     )
     async def password_reset_confirm_route(
@@ -104,8 +102,7 @@ def create_verify_router() -> APIRouter:
         request: Request,
         fullauth: "FullAuth" = Depends(get_fullauth),
     ) -> MessageResponse:
-        client_ip = get_client_ip(request, fullauth.config.TRUSTED_PROXY_HEADERS)
-        await fullauth.check_auth_rate_limit("password-reset", client_ip)
+        await fullauth.enforce_rate_limit(request, "password-reset")
 
         try:
             user = await reset_password(
@@ -124,6 +121,6 @@ def create_verify_router() -> APIRouter:
         if user:
             await fullauth.hooks.emit("after_password_reset", user=user)
 
-        return MessageResponse(detail="Password has been reset.")
+        return message_response_schema(detail="Password has been reset.")
 
     return router

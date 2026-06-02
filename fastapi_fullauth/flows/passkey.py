@@ -188,7 +188,7 @@ async def complete_authentication(
     """Verify WebAuthn authentication response and issue JWT tokens."""
     from webauthn import verify_authentication_response
 
-    from fastapi_fullauth.types import RefreshToken
+    from fastapi_fullauth.flows.tokens import issue_token_pair
 
     challenge_b64 = await challenge_store.pop(challenge_key)
     if challenge_b64 is None:
@@ -203,7 +203,7 @@ async def complete_authentication(
 
     # If the authenticator returned a userHandle (discoverable credentials always do),
     # it must match the user the credential is stored against. This is the server-side
-    # check that the credential and account binding agree = not just our DB mapping.
+    # check that the credential and account binding agree, not just our DB mapping.
     user_handle_b64 = (credential.get("response") or {}).get("userHandle")
     if user_handle_b64:
         try:
@@ -237,23 +237,7 @@ async def complete_authentication(
     if user is None or not user.is_active:
         raise ValueError("User not found or inactive")
 
-    roles = await adapter.get_user_roles(user.id)
-    access, refresh_meta = token_engine.create_token_pair(user_id=str(user.id), roles=roles)
-
-    await adapter.store_refresh_token(
-        RefreshToken(
-            token=refresh_meta.token,
-            user_id=user.id,
-            expires_at=refresh_meta.expires_at,
-            family_id=refresh_meta.family_id,
-        )
-    )
-
-    token_pair = TokenPair(
-        access_token=access,
-        refresh_token=refresh_meta.token,
-        expires_in=token_engine.config.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
-    )
+    token_pair = await issue_token_pair(adapter, token_engine, user)
 
     logger.info("Passkey authentication: user_id=%s", user.id)
     return token_pair, user

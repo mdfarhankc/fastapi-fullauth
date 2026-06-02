@@ -36,25 +36,25 @@ FastAPI FullAuth
 
 ---
 
-Add a complete authentication and authorization system to your **FastAPI** project. FastAPI FullAuth is designed to be production-ready, async-native, and pluggable = handling JWT tokens, refresh rotation, password hashing, email verification, OAuth2 social login, and role-based access out of the box.
+Add a complete authentication and authorization system to your **FastAPI** project. FastAPI FullAuth is designed to be production-ready, async-native, and pluggable, handling JWT tokens, refresh rotation, password hashing, email verification, OAuth2 social login, and role-based access out of the box.
 
 ## Features
 
 - **JWT access + refresh tokens** with configurable expiry
-- **Refresh token rotation** with reuse detection = revokes entire session family on replay
+- **Refresh token rotation** with reuse detection; revokes entire session family on replay
 - **Password hashing** via Argon2id (default) or bcrypt, with transparent rehashing
 - **Email verification** and **password reset** flows with event hooks
-- **OAuth2 social login** = Google and GitHub, with multi-redirect-URI support
-- **Role-based access control** = `current_user`, `require_role()`, `require_permission()`
-- **Rate limiting** = per-route auth limits + global middleware (memory or Redis)
-- **CSRF protection** and **security headers** middleware, auto-wired
-- **Pluggable adapters** = SQLModel or SQLAlchemy
-- **Generic type parameters** = define your own schemas with full IDE support and type safety
-- **Composable routers** = include only the route groups you need
-- **Event hooks** = `after_register`, `after_login`, `send_verification_email`, etc.
-- **Custom JWT claims** = embed app-specific data in tokens
-- **Structured logging** = all auth events, security violations, and failures logged
-- **Redis support** = token blacklist and rate limiter backends
+- **OAuth2 social login**: Google and GitHub, with multi-redirect-URI support
+- **Role-based access control**: `current_user`, `require_role()`, `require_permission()`
+- **Rate limiting**: per-route auth limits + global middleware (memory or Redis)
+- **CSRF protection** and **security headers** middleware
+- **Pluggable adapters**: SQLModel or SQLAlchemy
+- **Generic type parameters**: define your own schemas with full IDE support and type safety
+- **Composable routers**: include only the route groups you need
+- **Event hooks**: `after_register`, `after_login`, `send_verification_email`, etc.
+- **Custom JWT claims**: embed app-specific data in tokens
+- **Structured logging**: all auth events, security violations, and failures logged
+- **Redis support**: token blacklist and rate limiter backends
 - **Python 3.10 - 3.14** supported
 
 ## Installation
@@ -72,8 +72,8 @@ pip install fastapi-fullauth[sqlmodel,redis]
 # with OAuth2 social login
 pip install fastapi-fullauth[sqlmodel,oauth]
 
-# everything
-pip install fastapi-fullauth[all]
+# every feature on one adapter (or [sqlalchemy-standard])
+pip install fastapi-fullauth[sqlmodel-standard]
 ```
 
 ## Quick start
@@ -92,7 +92,7 @@ fullauth = FullAuth(
 fullauth.init_app(app)
 ```
 
-That's it = all auth routes are registered under `/api/v1/auth/` automatically.
+That's it; all auth routes are registered under `/api/v1/auth/` automatically.
 
 Omit `config` in dev and a random secret key is generated (tokens won't survive restarts).
 
@@ -112,7 +112,7 @@ fullauth.bind(app)  # required for dependencies to work
 
 app.include_router(fullauth.auth_router, prefix="/api/v1/auth")
 app.include_router(fullauth.profile_router, prefix="/api/v1/auth")
-# middleware is opt-in = import what you need from fastapi_fullauth.middleware
+# middleware is opt-in; import what you need from fastapi_fullauth.middleware
 ```
 
 | Router | Routes |
@@ -153,7 +153,7 @@ With OAuth enabled, additional routes are registered under `/auth/oauth/`. All r
 
 ## Custom user schemas
 
-Define your model and schemas = pass them explicitly to the adapter:
+Define your model and schemas; pass them explicitly to the adapter:
 
 ```python
 from sqlmodel import Field, Relationship
@@ -313,8 +313,8 @@ See [Configuration docs](https://mdfarhankc.github.io/fastapi-fullauth/configura
 
 Using an AI coding assistant? Point it at our LLM-optimized docs:
 
-- **[llms.txt](https://mdfarhankc.github.io/fastapi-fullauth/llms.txt)** = concise overview with links to all doc pages
-- **[llms-full.txt](https://mdfarhankc.github.io/fastapi-fullauth/llms-full.txt)** = full documentation in a single file
+- **[llms.txt](https://mdfarhankc.github.io/fastapi-fullauth/llms.txt)**: concise overview with links to all doc pages
+- **[llms-full.txt](https://mdfarhankc.github.io/fastapi-fullauth/llms-full.txt)**: full documentation in a single file
 
 Works with Claude, Cursor, Copilot, and any tool that accepts a docs URL.
 
@@ -379,7 +379,7 @@ class User(UserMixin, table=True):
     refresh_tokens: list[RefreshToken] = Relationship()
 ```
 
-`UserMixin` provides `id`, `email`, `hashed_password` (nullable = `NULL` for OAuth-only users), `is_active`, `is_verified`, `is_superuser`, and `created_at`. Add any extra fields you need.
+`UserMixin` provides `id`, `email`, `hashed_password` (nullable; `NULL` for OAuth-only users), `is_active`, `is_verified`, `is_superuser`, and `created_at`. Add any extra fields you need.
 
 !!! note
     Define your own schemas extending `UserSchema` and `CreateUserSchema` to include custom fields like `display_name` and `phone`, then pass them to the adapter. See [Custom User Schemas](#custom-user-schemas) below or the [API Reference](api-reference.md).
@@ -466,7 +466,7 @@ fullauth.bind(app)  # required for dependencies to work
 
 app.include_router(fullauth.auth_router, prefix="/api/v1/auth")
 app.include_router(fullauth.profile_router, prefix="/api/v1/auth")
-# middleware is opt-in = import what you need from fastapi_fullauth.middleware
+# middleware is opt-in; import what you need from fastapi_fullauth.middleware
 ```
 
 | Router | Routes |
@@ -544,10 +544,10 @@ See [Protected Routes](auth/dependencies.md) for all dependency types.
 
 ## Next steps
 
-- [Configuration](configuration.md) = all config options
-- [OAuth2 Social Login](oauth.md) = add Google/GitHub login
-- [Event Hooks](auth/hooks.md) = send emails, log events
-- [Rate Limiting](security/rate-limiting.md) = protect your endpoints
+- [Configuration](configuration.md): all config options
+- [OAuth2 Social Login](oauth.md): add Google/GitHub login
+- [Event Hooks](auth/hooks.md): send emails, log events
+- [Rate Limiting](security/rate-limiting.md): protect your endpoints
 
 ---
 
@@ -604,7 +604,7 @@ FULLAUTH_REDIS_URL=redis://localhost:6379/0
 
 Precedence is init kwargs → process env → `.env` file → field defaults. So `uvicorn --env-file` / Docker `env_file:` / `export` all win over the dotfile.
 
-Use a different file via `FullAuthConfig(_env_file=".env.production")` or by subclassing with a custom `SettingsConfigDict`. Cloud deployments (FastAPI Cloud, Docker, Kubernetes, Fly, Railway) need no changes = their env vars land in `os.environ` and the library's `.env` default is a silent no-op when no file exists.
+Use a different file via `FullAuthConfig(_env_file=".env.production")` or by subclassing with a custom `SettingsConfigDict`. Cloud deployments (FastAPI Cloud, Docker, Kubernetes, Fly, Railway) need no changes; their env vars land in `os.environ` and the library's `.env` default is a silent no-op when no file exists.
 
 ## Reference
 
@@ -647,7 +647,7 @@ Use a different file via `FullAuthConfig(_env_file=".env.production")` or by sub
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `RATE_LIMIT_BACKEND` | `"memory" \| "redis"` | `"memory"` | Rate limiter storage backend. Use `"redis"` in production = `"memory"` is per-process. |
+| `RATE_LIMIT_BACKEND` | `"memory" \| "redis"` | `"memory"` | Rate limiter storage backend. Use `"redis"` in production; `"memory"` is per-process. |
 | `TRUSTED_PROXY_HEADERS` | `list[str]` | `[]` | Headers to read real client IP from (e.g. `["X-Forwarded-For"]`). |
 | `AUTH_RATE_LIMIT_ENABLED` | `bool` | `True` | Enable per-route auth rate limits. |
 | `AUTH_RATE_LIMIT_LOGIN` | `int` | `5` | Max login attempts per window. |
@@ -666,7 +666,7 @@ Use a different file via `FullAuthConfig(_env_file=".env.production")` or by sub
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `BLACKLIST_ENABLED` | `bool` | `True` | Check blacklist on token decode. |
-| `BLACKLIST_BACKEND` | `"memory" \| "redis"` | `"memory"` | Blacklist storage backend. Use `"redis"` in production = `"memory"` is per-process, so revoked tokens stay valid on other workers. |
+| `BLACKLIST_BACKEND` | `"memory" \| "redis"` | `"memory"` | Blacklist storage backend. Use `"redis"` in production; `"memory"` is per-process, so revoked tokens stay valid on other workers. |
 
 ### Middleware
 
@@ -708,7 +708,7 @@ Use a different file via `FullAuthConfig(_env_file=".env.production")` or by sub
 | `PASSKEY_RP_ID` | `str \| None` | `None` | Relying Party ID (your domain). |
 | `PASSKEY_RP_NAME` | `str \| None` | `None` | Relying Party display name. |
 | `PASSKEY_ORIGINS` | `list[str]` | `[]` | Allowed origins (e.g. `["https://example.com", "https://m.example.com"]`). |
-| `PASSKEY_CHALLENGE_BACKEND` | `"memory" \| "redis"` | `"memory"` | Challenge store backend. Use `"redis"` in production = `"memory"` is per-process and breaks under multi-worker deployments. |
+| `PASSKEY_CHALLENGE_BACKEND` | `"memory" \| "redis"` | `"memory"` | Challenge store backend. Use `"redis"` in production; `"memory"` is per-process and breaks under multi-worker deployments. |
 | `PASSKEY_CHALLENGE_TTL` | `int` | `60` | Challenge expiry in seconds. |
 | `PASSKEY_REQUIRE_USER_VERIFICATION` | `bool` | `True` | Require user verification (PIN/biometric) on register and authenticate. |
 
@@ -729,8 +729,8 @@ Adapters are the database layer for fastapi-fullauth. They implement `AbstractUs
 
 ## Choosing an adapter
 
-- **SQLModel** = recommended for most projects. Clean model definitions, good type support. Use SQLite for prototyping.
-- **SQLAlchemy** = use if your project already uses SQLAlchemy's declarative base.
+- **SQLModel**: recommended for most projects. Clean model definitions, good type support. Use SQLite for prototyping.
+- **SQLAlchemy**: use if your project already uses SQLAlchemy's declarative base.
 
 ## Custom adapters
 
@@ -744,7 +744,7 @@ from fastapi_fullauth.adapters.base import (
     OAuthAdapterMixin,
 )
 
-# Minimal = just auth
+# Minimal: just auth
 class MyAdapter(AbstractUserAdapter):
     async def get_user_by_id(self, user_id): ...
     async def get_user_by_email(self, email): ...
@@ -995,7 +995,7 @@ class User(UserMixin, Base):
     refresh_tokens: Mapped[list[RefreshToken]] = relationship(lazy="noload")
 ```
 
-`UserMixin` provides `id`, `email`, `hashed_password` (nullable = `NULL` for OAuth-only users), `is_active`, `is_verified`, `is_superuser`, `created_at`.
+`UserMixin` provides `id`, `email`, `hashed_password` (nullable; `NULL` for OAuth-only users), `is_active`, `is_verified`, `is_superuser`, `created_at`.
 
 ### 2. Create the adapter
 
@@ -1119,7 +1119,7 @@ from fastapi_fullauth.dependencies import require_role
 async def editor_panel(user=Depends(require_role("editor"))):
     return {"msg": "welcome, editor"}
 
-# multiple roles = user needs at least one
+# multiple roles: user needs at least one
 @app.get("/content")
 async def content(user=Depends(require_role("editor", "author"))):
     return {"msg": "welcome"}
@@ -1127,7 +1127,7 @@ async def content(user=Depends(require_role("editor", "author"))):
 
 ### require_permission
 
-Check that the user has at least one of the specified permissions. Permissions are resolved through roles = a user with role `"editor"` gets all permissions assigned to that role.
+Check that the user has at least one of the specified permissions. Permissions are resolved through roles; a user with role `"editor"` gets all permissions assigned to that role.
 
 ```python
 from fastapi import Depends
@@ -1137,7 +1137,7 @@ from fastapi_fullauth.dependencies import require_permission
 async def delete_post(id: str, user=Depends(require_permission("posts:delete"))):
     ...
 
-# multiple permissions = user needs at least one
+# multiple permissions: user needs at least one
 @app.put("/posts/{id}")
 async def edit_post(id: str, user=Depends(require_permission("posts:edit", "posts:admin"))):
     ...
@@ -1499,9 +1499,9 @@ If your callback returns any of these, a `ValueError` is raised at token creatio
 
 Custom claims are generated on:
 
-- **Login** = embedded in the access token
-- **Token refresh** = regenerated from the current user state
-- **OAuth callback** = embedded after OAuth user creation/linking
+- **Login**: embedded in the access token
+- **Token refresh**: regenerated from the current user state
+- **OAuth callback**: embedded after OAuth user creation/linking
 
 This means claims stay fresh on each refresh. If a user's plan changes, the next token refresh picks it up.
 
@@ -1511,7 +1511,7 @@ This means claims stay fresh on each refresh. If a user's plan changes, the next
 
 # Middleware
 
-fastapi-fullauth ships three middleware classes. None of them are wired automatically = `init_app()` only mounts routers. Import what you want and add it yourself:
+fastapi-fullauth ships three middleware classes. None of them are wired automatically; `init_app()` only mounts routers. Import what you want and add it yourself:
 
 ```python
 from fastapi_fullauth.middleware import (
@@ -1556,7 +1556,7 @@ app.add_middleware(
 
 ## CSRF Protection
 
-Useful for cookie-based auth where the frontend and backend share a domain. Wire it manually = `secret` must be ≥ 32 chars:
+Useful for cookie-based auth where the frontend and backend share a domain. Wire it manually; `secret` must be ≥ 32 chars:
 
 ```python
 from fastapi_fullauth import FullAuth, FullAuthConfig
@@ -1622,8 +1622,8 @@ See [Rate Limiting](rate-limiting.md) for full details.
 
 fastapi-fullauth provides two levels of rate limiting:
 
-1. **Auth rate limits** = per-route limits on login, register, and password reset (enabled by default)
-2. **Global rate limit middleware** = limits all requests per IP (disabled by default)
+1. **Auth rate limits**: per-route limits on login, register, and password reset (enabled by default)
+2. **Global rate limit middleware**: limits all requests per IP (disabled by default)
 
 Both support in-memory and Redis backends.
 
@@ -1704,7 +1704,7 @@ fullauth = FullAuth(
 ```
 
 !!! warning
-    Only list headers you trust. If your server is directly exposed to the internet (no proxy), leave this empty = otherwise users can spoof their IP via the header.
+    Only list headers you trust. If your server is directly exposed to the internet (no proxy), leave this empty; otherwise users can spoof their IP via the header.
 
 When `X-Forwarded-For` contains a chain (e.g. `1.2.3.4, 10.0.0.1`), the first IP (original client) is used.
 
@@ -1809,7 +1809,7 @@ fullauth = FullAuth(
 ```
 
 !!! tip
-    `redirect_uris` is the list of allowed callback URLs. The client must pass `redirect_uri` as a query parameter in the authorize request = the library validates it against this list.
+    `redirect_uris` is the list of allowed callback URLs. The client must pass `redirect_uri` as a query parameter in the authorize request; the library validates it against this list.
 
 ## Routes
 
@@ -1991,7 +1991,7 @@ Import your `models` package so every concrete table you defined registers, then
 
     ```python
     # alembic/env.py
-    import app.models  # noqa: F401 = registers all your concrete tables
+    import app.models  # noqa: F401; registers all your concrete tables
     from sqlmodel import SQLModel
 
     target_metadata = SQLModel.metadata
@@ -2044,7 +2044,7 @@ The main auth manager. Central entry point for the library.
 from fastapi_fullauth import FullAuth, FullAuthConfig
 
 fullauth = FullAuth(
-    adapter=adapter,                # required = database adapter
+    adapter=adapter,                # required: database adapter
     config=FullAuthConfig(...),     # FullAuthConfig object (see Configuration)
     providers=None,                 # list of OAuthProvider instances
     backends=None,                  # [BearerBackend()] by default

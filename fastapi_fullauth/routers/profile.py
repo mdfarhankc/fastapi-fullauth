@@ -1,7 +1,8 @@
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, cast
 
 from fastapi import APIRouter, Body, Depends, HTTPException
+from pydantic import BaseModel
 
 from fastapi_fullauth.dependencies.current_user import CurrentUser, VerifiedUser, get_fullauth
 from fastapi_fullauth.exceptions import (
@@ -15,6 +16,7 @@ from fastapi_fullauth.flows.profile import validate_profile_updates
 from fastapi_fullauth.routers._schemas import (
     ChangePasswordRequest,
     MessageResponse,
+    build_profile_update_model,
 )
 from fastapi_fullauth.types import UserSchema, UserSchemaType
 
@@ -26,8 +28,10 @@ if TYPE_CHECKING:
 
 def create_profile_router(
     user_schema: type[UserSchemaType] = UserSchema,  # type: ignore[assignment]
+    message_response_schema: type[MessageResponse] = MessageResponse,
 ) -> APIRouter:
     router = APIRouter()
+    ProfileUpdate = build_profile_update_model(user_schema)  # noqa: N806
 
     @router.get(
         "/me",
@@ -60,10 +64,11 @@ def create_profile_router(
     async def update_me_route(
         user: CurrentUser,
         fullauth: "FullAuth" = Depends(get_fullauth),
-        data: dict[str, Any] = Body(...),
+        data: ProfileUpdate = Body(...),  # type: ignore[valid-type]
     ) -> UserSchema:
+        raw = cast("BaseModel", data).model_dump(exclude_unset=True)
         try:
-            updates = validate_profile_updates(data, user_schema)
+            updates = validate_profile_updates(raw, user_schema)
         except NoValidFieldsError:
             raise HTTPException(status_code=400, detail="No valid fields to update")
         except UnknownFieldsError as e:
@@ -83,7 +88,7 @@ def create_profile_router(
     @router.post(
         "/change-password",
         status_code=200,
-        response_model=MessageResponse,
+        response_model=message_response_schema,
         description=(
             "Change password. `current_password` is required when the user already "
             "has one; for OAuth-only users without a stored password it may be omitted."
@@ -109,6 +114,6 @@ def create_profile_router(
             raise HTTPException(status_code=422, detail=str(e))
 
         await fullauth.hooks.emit("after_password_change", user=user)
-        return MessageResponse(detail="Password changed successfully.")
+        return message_response_schema(detail="Password changed successfully.")
 
     return router

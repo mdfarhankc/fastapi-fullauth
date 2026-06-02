@@ -24,7 +24,7 @@ async def logout(
             await adapter.revoke_refresh_token_family(stored.family_id)
         elif stored:
             logger.warning(
-                "Logout ignored refresh_token = owner mismatch: caller=%s owner=%s",
+                "Logout ignored refresh_token; owner mismatch: caller=%s owner=%s",
                 token_payload.sub,
                 stored.user_id,
             )

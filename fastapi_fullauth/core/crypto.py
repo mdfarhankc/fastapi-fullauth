@@ -8,6 +8,9 @@ from fastapi_fullauth.exceptions import InvalidPasswordError
 _argon2_hasher = PasswordHasher()
 
 _BCRYPT_MAX_BYTES = 72
+# bcrypt hashes from other implementations or older versions use $2a$/$2y$;
+# recognize all of them so imported password stores keep verifying
+_BCRYPT_PREFIXES = ("$2a$", "$2b$", "$2y$")
 
 
 def hash_password(password: str, algorithm: Literal["argon2id", "bcrypt"] = "argon2id") -> str:
@@ -27,7 +30,7 @@ def hash_password(password: str, algorithm: Literal["argon2id", "bcrypt"] = "arg
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    if hashed.startswith("$2b$"):
+    if hashed.startswith(_BCRYPT_PREFIXES):
         try:
             import bcrypt
 
@@ -44,6 +47,6 @@ def verify_password(plain: str, hashed: str) -> bool:
 def password_needs_rehash(
     hashed: str, algorithm: Literal["argon2id", "bcrypt"] = "argon2id"
 ) -> bool:
-    if hashed.startswith("$2b$"):
+    if hashed.startswith(_BCRYPT_PREFIXES):
         return algorithm != "bcrypt"
     return _argon2_hasher.check_needs_rehash(hashed)
