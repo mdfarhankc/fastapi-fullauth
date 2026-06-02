@@ -148,6 +148,22 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
         client_ip = get_client_ip(request, self.config.TRUSTED_PROXY_HEADERS)
         await self.check_auth_rate_limit(route_name, client_ip)
 
+    async def aclose(self) -> None:
+        """Close pooled resources: Redis connections and OAuth HTTP clients.
+
+        Idempotent. ``init_app()`` registers this on app shutdown. Call it
+        yourself if you pass a custom ``lifespan`` to FastAPI, since Starlette
+        ignores shutdown event handlers when a lifespan is provided.
+        """
+        await self.token_engine.blacklist.aclose()
+        if self.lockout is not None:
+            await self.lockout.aclose()
+        await self.auth_rate_limiter.aclose()
+        if self.challenge_store is not None:
+            await self.challenge_store.aclose()
+        for provider in self.oauth_providers.values():
+            await provider.aclose()
+
     # ── composable routers ──────────────────────────────────────────
 
     @property
@@ -274,6 +290,9 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
         ``fastapi_fullauth.middleware`` and call ``app.add_middleware(...)``
         yourself.
 
+        Registers ``aclose()`` on app shutdown to release pooled resources. If
+        you use a custom ``lifespan``, call ``await fullauth.aclose()`` yourself.
+
         Args:
             app: The FastAPI application.
             include_routers: Allowlist of router names to register. ``None``
@@ -291,6 +310,7 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
         app.state._fullauth_app_wired = True
 
         self.bind(app)
+        app.router.add_event_handler("shutdown", self.aclose)
 
         if include_routers is None:
             app.include_router(self.router)

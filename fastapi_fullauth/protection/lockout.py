@@ -25,6 +25,9 @@ class LockoutManager(ABC):
     @abstractmethod
     async def clear(self, key: str) -> None: ...
 
+    async def aclose(self) -> None:  # noqa: B027
+        """Release any held resources. No-op unless overridden."""
+
 
 class InMemoryLockoutManager(LockoutManager):
     """In-memory lockout manager. Works for single-process deployments."""
@@ -112,6 +115,9 @@ class RedisLockoutManager(LockoutManager):
         pipe.delete(f"{self._prefix}attempts:{key}")
         pipe.delete(f"{self._prefix}locked:{key}")
         await pipe.execute()
+
+    async def aclose(self) -> None:
+        await self._redis.aclose()
 
 
 _lockout_registry: dict[str, type[LockoutManager]] = {

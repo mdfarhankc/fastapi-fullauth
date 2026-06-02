@@ -29,6 +29,9 @@ class ChallengeStore(ABC):
         """Retrieve and delete a challenge. Returns None if expired or missing."""
         ...
 
+    async def aclose(self) -> None:  # noqa: B027
+        """Release any held resources. No-op unless overridden."""
+
 
 class InMemoryChallengeStore(ChallengeStore):
     """In-memory challenge store. Single-process only; use Redis for multi-worker."""
@@ -75,6 +78,9 @@ class RedisChallengeStore(ChallengeStore):
         redis_key = f"{self._prefix}{key}"
         challenge: str | None = await self._redis.getdel(redis_key)
         return challenge
+
+    async def aclose(self) -> None:
+        await self._redis.aclose()
 
 
 _challenge_store_registry: dict[str, type[ChallengeStore]] = {

@@ -7,6 +7,7 @@
 - **`adapter.transaction()`** on the SQLAlchemy and SQLModel adapters. Runs several adapter calls in one transaction that commits together when the block exits or rolls back entirely on error. Conflict-prone inserts (`create_user`, `create_oauth_account`) use SAVEPOINTs so a unique-constraint hit rolls back only that statement and leaves the surrounding transaction usable. Works as-is on PostgreSQL and MySQL; on SQLite, configure the engine with SQLAlchemy's BEGIN-emulation recipe for correct SAVEPOINT/rollback behavior.
 - **Injectable response schemas.** `FullAuth(..., login_response_schema=..., message_response_schema=...)` accept custom `LoginResponse`/`MessageResponse` subclasses (add optional fields to extend the token or message bodies). `LoginResponse`, `MessageResponse`, and `TokenPair` are now exported from the top-level package.
 - **`FullAuth.enforce_rate_limit(request, route_name)`** resolves the client IP and applies the auth rate limit in one call.
+- **Resource cleanup via `FullAuth.aclose()`.** Closes pooled resources: Redis connections (blacklist, lockout, rate limiter, challenge store) and OAuth HTTP clients. `init_app()` registers it on app shutdown automatically; call it yourself if you pass a custom `lifespan` to FastAPI. OAuth providers now reuse a single pooled `httpx.AsyncClient` across requests instead of opening one per call.
 
 ### Changed
 

@@ -12,6 +12,9 @@ class TokenBlacklist:
     async def is_blacklisted(self, jti: str) -> bool:
         raise NotImplementedError
 
+    async def aclose(self) -> None:
+        """Release any held resources. No-op unless overridden."""
+
 
 class InMemoryTokenBlacklist(TokenBlacklist):
     def __init__(self) -> None:
@@ -54,3 +57,6 @@ class RedisTokenBlacklist(TokenBlacklist):
 
     async def is_blacklisted(self, jti: str) -> bool:
         return bool(await self._redis.exists(f"{self._prefix}{jti}") > 0)
+
+    async def aclose(self) -> None:
+        await self._redis.aclose()

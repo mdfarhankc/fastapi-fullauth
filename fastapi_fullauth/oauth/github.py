@@ -30,26 +30,24 @@ class GitHubOAuthProvider(OAuthProvider):
         return f"{self.authorization_endpoint}?{urlencode(params)}"
 
     async def exchange_code(self, code: str, redirect_uri: str) -> dict[str, Any]:
-        async with self._get_http_client() as client:
-            resp = await client.post(
-                self.token_endpoint,
-                data={
-                    "client_id": self.client_id,
-                    "client_secret": self.client_secret,
-                    "code": code,
-                },
-                headers={"Accept": "application/json"},
-            )
-            if resp.status_code != 200:
-                logger.error(
-                    "GitHub token exchange failed (HTTP %s): %s", resp.status_code, resp.text
-                )
-                raise OAuthProviderError("GitHub token exchange failed")
-            data: dict[str, Any] = resp.json()
-            if "error" in data:
-                logger.error("GitHub token error: %s", data.get("error_description", data["error"]))
-                raise OAuthProviderError("GitHub token exchange failed")
-            return data
+        client = self._client()
+        resp = await client.post(
+            self.token_endpoint,
+            data={
+                "client_id": self.client_id,
+                "client_secret": self.client_secret,
+                "code": code,
+            },
+            headers={"Accept": "application/json"},
+        )
+        if resp.status_code != 200:
+            logger.error("GitHub token exchange failed (HTTP %s): %s", resp.status_code, resp.text)
+            raise OAuthProviderError("GitHub token exchange failed")
+        data: dict[str, Any] = resp.json()
+        if "error" in data:
+            logger.error("GitHub token error: %s", data.get("error_description", data["error"]))
+            raise OAuthProviderError("GitHub token exchange failed")
+        return data
 
     async def get_user_info(self, tokens: dict[str, Any]) -> OAuthUserInfo:
         access_token = tokens["access_token"]
@@ -58,24 +56,24 @@ class GitHubOAuthProvider(OAuthProvider):
             "Accept": "application/json",
         }
 
-        async with self._get_http_client() as client:
-            resp = await client.get(self.userinfo_endpoint, headers=headers)
-            if resp.status_code != 200:
-                logger.error("GitHub userinfo failed (HTTP %s): %s", resp.status_code, resp.text)
-                raise OAuthProviderError("Failed to fetch user info from GitHub")
-            data = resp.json()
+        client = self._client()
+        resp = await client.get(self.userinfo_endpoint, headers=headers)
+        if resp.status_code != 200:
+            logger.error("GitHub userinfo failed (HTTP %s): %s", resp.status_code, resp.text)
+            raise OAuthProviderError("Failed to fetch user info from GitHub")
+        data = resp.json()
 
-            # GitHub needs a separate call for verified primary email
-            email = data.get("email")
-            email_verified = False
+        # GitHub needs a separate call for verified primary email
+        email = data.get("email")
+        email_verified = False
 
-            emails_resp = await client.get(self.emails_endpoint, headers=headers)
-            if emails_resp.status_code == 200:
-                for entry in emails_resp.json():
-                    if entry.get("primary") and entry.get("verified"):
-                        email = entry["email"]
-                        email_verified = True
-                        break
+        emails_resp = await client.get(self.emails_endpoint, headers=headers)
+        if emails_resp.status_code == 200:
+            for entry in emails_resp.json():
+                if entry.get("primary") and entry.get("verified"):
+                    email = entry["email"]
+                    email_verified = True
+                    break
 
         return OAuthUserInfo(
             provider="github",

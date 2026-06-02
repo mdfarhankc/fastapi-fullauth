@@ -9,6 +9,9 @@ if TYPE_CHECKING:
 
 class OAuthProvider(ABC):
     name: str
+    # Class-level default so aclose()/_client() are safe even on subclasses that
+    # don't call super().__init__().
+    _http_client: "httpx.AsyncClient | None" = None
 
     def __init__(
         self,
@@ -37,12 +40,21 @@ class OAuthProvider(ABC):
     @abstractmethod
     async def get_user_info(self, tokens: dict[str, Any]) -> OAuthUserInfo: ...
 
-    @staticmethod
-    def _get_http_client() -> "httpx.AsyncClient":
-        try:
-            import httpx
-        except ImportError:
-            raise ImportError(
-                "httpx is required for OAuth. Install it with: pip install fastapi-fullauth[oauth]"
-            ) from None
-        return httpx.AsyncClient()
+    def _client(self) -> "httpx.AsyncClient":
+        """Return a shared HTTP client, created lazily and reused across calls."""
+        if self._http_client is None:
+            try:
+                import httpx
+            except ImportError:
+                raise ImportError(
+                    "httpx is required for OAuth. "
+                    "Install it with: pip install fastapi-fullauth[oauth]"
+                ) from None
+            self._http_client = httpx.AsyncClient()
+        return self._http_client
+
+    async def aclose(self) -> None:
+        """Close the shared HTTP client. Safe to call more than once."""
+        if self._http_client is not None:
+            await self._http_client.aclose()
+            self._http_client = None

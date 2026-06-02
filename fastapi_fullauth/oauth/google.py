@@ -32,36 +32,34 @@ class GoogleOAuthProvider(OAuthProvider):
         return f"{self.authorization_endpoint}?{urlencode(params)}"
 
     async def exchange_code(self, code: str, redirect_uri: str) -> dict[str, Any]:
-        async with self._get_http_client() as client:
-            resp = await client.post(
-                self.token_endpoint,
-                data={
-                    "client_id": self.client_id,
-                    "client_secret": self.client_secret,
-                    "code": code,
-                    "grant_type": "authorization_code",
-                    "redirect_uri": redirect_uri,
-                },
-            )
-            if resp.status_code != 200:
-                logger.error(
-                    "Google token exchange failed (HTTP %s): %s", resp.status_code, resp.text
-                )
-                raise OAuthProviderError("Google token exchange failed")
-            tokens: dict[str, Any] = resp.json()
-            return tokens
+        client = self._client()
+        resp = await client.post(
+            self.token_endpoint,
+            data={
+                "client_id": self.client_id,
+                "client_secret": self.client_secret,
+                "code": code,
+                "grant_type": "authorization_code",
+                "redirect_uri": redirect_uri,
+            },
+        )
+        if resp.status_code != 200:
+            logger.error("Google token exchange failed (HTTP %s): %s", resp.status_code, resp.text)
+            raise OAuthProviderError("Google token exchange failed")
+        tokens: dict[str, Any] = resp.json()
+        return tokens
 
     async def get_user_info(self, tokens: dict[str, Any]) -> OAuthUserInfo:
         access_token = tokens["access_token"]
-        async with self._get_http_client() as client:
-            resp = await client.get(
-                self.userinfo_endpoint,
-                headers={"Authorization": f"Bearer {access_token}"},
-            )
-            if resp.status_code != 200:
-                logger.error("Google userinfo failed (HTTP %s): %s", resp.status_code, resp.text)
-                raise OAuthProviderError("Failed to fetch user info from Google")
-            data = resp.json()
+        client = self._client()
+        resp = await client.get(
+            self.userinfo_endpoint,
+            headers={"Authorization": f"Bearer {access_token}"},
+        )
+        if resp.status_code != 200:
+            logger.error("Google userinfo failed (HTTP %s): %s", resp.status_code, resp.text)
+            raise OAuthProviderError("Failed to fetch user info from Google")
+        data = resp.json()
 
         return OAuthUserInfo(
             provider="google",

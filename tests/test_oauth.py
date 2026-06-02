@@ -355,3 +355,57 @@ async def test_sqlmodel_adapter_oauth_crud(adapter):
 
     await adapter.delete_oauth_account("google", "g-123")
     assert await adapter.get_oauth_account("google", "g-123") is None
+
+
+# ── Resource lifecycle ───────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_oauth_provider_pools_and_closes_http_client():
+    from fastapi_fullauth.oauth.google import GoogleOAuthProvider
+
+    provider = GoogleOAuthProvider(
+        client_id="id",
+        client_secret="secret",
+        redirect_uris=["http://localhost/cb"],
+    )
+
+    client = provider._client()
+    assert provider._client() is client  # reused across calls
+    assert client.is_closed is False
+
+    await provider.aclose()
+    assert client.is_closed is True
+    assert provider._http_client is None
+
+    await provider.aclose()  # idempotent
+
+    fresh = provider._client()
+    assert fresh is not client
+    await provider.aclose()
+
+
+@pytest.mark.asyncio
+async def test_fullauth_aclose_closes_providers_and_is_idempotent(adapter, config):
+    from fastapi_fullauth.oauth.google import GoogleOAuthProvider
+
+    provider = GoogleOAuthProvider(
+        client_id="id",
+        client_secret="secret",
+        redirect_uris=["http://localhost/cb"],
+    )
+    fullauth = FullAuth(config=config, adapter=adapter, providers=[provider])
+    client = provider._client()
+
+    await fullauth.aclose()
+    assert client.is_closed is True
+    assert provider._http_client is None
+
+    await fullauth.aclose()  # idempotent, also fine with memory backends
+
+
+@pytest.mark.asyncio
+async def test_fullauth_aclose_tolerates_provider_without_init(adapter, config):
+    # MockOAuthProvider skips super().__init__(); aclose must still be a no-op.
+    fullauth = FullAuth(config=config, adapter=adapter, providers=[MockOAuthProvider()])
+    await fullauth.aclose()
