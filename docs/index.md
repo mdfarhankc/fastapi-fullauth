@@ -59,8 +59,8 @@ pip install fastapi-fullauth[sqlmodel,redis]
 # with OAuth2 social login
 pip install fastapi-fullauth[sqlmodel,oauth]
 
-# everything
-pip install fastapi-fullauth[all]
+# every feature on one adapter (or [sqlalchemy-standard])
+pip install fastapi-fullauth[sqlmodel-standard]
 ```
 
 ## Example

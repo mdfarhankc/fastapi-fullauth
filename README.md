@@ -64,8 +64,8 @@ pip install fastapi-fullauth[sqlmodel,oauth]
 # with passkey/WebAuthn
 pip install fastapi-fullauth[sqlmodel,passkey]
 
-# everything
-pip install fastapi-fullauth[all]
+# every feature on one adapter (or [sqlalchemy-standard])
+pip install fastapi-fullauth[sqlmodel-standard]
 ```
 
 ## Quick start

@@ -31,7 +31,7 @@ For production, use Alembic for proper migration management.
 ### 1. Initialize Alembic
 
 ```bash
-pip install fastapi-fullauth[alembic]
+# alembic ships with the [sqlmodel] and [sqlalchemy] extras
 alembic init alembic
 ```
 

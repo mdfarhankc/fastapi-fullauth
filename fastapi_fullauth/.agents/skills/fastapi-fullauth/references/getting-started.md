@@ -15,6 +15,8 @@ Optional extras, only pulled in if you opt into those features:
 - `fastapi-fullauth[passkey]`: `webauthn>=2` for passkey/WebAuthn
 - `fastapi-fullauth[redis]`: `redis` client for production backends
 
+For every feature on one adapter, use `fastapi-fullauth[sqlmodel-standard]` (or `[sqlalchemy-standard]`).
+
 Python floor is 3.10.
 
 ## 2. Define your tables
