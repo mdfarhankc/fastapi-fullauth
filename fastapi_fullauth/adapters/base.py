@@ -43,7 +43,7 @@ class AbstractUserAdapter(ABC, Generic[UserSchemaType, CreateUserSchemaType]):
         if field == "email":
             return await self.get_user_by_email(value)
         raise NotImplementedError(
-            f"Lookup by '{field}' not implemented = override get_user_by_field()"
+            f"Lookup by '{field}' not implemented; override get_user_by_field()"
         )
 
     @abstractmethod

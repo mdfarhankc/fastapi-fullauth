@@ -15,8 +15,8 @@ The library ships adapters for SQLModel and SQLAlchemy. You can write your own f
 
 ## Choosing an adapter
 
-- **SQLModel** = recommended for most projects. Clean model definitions, good type support. Use SQLite for prototyping.
-- **SQLAlchemy** = use if your project already uses SQLAlchemy's declarative base.
+- **SQLModel**: recommended for most projects. Clean model definitions, good type support. Use SQLite for prototyping.
+- **SQLAlchemy**: use if your project already uses SQLAlchemy's declarative base.
 
 Both adapters support the same features. The difference is in model definition style.
 

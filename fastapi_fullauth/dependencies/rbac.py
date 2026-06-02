@@ -22,7 +22,7 @@ def require_role(*roles: str) -> Callable[..., Coroutine[Any, Any, UserSchema]]:
             return user
 
         # getattr keeps this usable with a minimal UserSchema that has no
-        # roles field = caller gets a clean 403 instead of AttributeError.
+        # roles field; caller gets a clean 403 instead of AttributeError.
         user_roles = set(getattr(user, "roles", []) or [])
         if not user_roles.intersection(roles):
             raise FORBIDDEN_EXCEPTION

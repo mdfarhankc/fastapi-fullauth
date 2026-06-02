@@ -10,7 +10,7 @@ pip install fastapi-fullauth[sqlmodel]
 
 ## 1. Define your tables
 
-Each library table is a **mixin** you combine with `table=True` (SQLModel) or your own `DeclarativeBase` (SQLAlchemy). Subclass only the ones you need = features you don't opt into never register a table.
+Each library table is a **mixin** you combine with `table=True` (SQLModel) or your own `DeclarativeBase` (SQLAlchemy). Subclass only the ones you need; features you don't opt into never register a table.
 
 ```python
 # models.py
@@ -39,7 +39,7 @@ class User(UserMixin, table=True):
     refresh_tokens: list[RefreshToken] = Relationship()
 ```
 
-`UserMixin` provides `id`, `email`, `hashed_password` (nullable = `NULL` for OAuth-only users), `is_active`, `is_verified`, `is_superuser`, and `created_at`. Add any extra fields you need.
+`UserMixin` provides `id`, `email`, `hashed_password` (nullable; `NULL` for OAuth-only users), `is_active`, `is_verified`, `is_superuser`, and `created_at`. Add any extra fields you need.
 
 !!! note
     Define your own schemas extending `UserSchema` and `CreateUserSchema` to include custom fields like `display_name` and `phone`, then pass them to the adapter. See [Custom Schemas](adapters/index.md#custom-schemas) or the [API Reference](api-reference.md).
@@ -134,7 +134,7 @@ app.include_router(fullauth.profile_router, prefix="/api/v1/auth")
 
 ### Middleware
 
-`init_app()` does not add any middleware = import what you need from `fastapi_fullauth.middleware` and add it yourself:
+`init_app()` does not add any middleware; import what you need from `fastapi_fullauth.middleware` and add it yourself:
 
 ```python
 from fastapi_fullauth.middleware import (
@@ -223,11 +223,11 @@ See [Protected Routes](auth/dependencies.md) for all dependency types.
 
 ## What to read next
 
-- **[Architecture](architecture.md)** = understand how the library works (tokens, adapters, protection layers)
-- **[Configuration](configuration.md)** = all config options with production examples
-- **[OAuth2 Social Login](oauth.md)** = add Google/GitHub login
-- **[Passkeys](passkeys.md)** = passwordless login with biometrics
-- **[Event Hooks](auth/hooks.md)** = send emails, log events, sync external systems
-- **[Rate Limiting](security/rate-limiting.md)** = protect your endpoints
-- **[Testing](testing.md)** = test your auth-protected routes
-- **[Troubleshooting](troubleshooting.md)** = common errors and solutions
+- **[Architecture](architecture.md)**: understand how the library works (tokens, adapters, protection layers)
+- **[Configuration](configuration.md)**: all config options with production examples
+- **[OAuth2 Social Login](oauth.md)**: add Google/GitHub login
+- **[Passkeys](passkeys.md)**: passwordless login with biometrics
+- **[Event Hooks](auth/hooks.md)**: send emails, log events, sync external systems
+- **[Rate Limiting](security/rate-limiting.md)**: protect your endpoints
+- **[Testing](testing.md)**: test your auth-protected routes
+- **[Troubleshooting](troubleshooting.md)**: common errors and solutions

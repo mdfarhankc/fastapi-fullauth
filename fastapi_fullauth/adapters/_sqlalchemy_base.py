@@ -525,7 +525,7 @@ class _BaseSQLAlchemyAdapter(
                 await self._insert(session, record)
             except IntegrityError:
                 # Concurrent OAuth callback for the same (provider, provider_user_id)
-                # won the insert. Return the existing row = both callers linked the
+                # won the insert. Return the existing row; both callers linked the
                 # same identity, which is the intended outcome.
                 result = await session.execute(
                     select(oauth_model).where(

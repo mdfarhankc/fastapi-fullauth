@@ -24,26 +24,26 @@
 
 ---
 
-Add a complete authentication and authorization system to your **FastAPI** project. FastAPI FullAuth is designed to be production-ready, async-native, and pluggable = handling JWT tokens, refresh rotation, password hashing, email verification, OAuth2 social login, and role-based access out of the box.
+Add a complete authentication and authorization system to your **FastAPI** project. FastAPI FullAuth is designed to be production-ready, async-native, and pluggable, handling JWT tokens, refresh rotation, password hashing, email verification, OAuth2 social login, and role-based access out of the box.
 
 ## Features
 
 - **JWT access + refresh tokens** with configurable expiry
-- **Refresh token rotation** with reuse detection = revokes entire session family on replay
+- **Refresh token rotation** with reuse detection; revokes entire session family on replay
 - **Password hashing** via Argon2id (default) or bcrypt, with transparent rehashing
 - **Email verification** and **password reset** flows with event hooks
-- **Passkey (WebAuthn)** = passwordless login with fingerprint, Face ID, security keys
-- **OAuth2 social login** = Google and GitHub, with multi-redirect-URI support
-- **Role-based access control** = `current_user`, `require_role()`, `require_permission()`
-- **Rate limiting** = per-route auth limits + global middleware (memory or Redis)
+- **Passkey (WebAuthn)**: passwordless login with fingerprint, Face ID, security keys
+- **OAuth2 social login**: Google and GitHub, with multi-redirect-URI support
+- **Role-based access control**: `current_user`, `require_role()`, `require_permission()`
+- **Rate limiting**: per-route auth limits + global middleware (memory or Redis)
 - **CSRF protection** and **security headers** middleware
-- **Pluggable adapters** = SQLModel or SQLAlchemy
-- **Generic type parameters** = define your own schemas with full IDE support and type safety
-- **Composable routers** = include only the route groups you need
-- **Event hooks** = `after_register`, `after_login`, `send_verification_email`, etc.
-- **Custom JWT claims** = embed app-specific data in tokens
-- **Structured logging** = all auth events, security violations, and failures logged
-- **Redis support** = token blacklist and rate limiter backends
+- **Pluggable adapters**: SQLModel or SQLAlchemy
+- **Generic type parameters**: define your own schemas with full IDE support and type safety
+- **Composable routers**: include only the route groups you need
+- **Event hooks**: `after_register`, `after_login`, `send_verification_email`, etc.
+- **Custom JWT claims**: embed app-specific data in tokens
+- **Structured logging**: all auth events, security violations, and failures logged
+- **Redis support**: token blacklist and rate limiter backends
 - **Python 3.10 - 3.14** supported
 
 ## Installation
@@ -98,7 +98,7 @@ fullauth = FullAuth(
 fullauth.init_app(app)
 ```
 
-That's it = all auth routes are registered under `/api/v1/auth/` automatically.
+That's it; all auth routes are registered under `/api/v1/auth/` automatically.
 
 Omit `config` in dev and a random secret key is generated (tokens won't survive restarts).
 
@@ -333,8 +333,8 @@ See [Configuration docs](https://mdfarhankc.github.io/fastapi-fullauth/configura
 
 Using an AI coding assistant? Point it at our LLM-optimized docs:
 
-- **[llms.txt](https://mdfarhankc.github.io/fastapi-fullauth/llms.txt)** = concise overview with links to all doc pages
-- **[llms-full.txt](https://mdfarhankc.github.io/fastapi-fullauth/llms-full.txt)** = full documentation in a single file
+- **[llms.txt](https://mdfarhankc.github.io/fastapi-fullauth/llms.txt)**: concise overview with links to all doc pages
+- **[llms-full.txt](https://mdfarhankc.github.io/fastapi-fullauth/llms-full.txt)**: full documentation in a single file
 
 Works with Claude, Cursor, Copilot, and any tool that accepts a docs URL.
 

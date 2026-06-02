@@ -47,14 +47,14 @@ FULLAUTH_BLACKLIST_BACKEND=redis
 FULLAUTH_REDIS_URL=redis://localhost:6379/0
 ```
 
-Then `FullAuthConfig()` picks it up = no extra wiring needed.
+Then `FullAuthConfig()` picks it up; no extra wiring needed.
 
 ### Precedence
 
 pydantic-settings resolves values in this order, first wins:
 
-1. Init kwargs = `FullAuthConfig(SECRET_KEY="...")`
-2. Process environment = `os.environ["FULLAUTH_SECRET_KEY"]`
+1. Init kwargs: `FullAuthConfig(SECRET_KEY="...")`
+2. Process environment: `os.environ["FULLAUTH_SECRET_KEY"]`
 3. `.env` file
 4. Field defaults
 
@@ -85,9 +85,9 @@ class AppFullAuthConfig(FullAuthConfig):
 
 ### Cloud / container deployments
 
-You don't need to change anything. Managed platforms (FastAPI Cloud, Fly, Railway, Render), Docker, and Kubernetes inject config as real environment variables = those end up in `os.environ` inside the container. The `.env` default simply doesn't find a file to read and falls through to the process env. No overhead, no surprises.
+You don't need to change anything. Managed platforms (FastAPI Cloud, Fly, Railway, Render), Docker, and Kubernetes inject config as real environment variables; those end up in `os.environ` inside the container. The `.env` default simply doesn't find a file to read and falls through to the process env. No overhead, no surprises.
 
-If you want to be defensively explicit that no file is ever read, pass `FullAuthConfig(_env_file=None)` = but it's not required.
+If you want to be defensively explicit that no file is ever read, pass `FullAuthConfig(_env_file=None)`; but it's not required.
 
 ## Reference
 
@@ -106,7 +106,7 @@ If you want to be defensively explicit that no file is ever read, pass `FullAuth
 | `REFRESH_TOKEN_EXPIRE_DAYS` | `int` | `30` | Refresh token lifetime. |
 | `REFRESH_TOKEN_ROTATION` | `bool` | `True` | Issue new refresh token on each refresh. |
 | `JWT_LEEWAY_SECONDS` | `int` | `30` | Tolerance (seconds) for clock drift between client and server when validating `exp`/`iat`. |
-| `PASSWORD_RESET_EXPIRE_MINUTES` | `int` | `15` | Password-reset token lifetime. Kept short = independent of `ACCESS_TOKEN_EXPIRE_MINUTES`. |
+| `PASSWORD_RESET_EXPIRE_MINUTES` | `int` | `15` | Password-reset token lifetime. Kept short; independent of `ACCESS_TOKEN_EXPIRE_MINUTES`. |
 | `EMAIL_VERIFY_EXPIRE_MINUTES` | `int` | `1440` | Email-verification token lifetime (24 h). |
 
 ### Passwords
@@ -129,12 +129,12 @@ If you want to be defensively explicit that no file is ever read, pass `FullAuth
 ### Rate Limiting
 
 Per-route auth rate limits are baked into the routers. Global request-rate
-middleware (`RateLimitMiddleware`) is opt-in = import it from
+middleware (`RateLimitMiddleware`) is opt-in; import it from
 `fastapi_fullauth.middleware` and call `app.add_middleware(...)` yourself.
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `RATE_LIMIT_BACKEND` | `"memory" \| "redis"` | `"memory"` | Backend used by `AuthRateLimiter` and `create_rate_limiter()`. Use `"redis"` in production = `"memory"` is per-process, so the effective limit is multiplied by the worker count. |
+| `RATE_LIMIT_BACKEND` | `"memory" \| "redis"` | `"memory"` | Backend used by `AuthRateLimiter` and `create_rate_limiter()`. Use `"redis"` in production; `"memory"` is per-process, so the effective limit is multiplied by the worker count. |
 | `TRUSTED_PROXY_HEADERS` | `list[str]` | `[]` | Headers to read real client IP from (e.g. `["X-Forwarded-For"]`). |
 | `AUTH_RATE_LIMIT_ENABLED` | `bool` | `True` | Enable per-route auth rate limits. |
 | `AUTH_RATE_LIMIT_LOGIN` | `int` | `5` | Max login attempts per window. |
@@ -155,7 +155,7 @@ middleware (`RateLimitMiddleware`) is opt-in = import it from
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `BLACKLIST_ENABLED` | `bool` | `True` | Check blacklist on token decode. |
-| `BLACKLIST_BACKEND` | `"memory" \| "redis"` | `"memory"` | Blacklist storage backend. Use `"redis"` in production = `"memory"` is per-process, so a token revoked on one worker remains usable on others (logout won't actually revoke). |
+| `BLACKLIST_BACKEND` | `"memory" \| "redis"` | `"memory"` | Blacklist storage backend. Use `"redis"` in production; `"memory"` is per-process, so a token revoked on one worker remains usable on others (logout won't actually revoke). |
 
 ### Middleware
 
@@ -184,7 +184,7 @@ middleware (`RateLimitMiddleware`) is opt-in = import it from
 | `OAUTH_STATE_EXPIRE_SECONDS` | `int` | `300` | OAuth state token TTL (5 min). |
 | `OAUTH_AUTO_LINK_BY_EMAIL` | `bool` | `True` | Auto-link OAuth accounts to existing users by email. |
 | `OAUTH_PKCE_ENABLED` | `bool` | `True` | Send PKCE (S256) on providers that support it (Google, GitHub). |
-| `PREVENT_REGISTRATION_ENUMERATION` | `bool` | `False` | When `True`, `/register` always returns `202` + a generic message whether or not the email is already registered = an attacker can't use registration responses to probe the user table. Opt-in because the default `201` + user / `409` conflict behavior is simpler for client apps. |
+| `PREVENT_REGISTRATION_ENUMERATION` | `bool` | `False` | When `True`, `/register` always returns `202` + a generic message whether or not the email is already registered; an attacker can't use registration responses to probe the user table. Opt-in because the default `201` + user / `409` conflict behavior is simpler for client apps. |
 
 ### Routing
 
@@ -218,7 +218,7 @@ middleware (`RateLimitMiddleware`) is opt-in = import it from
 | `PASSKEY_RP_ID` | `str \| None` | `None` | Relying Party ID (your domain, e.g. `"example.com"`). |
 | `PASSKEY_RP_NAME` | `str \| None` | `None` | Relying Party display name (e.g. `"My App"`). |
 | `PASSKEY_ORIGINS` | `list[str]` | `[]` | Allowed origins (e.g. `["https://example.com", "https://m.example.com"]`). |
-| `PASSKEY_CHALLENGE_BACKEND` | `"memory" \| "redis"` | `"memory"` | Challenge store backend. Use `"redis"` in production = `"memory"` is per-process and breaks under `uvicorn --workers N` (begin and complete can land on different workers). |
+| `PASSKEY_CHALLENGE_BACKEND` | `"memory" \| "redis"` | `"memory"` | Challenge store backend. Use `"redis"` in production; `"memory"` is per-process and breaks under `uvicorn --workers N` (begin and complete can land on different workers). |
 | `PASSKEY_CHALLENGE_TTL` | `int` | `60` | Challenge expiry in seconds. |
 | `PASSKEY_REQUIRE_USER_VERIFICATION` | `bool` | `True` | Require user verification (PIN/biometric) on register and authenticate. Set `False` only if you need to allow silent authenticators. |
 

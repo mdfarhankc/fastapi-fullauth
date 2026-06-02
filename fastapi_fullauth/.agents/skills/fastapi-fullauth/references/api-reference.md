@@ -1,4 +1,4 @@
-# API reference = cheatsheet
+# API reference: cheatsheet
 
 Single-page lookup for the public API. Deep details live in the topic-specific reference files.
 
@@ -198,7 +198,7 @@ from fastapi_fullauth.middleware.ratelimit import RateLimitMiddleware
 from fastapi_fullauth.middleware.security_headers import SecurityHeadersMiddleware
 ```
 
-None of these are wired by `init_app()` = call `app.add_middleware(...)` yourself. The `CSRFMiddleware` constructor requires `secret` (≥ 32 chars); pass `fullauth.config.CSRF_SECRET or fullauth.config.SECRET_KEY`.
+None of these are wired by `init_app()`; call `app.add_middleware(...)` yourself. The `CSRFMiddleware` constructor requires `secret` (≥ 32 chars); pass `fullauth.config.CSRF_SECRET or fullauth.config.SECRET_KEY`.
 
 ## Hooks
 
@@ -231,10 +231,10 @@ from fastapi_fullauth.utils import (
 
 ## Alembic env.py
 
-The library doesn't own a metadata registry = point Alembic at your project's `Base.metadata` (or `SQLModel.metadata`):
+The library doesn't own a metadata registry; point Alembic at your project's `Base.metadata` (or `SQLModel.metadata`):
 
 ```python
-import app.models  # noqa: F401 = registers all concrete tables
+import app.models  # noqa: F401; registers all concrete tables
 from app.core.db import Base
 
 target_metadata = Base.metadata
@@ -266,7 +266,7 @@ from fastapi_fullauth.exceptions import (
 )
 ```
 
-## Config = all settings
+## Config: all settings
 
 Grouped for readability. All read from env with `FULLAUTH_` prefix.
 
@@ -349,10 +349,10 @@ Grouped for readability. All read from env with `FULLAUTH_` prefix.
 
 ## `FullAuth` public methods
 
-- `init_app(app, *, include_routers=None)` = bind + mount routers. `include_routers=None` mounts every available router; pass a list (e.g. `["auth", "profile"]`) to opt in selectively. Does **not** add middleware. Idempotent.
-- `bind(app)` = sets `app.state.fullauth`.
-- `check_auth_rate_limit(route_name, client_ip)` = manual hit for custom routes.
-- `get_custom_claims(user)` = returns extra JWT claims, validates reserved keys.
+- `init_app(app, *, include_routers=None)`: bind + mount routers. `include_routers=None` mounts every available router; pass a list (e.g. `["auth", "profile"]`) to opt in selectively. Does **not** add middleware. Idempotent.
+- `bind(app)`: sets `app.state.fullauth`.
+- `check_auth_rate_limit(route_name, client_ip)`: manual hit for custom routes.
+- `get_custom_claims(user)`: returns extra JWT claims, validates reserved keys.
 - Router properties: `router`, `auth_router`, `profile_router`, `verify_router`, `admin_router`, `oauth_router`, `passkey_router`.
 - Attributes: `config`, `adapter`, `backends`, `token_engine`, `lockout`, `auth_rate_limiter`, `challenge_store`, `password_validator`, `on_create_token_claims`, `hooks`, `oauth_providers`.
 

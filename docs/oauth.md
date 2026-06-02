@@ -37,7 +37,7 @@ fullauth = FullAuth(
 ```
 
 !!! tip
-    `redirect_uris` is the list of allowed callback URLs. The client must pass `redirect_uri` as a query parameter in the authorize request = the library validates it against this list.
+    `redirect_uris` is the list of allowed callback URLs. The client must pass `redirect_uri` as a query parameter in the authorize request; the library validates it against this list.
 
 ## Routes
 

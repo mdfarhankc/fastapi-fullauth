@@ -10,7 +10,7 @@ The main auth manager. Central entry point for the library.
 from fastapi_fullauth import FullAuth, FullAuthConfig
 
 fullauth = FullAuth(
-    adapter=adapter,                # required = database adapter
+    adapter=adapter,                # required: database adapter
     config=FullAuthConfig(...),     # FullAuthConfig object (see Configuration)
     providers=None,                 # list of OAuthProvider instances
     backends=None,                  # [BearerBackend()] by default

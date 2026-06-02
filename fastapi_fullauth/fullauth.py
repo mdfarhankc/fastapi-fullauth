@@ -116,7 +116,7 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
         if offenders:
             warnings.warn(
                 f"In-memory backends in use: {', '.join(offenders)}. "
-                "State is per-process = logout/revocation, lockouts, rate limits, and "
+                "State is per-process; logout/revocation, lockouts, rate limits, and "
                 "passkey flows will behave inconsistently under multi-worker deployments. "
                 "Set these to 'redis' (and configure REDIS_URL) in production.",
                 UserWarning,
@@ -301,7 +301,7 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
         """
         if getattr(app.state, "_fullauth_app_wired", False):
             warnings.warn(
-                "init_app() called more than once on the same app = ignoring. "
+                "init_app() called more than once on the same app; ignoring. "
                 "Routers are already wired.",
                 UserWarning,
                 stacklevel=2,
