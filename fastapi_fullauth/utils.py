@@ -35,8 +35,19 @@ def normalize_email(email: str) -> str:
 def request_session_metadata(
     request: Request, trusted_headers: list[str] | None = None
 ) -> tuple[str | None, str | None]:
-    """Return ``(user_agent, ip_address)`` for tagging a refresh token / session."""
-    return request.headers.get("user-agent"), get_client_ip(request, trusted_headers)
+    """Return ``(user_agent, ip_address)`` for tagging a refresh token / session.
+
+    Both values are clamped to the storage column widths (user_agent 512,
+    ip_address 45). The User-Agent header is client-controlled and effectively
+    unbounded, so an oversized value would otherwise overflow the column and
+    error the INSERT on strict databases (Postgres/MySQL) during login/refresh.
+    """
+    user_agent = request.headers.get("user-agent")
+    ip_address = get_client_ip(request, trusted_headers)
+    return (
+        user_agent[:512] if user_agent else user_agent,
+        ip_address[:45] if ip_address else ip_address,
+    )
 
 
 def get_client_ip(request: Request, trusted_headers: list[str] | None = None) -> str:

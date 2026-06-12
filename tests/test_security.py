@@ -216,6 +216,38 @@ def test_get_client_ip_falls_back_to_client_host():
     assert get_client_ip(request, None) == "127.0.0.1"
 
 
+def test_request_session_metadata_clamps_to_column_widths():
+    """The client-controlled User-Agent (and a trusted-proxy IP) are clamped to
+    the storage column widths so an oversized value can't overflow the column
+    and 500 the login/refresh INSERT on strict databases."""
+    from fastapi_fullauth.utils import request_session_metadata
+
+    request = MagicMock()
+    request.headers = {
+        "user-agent": "A" * 1000,
+        "X-Forwarded-For": "1" * 100,
+    }
+    request.client.host = "127.0.0.1"
+
+    user_agent, ip_address = request_session_metadata(request, ["X-Forwarded-For"])
+    assert user_agent == "A" * 512
+    assert ip_address == "1" * 45
+
+
+def test_request_session_metadata_passes_through_normal_values():
+    """Values within the limits are returned unchanged; a missing User-Agent
+    stays None rather than becoming an empty string."""
+    from fastapi_fullauth.utils import request_session_metadata
+
+    request = MagicMock()
+    request.headers = {}
+    request.client.host = "203.0.113.7"
+
+    user_agent, ip_address = request_session_metadata(request, [])
+    assert user_agent is None
+    assert ip_address == "203.0.113.7"
+
+
 # Redis rate limiter
 
 
