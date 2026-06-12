@@ -215,9 +215,14 @@ async def issue_oauth_tokens(
     adapter: AbstractUserAdapter,
     token_engine: TokenEngine,
     user: UserSchema,
+    *,
+    user_agent: str | None = None,
+    ip_address: str | None = None,
 ) -> TokenPair:
     """Issue JWT token pair for an OAuth-authenticated user."""
-    return await issue_token_pair(adapter, token_engine, user)
+    return await issue_token_pair(
+        adapter, token_engine, user, user_agent=user_agent, ip_address=ip_address
+    )
 
 
 async def oauth_callback(
@@ -228,6 +233,8 @@ async def oauth_callback(
     state: str,
     auto_link_by_email: bool = True,
     pkce_enabled: bool = True,
+    user_agent: str | None = None,
+    ip_address: str | None = None,
 ) -> tuple[TokenPair, UserSchema, bool, OAuthUserInfo]:
     """Full OAuth callback flow. Delegates to smaller functions."""
     provider_tokens, info = await exchange_oauth_code(
@@ -243,6 +250,8 @@ async def oauth_callback(
     else:
         logger.info("OAuth login: provider=%s, user_id=%s", info.provider, user.id)
 
-    token_pair = await issue_oauth_tokens(adapter, token_engine, user)
+    token_pair = await issue_oauth_tokens(
+        adapter, token_engine, user, user_agent=user_agent, ip_address=ip_address
+    )
 
     return token_pair, user, is_new_user, info

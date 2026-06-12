@@ -32,6 +32,13 @@ def normalize_email(email: str) -> str:
     return email.strip().lower()
 
 
+def request_session_metadata(
+    request: Request, trusted_headers: list[str] | None = None
+) -> tuple[str | None, str | None]:
+    """Return ``(user_agent, ip_address)`` for tagging a refresh token / session."""
+    return request.headers.get("user-agent"), get_client_ip(request, trusted_headers)
+
+
 def get_client_ip(request: Request, trusted_headers: list[str] | None = None) -> str:
     """Extract the real client IP, checking trusted proxy headers first.
 

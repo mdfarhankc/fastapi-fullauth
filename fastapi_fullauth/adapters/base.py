@@ -6,6 +6,7 @@ from fastapi_fullauth.types import (
     OAuthAccount,
     PasskeyCredential,
     RefreshToken,
+    SessionInfo,
     UserID,
     UserSchemaType,
 )
@@ -153,6 +154,33 @@ class OAuthAdapterMixin(ABC):
 
     @abstractmethod
     async def delete_oauth_account(self, provider: str, provider_user_id: str) -> None: ...
+
+
+class SessionAdapterMixin(ABC):
+    """Mixin for user session management. Inherit alongside AbstractUserAdapter.
+
+    A session is one refresh-token family. The built-in SQL adapters implement
+    this automatically; custom adapters inherit it to expose the sessions router.
+    """
+
+    @abstractmethod
+    async def list_user_sessions(self, user_id: UserID) -> list[SessionInfo]:
+        """Return the user's active sessions (live refresh-token families),
+        most recently used first."""
+        ...
+
+    @abstractmethod
+    async def revoke_user_session(self, user_id: UserID, family_id: str) -> bool:
+        """Revoke one of the user's sessions. Returns True if a session with that
+        family_id existed for the user (idempotent), False if it did not = the
+        caller is not the owner, so the route answers 404."""
+        ...
+
+    @abstractmethod
+    async def revoke_user_sessions_except(self, user_id: UserID, keep_family_id: str) -> int:
+        """Revoke all of the user's live sessions except ``keep_family_id``.
+        Returns the number of refresh tokens revoked."""
+        ...
 
 
 class PasskeyAdapterMixin(ABC):

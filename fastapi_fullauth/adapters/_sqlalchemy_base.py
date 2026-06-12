@@ -26,6 +26,7 @@ from fastapi_fullauth.adapters.base import (
     PasskeyAdapterMixin,
     PermissionAdapterMixin,
     RoleAdapterMixin,
+    SessionAdapterMixin,
 )
 from fastapi_fullauth.exceptions import UserAlreadyExistsError
 from fastapi_fullauth.types import (
@@ -33,6 +34,7 @@ from fastapi_fullauth.types import (
     OAuthAccount,
     PasskeyCredential,
     RefreshToken,
+    SessionInfo,
     UserID,
     UserSchemaType,
 )
@@ -41,12 +43,18 @@ from fastapi_fullauth.utils import normalize_email
 _T = TypeVar("_T")
 
 
+def _as_aware(dt: datetime) -> datetime:
+    """Treat a naive datetime (some drivers drop tzinfo on read) as UTC."""
+    return dt if dt.tzinfo is not None else dt.replace(tzinfo=timezone.utc)
+
+
 class _BaseSQLAlchemyAdapter(
     AbstractUserAdapter[UserSchemaType, CreateUserSchemaType],
     RoleAdapterMixin,
     PermissionAdapterMixin,
     OAuthAdapterMixin,
     PasskeyAdapterMixin,
+    SessionAdapterMixin,
 ):
     """Concrete async adapter logic shared by the SQLAlchemy and SQLModel adapters.
 
@@ -292,6 +300,8 @@ class _BaseSQLAlchemyAdapter(
                 family_id=token.family_id,
                 expires_at=token.expires_at,
                 revoked=token.revoked,
+                user_agent=token.user_agent,
+                ip_address=token.ip_address,
             )
             session.add(db_token)
             await self._commit(session)
@@ -312,6 +322,8 @@ class _BaseSQLAlchemyAdapter(
                 expires_at=row.expires_at,
                 family_id=row.family_id,
                 revoked=row.revoked,
+                user_agent=row.user_agent,
+                ip_address=row.ip_address,
             )
 
     async def revoke_refresh_token(self, token_str: str) -> bool:
@@ -342,6 +354,65 @@ class _BaseSQLAlchemyAdapter(
                 .values(revoked=True)
             )
             await self._commit(session)
+
+    async def list_user_sessions(self, user_id: UserID) -> list[SessionInfo]:
+        model = self._refresh_token_model
+        now = datetime.now(timezone.utc)
+        async with self._begin() as session:
+            result = await session.execute(
+                select(model).where(model.user_id == user_id).order_by(model.created_at)
+            )
+            rows = result.scalars().all()
+
+        # Group every token by family, then keep families that still have a
+        # live token. created_at = family birth, last_used_at = newest rotation.
+        families: dict[str, list[Any]] = {}
+        for row in rows:
+            families.setdefault(row.family_id, []).append(row)
+
+        sessions: list[SessionInfo] = []
+        for family_id, tokens in families.items():
+            live = [t for t in tokens if not t.revoked and _as_aware(t.expires_at) > now]
+            if not live:
+                continue
+            newest = max(live, key=lambda t: t.created_at)
+            sessions.append(
+                SessionInfo(
+                    family_id=family_id,
+                    ip_address=newest.ip_address,
+                    user_agent=newest.user_agent,
+                    created_at=_as_aware(min(t.created_at for t in tokens)),
+                    last_used_at=_as_aware(max(t.created_at for t in tokens)),
+                    expires_at=_as_aware(newest.expires_at),
+                )
+            )
+        sessions.sort(key=lambda s: s.last_used_at, reverse=True)
+        return sessions
+
+    async def revoke_user_session(self, user_id: UserID, family_id: str) -> bool:
+        model = self._refresh_token_model
+        async with self._begin() as session:
+            result = await session.execute(
+                update(model)
+                .where(model.user_id == user_id)
+                .where(model.family_id == family_id)
+                .values(revoked=True)
+            )
+            await self._commit(session)
+            return result.rowcount > 0
+
+    async def revoke_user_sessions_except(self, user_id: UserID, keep_family_id: str) -> int:
+        model = self._refresh_token_model
+        async with self._begin() as session:
+            result = await session.execute(
+                update(model)
+                .where(model.user_id == user_id)
+                .where(model.family_id != keep_family_id)
+                .where(model.revoked.is_(False))
+                .values(revoked=True)
+            )
+            await self._commit(session)
+            return int(result.rowcount)
 
     async def set_user_verified(self, user_id: UserID) -> None:
         async with self._begin() as session:

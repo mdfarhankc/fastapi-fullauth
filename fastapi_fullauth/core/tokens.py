@@ -28,6 +28,7 @@ class TokenEngine:
         roles: list[str] | None = None,
         extra: dict[str, Any] | None = None,
         expire_seconds: int | None = None,
+        family_id: str | None = None,
     ) -> str:
         if self.config.SECRET_KEY is None:
             raise RuntimeError("SECRET_KEY must be set to create tokens")
@@ -45,6 +46,10 @@ class TokenEngine:
             "roles": roles or [],
             "extra": extra or {},
         }
+        # Carry the refresh-token family so the session list can flag the
+        # device the caller is currently on. Omitted when unknown.
+        if family_id is not None:
+            payload["family_id"] = family_id
         return jwt.encode(payload, self.config.SECRET_KEY, algorithm=self.config.ALGORITHM)
 
     def create_refresh_token(
@@ -112,8 +117,10 @@ class TokenEngine:
         extra: dict[str, Any] | None = None,
         family_id: str | None = None,
     ) -> tuple[str, RefreshTokenMeta]:
-        access = self.create_access_token(user_id, roles, extra)
+        # Create the refresh token first so its resolved family_id (freshly
+        # minted when none was passed) can be stamped onto the access token too.
         refresh = self.create_refresh_token(user_id, family_id)
+        access = self.create_access_token(user_id, roles, extra, family_id=refresh.family_id)
         return access, refresh
 
 
