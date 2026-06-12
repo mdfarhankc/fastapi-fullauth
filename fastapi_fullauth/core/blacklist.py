@@ -2,7 +2,10 @@
 pattern matches ``protection/lockout.py`` and ``protection/ratelimit.py``.
 """
 
+import logging
 import time
+
+logger = logging.getLogger("fastapi_fullauth.blacklist")
 
 
 class TokenBlacklist:
@@ -56,7 +59,18 @@ class RedisTokenBlacklist(TokenBlacklist):
         )
 
     async def is_blacklisted(self, jti: str) -> bool:
-        return bool(await self._redis.exists(f"{self._prefix}{jti}") > 0)
+        try:
+            return bool(await self._redis.exists(f"{self._prefix}{jti}") > 0)
+        except Exception:
+            # Fail closed: if we can't confirm a token is NOT revoked, treat it as
+            # revoked so a leaked/blacklisted token can't slip through during a
+            # Redis outage. The caller surfaces this as an auth failure, not a 500.
+            logger.error(
+                "Blacklist Redis error; treating token as revoked (fail-closed): jti=%s",
+                jti,
+                exc_info=True,
+            )
+            return True
 
     async def aclose(self) -> None:
         await self._redis.aclose()

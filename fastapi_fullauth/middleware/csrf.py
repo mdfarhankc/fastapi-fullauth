@@ -60,6 +60,12 @@ class CSRFMiddleware(BaseHTTPMiddleware):
                 "Pass your FullAuthConfig SECRET_KEY (or a dedicated key)."
             )
 
+        if cookie_samesite == "none" and not cookie_secure:
+            raise ValueError(
+                "CSRFMiddleware with cookie_samesite='none' requires cookie_secure=True; "
+                "browsers reject a SameSite=None cookie that is not also Secure."
+            )
+
         self.secret = secret
         self.cookie_name = cookie_name
         self.exempt_paths: list[str] = exempt_paths or []

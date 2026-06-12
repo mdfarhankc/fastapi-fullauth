@@ -22,6 +22,14 @@ def _httpx_set_cookies(response) -> list[str]:
     return response.headers.get_list("set-cookie")
 
 
+def test_cookie_backend_rejects_samesite_none_without_secure():
+    """A SameSite=None cookie without Secure is dropped by browsers; reject the
+    misconfiguration at construction instead of silently breaking auth."""
+    config = FullAuthConfig(SECRET_KEY="test-secret-key-that-is-long-enough-32b")
+    with pytest.raises(ValueError, match="secure=True"):
+        CookieBackend(config, samesite="none", secure=False)
+
+
 @pytest.mark.asyncio
 async def test_delete_token_matches_write_token_attributes():
     """Both set-cookies (write and delete) must share secure/samesite/path/domain

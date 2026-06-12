@@ -21,6 +21,11 @@ class CookieBackend(AbstractBackend):
         samesite: Literal["lax", "strict", "none"] = "lax",
         domain: str | None = None,
     ) -> None:
+        if samesite == "none" and not secure:
+            raise ValueError(
+                "CookieBackend with samesite='none' requires secure=True; browsers "
+                "reject a SameSite=None cookie that is not also Secure."
+            )
         self.config = config
         self.name = name
         self.refresh_name = refresh_name

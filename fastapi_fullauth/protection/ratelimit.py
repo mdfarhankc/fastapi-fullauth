@@ -1,4 +1,5 @@
 import logging
+import secrets
 import time
 from collections import defaultdict, deque
 from typing import TYPE_CHECKING, Any
@@ -85,22 +86,34 @@ class RedisRateLimiter:
         now = time.time()
         cutoff = now - self.window_seconds
 
-        # cleanup + count in one pipeline
-        pipe = self._redis.pipeline()
-        pipe.zremrangebyscore(redis_key, "-inf", cutoff)
-        pipe.zcard(redis_key)
-        results = await pipe.execute()
+        try:
+            # cleanup + count in one pipeline
+            pipe = self._redis.pipeline()
+            pipe.zremrangebyscore(redis_key, "-inf", cutoff)
+            pipe.zcard(redis_key)
+            results = await pipe.execute()
 
-        count = results[1]
-        if count >= self.max_requests:
-            return False
+            count = results[1]
+            if count >= self.max_requests:
+                return False
 
-        # only add if allowed
-        pipe = self._redis.pipeline()
-        pipe.zadd(redis_key, {f"{now}": now})
-        pipe.expire(redis_key, self.window_seconds)
-        await pipe.execute()
-        return True
+            # Only add if allowed. The sorted-set member must be unique per hit;
+            # using the bare timestamp would collide for requests in the same
+            # clock tick, so zadd would overwrite instead of count them and the
+            # limit could be exceeded under concurrency. Add a random suffix.
+            member = f"{now}:{secrets.token_hex(8)}"
+            pipe = self._redis.pipeline()
+            pipe.zadd(redis_key, {member: now})
+            pipe.expire(redis_key, self.window_seconds)
+            await pipe.execute()
+            return True
+        except Exception:
+            # Fail open: a Redis outage must not lock every client out of login.
+            # We trade rate-limit enforcement for availability and log loudly so
+            # the outage is visible. (The token blacklist, by contrast, fails
+            # closed - see RedisTokenBlacklist.is_blacklisted.)
+            logger.error("Rate limiter Redis error; allowing request (fail-open)", exc_info=True)
+            return True
 
     async def remaining(self, key: str) -> int:
         redis_key = f"{self._prefix}{key}"

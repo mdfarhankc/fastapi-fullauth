@@ -53,7 +53,16 @@ class AbstractUserAdapter(ABC, Generic[UserSchemaType, CreateUserSchemaType]):
     ) -> UserSchemaType: ...
 
     @abstractmethod
-    async def update_user(self, user_id: UserID, data: dict[str, Any]) -> UserSchemaType: ...
+    async def update_user(self, user_id: UserID, data: dict[str, Any]) -> UserSchemaType:
+        """Apply ``data`` to the user row.
+
+        WARNING: this writes ``data`` verbatim and performs no field filtering -
+        it can set privileged columns (``is_superuser``, ``is_verified``,
+        ``hashed_password``). The profile route filters request input through
+        ``validate_profile_updates`` (``PROTECTED_FIELDS``) before calling this.
+        Never pass an unfiltered request body straight to ``update_user``.
+        """
+        ...
 
     @abstractmethod
     async def delete_user(self, user_id: UserID) -> None: ...

@@ -11,8 +11,18 @@
 
 - **`TokenPair.refresh_token` is now `str | None`.** It stays populated under the default bearer transport; it is `null` when a cookie backend carries the refresh token (the token lives only in the HttpOnly cookie). Clients that read `refresh_token` from the body in bearer mode are unaffected.
 
+### Security
+
+- **Logout now ends the session from the access token alone.** Previously `/logout` only blacklisted the short-lived access token and revoked the refresh-token family *only if* the client re-sent the refresh token, so a bearer client logging out with just its `Authorization` header left the refresh family alive and able to mint new access tokens until natural expiry. Logout now revokes the family using the `family_id` carried on the access token, with the refresh-token path kept as a fallback for older tokens.
+- **OAuth `state` is single-use.** The state token is now burned on first use at the callback, so a captured `(code, state)` pair can't be replayed within the state's TTL (requires the token blacklist, on by default).
+- **Token-role confinement is centralised in `decode_token`.** `decode_token` gained `expected_type` / `expected_purpose` checks, now used by the session, refresh, email-verify, and password-reset paths, so a token minted for one role can't be accepted for another.
+- **Explicit Redis failure policy.** The token blacklist now **fails closed** (a Redis outage treats a token as revoked rather than letting a possibly-revoked token through), while the rate limiter **fails open** (a Redis outage allows the request rather than locking every client out of login). Both log the backend error.
+
 ### Fixed
 
+- **Revocations no longer over-retain in the blacklist.** Logout, email-verification, and password-reset revocations passed no TTL, which made the in-memory blacklist grow without bound and made the Redis blacklist expire a long-lived verify/reset token after the short default TTL — letting it be replayed before its real expiry. Each revocation is now blacklisted for exactly the token's remaining lifetime.
+- **Redis rate limiter no longer undercounts bursts.** The sliding-window sorted-set used the bare timestamp as the member, so requests within the same clock tick collided and were counted once, letting the limit be exceeded under concurrency. Each hit now uses a unique member.
+- **Cookie misconfiguration is rejected early.** `CookieBackend` and `CSRFMiddleware` now raise if `samesite="none"` is set without `secure=True` (browsers silently drop such a cookie, which would break auth).
 - **`bcrypt` is now an installable extra.** `PASSWORD_HASH_ALGORITHM="bcrypt"` was selectable but the `bcrypt` package was never declared as a dependency, so choosing it raised a bare `ImportError` at the first hash. Install it with `pip install fastapi-fullauth[bcrypt]` (it's also bundled in the `sqlmodel-standard` / `sqlalchemy-standard` extras). Hashing or verifying a bcrypt hash without the package now raises an actionable install hint instead of a bare error, and verifying a stored bcrypt hash no longer fails the login silently when the package is missing.
 
 ## 0.13.0

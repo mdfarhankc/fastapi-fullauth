@@ -105,6 +105,22 @@ async def test_csrf_rejects_wrong_token(csrf_app):
         assert r.status_code == 403
 
 
+def test_csrf_middleware_rejects_samesite_none_without_secure():
+    """A SameSite=None CSRF cookie without Secure is dropped by browsers; reject
+    the misconfiguration at construction."""
+
+    async def _dummy_app(scope, receive, send):  # minimal ASGI app
+        return None
+
+    with pytest.raises(ValueError, match="cookie_secure=True"):
+        CSRFMiddleware(
+            _dummy_app,
+            secret="test-csrf-secret-that-is-at-least-32-chars-long",
+            cookie_samesite="none",
+            cookie_secure=False,
+        )
+
+
 # Rate limit middleware
 
 
@@ -330,6 +346,66 @@ async def test_redis_rate_limiter_middleware():
             assert r.status_code == 200
         r = await client.get("/test")
         assert r.status_code == 429
+
+
+@pytest.mark.asyncio
+async def test_redis_rate_limiter_counts_hits_in_the_same_clock_tick():
+    """Two requests landing in the same time.time() tick must both count. If the
+    sorted-set member were the bare timestamp they'd collide and zadd would
+    overwrite, letting the limit be exceeded under concurrency."""
+    from unittest.mock import patch
+
+    import fakeredis.aioredis
+
+    from fastapi_fullauth.protection.ratelimit import RedisRateLimiter
+
+    limiter = RedisRateLimiter.__new__(RedisRateLimiter)
+    limiter.max_requests = 3
+    limiter.window_seconds = 60
+    limiter._redis = fakeredis.aioredis.FakeRedis(decode_responses=True)
+    limiter._prefix = "fullauth:ratelimit:"
+
+    # Freeze the clock so every hit shares one timestamp.
+    with patch("fastapi_fullauth.protection.ratelimit.time.time", return_value=1000.0):
+        for _ in range(3):
+            assert await limiter.is_allowed("same-tick-ip") is True
+        assert await limiter.is_allowed("same-tick-ip") is False
+
+
+@pytest.mark.asyncio
+async def test_redis_rate_limiter_fails_open_on_redis_error():
+    """A Redis outage must not lock everyone out: the limiter allows the request."""
+    from fastapi_fullauth.protection.ratelimit import RedisRateLimiter
+
+    class _BoomRedis:
+        def pipeline(self):
+            raise RuntimeError("redis down")
+
+    limiter = RedisRateLimiter.__new__(RedisRateLimiter)
+    limiter.max_requests = 1
+    limiter.window_seconds = 60
+    limiter._redis = _BoomRedis()
+    limiter._prefix = "fullauth:ratelimit:"
+
+    assert await limiter.is_allowed("any-ip") is True
+
+
+@pytest.mark.asyncio
+async def test_redis_blacklist_fails_closed_on_redis_error():
+    """A Redis outage must not let a possibly-revoked token through: treat as
+    blacklisted."""
+    from fastapi_fullauth.core.blacklist import RedisTokenBlacklist
+
+    class _BoomRedis:
+        async def exists(self, *args):
+            raise RuntimeError("redis down")
+
+    bl = RedisTokenBlacklist.__new__(RedisTokenBlacklist)
+    bl._redis = _BoomRedis()
+    bl._default_ttl = 1800
+    bl._prefix = "fullauth:blacklist:"
+
+    assert await bl.is_blacklisted("some-jti") is True
 
 
 # Account lockout
