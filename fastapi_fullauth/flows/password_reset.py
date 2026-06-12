@@ -40,11 +40,9 @@ async def reset_password(
     hash_algorithm: Literal["argon2id", "bcrypt"] = "argon2id",
     password_validator: PasswordValidator | None = None,
 ) -> UserSchema | None:
-    payload = await token_engine.decode_token(token)
-
-    if payload.extra.get("purpose") != "password_reset":
-        logger.warning("Invalid password reset token (wrong purpose)")
-        raise TokenError("Invalid password reset token")
+    payload = await token_engine.decode_token(
+        token, expected_type="access", expected_purpose="password_reset"
+    )
 
     if password_validator:
         password_validator.validate(new_password)
@@ -62,8 +60,8 @@ async def reset_password(
     hashed = hash_password(new_password, algorithm=hash_algorithm)
     await adapter.set_password(user.id, hashed)
 
-    # Blacklist the reset token so it can't be reused
-    await token_engine.blacklist_token(payload.jti)
+    # Blacklist the reset token so it can't be reused, for its remaining lifetime
+    await token_engine.blacklist_payload(payload)
 
     # Revoke all existing sessions so stolen tokens can't be used
     await adapter.revoke_all_user_refresh_tokens(user.id)

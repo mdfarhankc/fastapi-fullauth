@@ -233,6 +233,37 @@ async def test_oauth_links_existing_user(adapter, config):
 
 
 @pytest.mark.asyncio
+async def test_oauth_state_is_single_use(adapter, config):
+    """A state token must not be replayable: a second callback with the same
+    state is rejected even though the first succeeded."""
+    from fastapi_fullauth.core.tokens import TokenEngine
+    from fastapi_fullauth.exceptions import TokenError
+
+    engine = TokenEngine(config=config)
+    provider = MockOAuthProvider()
+    state = generate_oauth_state(engine)
+
+    # first use succeeds
+    await oauth_callback(
+        adapter=adapter,
+        token_engine=engine,
+        provider=provider,
+        code="test-code",
+        state=state,
+    )
+
+    # replaying the same state is rejected (it was burned on first use)
+    with pytest.raises(TokenError):
+        await oauth_callback(
+            adapter=adapter,
+            token_engine=engine,
+            provider=provider,
+            code="test-code",
+            state=state,
+        )
+
+
+@pytest.mark.asyncio
 async def test_oauth_unverified_email_refuses_link_to_existing_account(adapter, config):
     from fastapi_fullauth.core.crypto import hash_password
     from fastapi_fullauth.core.tokens import TokenEngine

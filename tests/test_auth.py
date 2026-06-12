@@ -462,11 +462,11 @@ async def test_refresh_reuse_caught_by_explicit_blacklist_check():
         original_decode = fullauth.token_engine.decode_token
         blacklist = fullauth.token_engine.blacklist
 
-        async def decode_skipping_blacklist(token):
+        async def decode_skipping_blacklist(token, **kwargs):
             # temporarily disable blacklist during decode
             fullauth.token_engine.blacklist = type(blacklist)()
             try:
-                return await original_decode(token)
+                return await original_decode(token, **kwargs)
             finally:
                 fullauth.token_engine.blacklist = blacklist
 
@@ -574,6 +574,46 @@ async def test_logout_without_body_still_works():
             headers={"Authorization": f"Bearer {token}"},
         )
         assert r.status_code == 204
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_logout_without_refresh_token_ends_the_session():
+    """Logout with only the access token (no refresh in the body) must still end
+    the session: the family is revoked via the access token's family_id, and the
+    refresh token can no longer mint new tokens."""
+    app, adapter, _, engine = await _make_app()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        await client.post(
+            "/api/v1/auth/register",
+            json={"email": "t@t.com", "password": "securepass123"},
+        )
+        r = await client.post(
+            "/api/v1/auth/login",
+            json={"email": "t@t.com", "password": "securepass123"},
+        )
+        tokens = r.json()
+
+        # Log out presenting ONLY the access token - no refresh_token body.
+        r = await client.post(
+            "/api/v1/auth/logout",
+            headers={"Authorization": f"Bearer {tokens['access_token']}"},
+        )
+        assert r.status_code == 204
+
+        # The refresh-token family is revoked...
+        stored = await adapter.get_refresh_token(tokens["refresh_token"])
+        assert stored is not None
+        assert stored.revoked is True
+
+        # ...so the refresh token can no longer be used.
+        r = await client.post(
+            "/api/v1/auth/refresh",
+            json={"refresh_token": tokens["refresh_token"]},
+        )
+        assert r.status_code == 401
 
     await engine.dispose()
 

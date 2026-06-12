@@ -182,11 +182,10 @@ def create_auth_router(
             raise CREDENTIALS_EXCEPTION
 
         try:
-            payload = await fullauth.token_engine.decode_token(refresh_token)
+            payload = await fullauth.token_engine.decode_token(
+                refresh_token, expected_type="refresh"
+            )
         except TokenError:
-            raise CREDENTIALS_EXCEPTION
-
-        if payload.type != "refresh":
             raise CREDENTIALS_EXCEPTION
 
         try:
@@ -270,7 +269,7 @@ def create_auth_router(
         data: LogoutRequest | None = Body(None),
     ) -> Response:
         try:
-            payload = await fullauth.token_engine.decode_token(token)
+            payload = await fullauth.token_engine.decode_token(token, expected_type="access")
         except TokenError:
             raise CREDENTIALS_EXCEPTION
 

@@ -74,7 +74,7 @@ def build_authorization_url(
 
 
 async def verify_oauth_state(token_engine: TokenEngine, state: str) -> str | None:
-    payload = await token_engine.decode_token(state)
+    payload = await token_engine.decode_token(state, expected_type="access")
     if payload.extra.get("purpose") != "oauth_state":
         logger.warning("Invalid OAuth state token (wrong purpose)")
         raise OAuthProviderError("Invalid OAuth state token")
@@ -90,10 +90,15 @@ async def exchange_oauth_code(
     pkce_enabled: bool = True,
 ) -> tuple[dict[str, Any], OAuthUserInfo]:
     """Verify state and exchange authorization code for user info."""
-    payload = await token_engine.decode_token(state)
+    payload = await token_engine.decode_token(state, expected_type="access")
     if payload.extra.get("purpose") != "oauth_state":
         logger.warning("Invalid OAuth state token (wrong purpose)")
         raise OAuthProviderError("Invalid OAuth state token")
+
+    # Single-use: burn the state so a captured (code, state) pair can't be
+    # replayed within the state's TTL. Decoding it again raises TokenBlacklisted.
+    if token_engine.config.BLACKLIST_ENABLED:
+        await token_engine.blacklist_payload(payload)
 
     redirect_uri = payload.extra.get("redirect_uri") or provider.redirect_uris[0]
 

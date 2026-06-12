@@ -43,13 +43,12 @@ async def current_user(
     from fastapi_fullauth.exceptions import TokenError
 
     try:
-        payload = await fullauth.token_engine.decode_token(token)
+        payload = await fullauth.token_engine.decode_token(token, expected_type="access")
     except TokenError:
         raise CREDENTIALS_EXCEPTION
 
-    if payload.type != "access":
-        raise CREDENTIALS_EXCEPTION
-
+    # A session token must not carry a purpose (password-reset, email-verify,
+    # oauth-state tokens are access-typed but purpose-scoped).
     if payload.extra.get("purpose"):
         raise CREDENTIALS_EXCEPTION
 

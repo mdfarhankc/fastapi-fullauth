@@ -83,3 +83,49 @@ async def test_missing_required_claim_rejected(engine):
     )
     with pytest.raises(TokenError):
         await engine.decode_token(token)
+
+
+@pytest.mark.asyncio
+async def test_decode_token_enforces_expected_type(engine):
+    from fastapi_fullauth.exceptions import TokenError
+
+    access = engine.create_access_token("user-123")
+    refresh = engine.create_refresh_token("user-123").token
+
+    # A refresh token must be rejected where an access token is required.
+    with pytest.raises(TokenError):
+        await engine.decode_token(refresh, expected_type="access")
+    # ...and vice versa.
+    with pytest.raises(TokenError):
+        await engine.decode_token(access, expected_type="refresh")
+    # Matching type still decodes.
+    assert (await engine.decode_token(access, expected_type="access")).sub == "user-123"
+
+
+@pytest.mark.asyncio
+async def test_decode_token_enforces_expected_purpose(engine):
+    from fastapi_fullauth.exceptions import TokenError
+
+    reset = engine.create_access_token("user-123", extra={"purpose": "password_reset"})
+
+    # Wrong purpose is rejected.
+    with pytest.raises(TokenError):
+        await engine.decode_token(reset, expected_purpose="email_verify")
+    # A purpose-scoped token is rejected where no purpose is wanted is the
+    # caller's job (current_user checks that); here, matching purpose decodes.
+    assert (await engine.decode_token(reset, expected_purpose="password_reset")).sub == "user-123"
+
+
+@pytest.mark.asyncio
+async def test_blacklist_payload_bounds_ttl(engine):
+    """blacklist_payload must store a finite expiry, never None (which would make
+    the in-memory store grow without bound)."""
+    token = engine.create_access_token("user-123")
+    payload = await engine.decode_token(token)
+
+    await engine.blacklist_payload(payload)
+
+    stored = engine.blacklist._blacklisted[payload.jti]
+    assert stored is not None  # bounded, self-expiring entry
+    with pytest.raises(TokenBlacklistedError):
+        await engine.decode_token(token)
