@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="https://img.icons8.com/fluency/96/shield.png" alt="FastAPI FullAuth" width="96" height="96">
+  <img src="https://img.icons8.com/fluency/96/shield.png" alt="FastAPI FullAuth" width="80" height="80">
 </p>
 
-<h1 align="center">FastAPI FullAuth</h1>
+<h1 align="center" style="margin-bottom: 0.2rem;">FastAPI FullAuth</h1>
 
 <p align="center">
   <em>Production-grade, async-native authentication and authorization for FastAPI.</em>
@@ -15,151 +15,131 @@
   <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/license-MIT-009688" alt="License"></a>
 </p>
 
-<p align="center">
-  <strong>Documentation</strong>: <a href="https://mdfarhankc.github.io/fastapi-fullauth">https://mdfarhankc.github.io/fastapi-fullauth</a>
-  <br>
-  <strong>Source Code</strong>: <a href="https://github.com/mdfarhankc/fastapi-fullauth">https://github.com/mdfarhankc/fastapi-fullauth</a>
-</p>
+<div class="hero-buttons" markdown>
+[Get started](getting-started.md){ .md-button .md-button--primary }
+[Architecture](architecture.md){ .md-button }
+[GitHub](https://github.com/mdfarhankc/fastapi-fullauth){ .md-button }
+</div>
 
 ---
 
-Add a complete authentication and authorization system to your **FastAPI** project. FastAPI FullAuth is designed to be production-ready, async-native, and pluggable, handling JWT tokens, refresh rotation, password hashing, email verification, OAuth2 social login, and role-based access out of the box.
+Add a complete authentication and authorization system to your **FastAPI** project. FastAPI FullAuth is async-native and pluggable: JWT tokens, refresh rotation, password hashing, email verification, OAuth2 social login, passkeys, and role-based access, all opt-in.
 
-## Features
+## Why FastAPI FullAuth
 
-- **JWT access + refresh tokens** with configurable expiry
-- **Refresh token rotation** with reuse detection (revokes entire session family on replay)
-- **Password hashing** via Argon2id (default) or bcrypt
-- **Email verification** and **password reset** flows with event hooks
-- **Passkey (WebAuthn)**: passwordless login with fingerprint, Face ID, security keys
-- **OAuth2 social login**: Google and GitHub, with multi-redirect-URI support
-- **Role-based access control**: `current_user`, `require_role()`, `require_permission()`
-- **Rate limiting**: per-route auth limits + global middleware (memory or Redis)
-- **CSRF protection** and **security headers** middleware
-- **Pluggable adapters**: SQLModel or SQLAlchemy
-- **Generic type parameters**: define your own schemas with full IDE support and type safety
-- **Composable routers**: include only the route groups you need
-- **Event hooks**: `after_register`, `after_login`, `send_verification_email`, etc.
-- **Custom JWT claims**: embed app-specific data in tokens
-- **Redis support**: token blacklist and rate limiter backends
-- **Python 3.10 - 3.14** supported
+<div class="grid cards" markdown>
 
-## Installation
+- **Async-native**
+
+    Built for `async`/`await` end to end on SQLAlchemy or SQLModel, with no sync bridges.
+
+- **Secure by default**
+
+    Argon2id hashing, refresh-token rotation with reuse detection, and account lockout out of the box.
+
+- **Pluggable, not prescriptive**
+
+    Bring your own user schema, adapter, and backends. Include only the routers you need.
+
+- **Fully typed**
+
+    Generic over your user schema, ships `py.typed`, and checked under `mypy --strict`.
+
+</div>
+
+## Install
 
 ```bash
-pip install fastapi-fullauth
-
-# with an ORM adapter
 pip install fastapi-fullauth[sqlmodel]
-pip install fastapi-fullauth[sqlalchemy]
-
-# with redis for token blacklisting
-pip install fastapi-fullauth[sqlmodel,redis]
-
-# with OAuth2 social login
-pip install fastapi-fullauth[sqlmodel,oauth]
-
-# every feature on one adapter (or [sqlalchemy-standard])
-pip install fastapi-fullauth[sqlmodel-standard]
 ```
 
-## Example
+[Getting Started](getting-started.md) covers the SQLAlchemy, OAuth, passkey, Redis, and bcrypt extras.
+
+## Quick example
 
 ```python
 from fastapi import FastAPI
+from sqlmodel import Relationship
+
 from fastapi_fullauth import FullAuth, FullAuthConfig
-from fastapi_fullauth.adapters.sqlmodel import SQLModelAdapter
+from fastapi_fullauth.adapters import SQLModelAdapter
+from fastapi_fullauth.models.sqlmodel import RefreshTokenMixin, UserMixin
+
+
+class RefreshToken(RefreshTokenMixin, table=True):
+    pass
+
+
+class User(UserMixin, table=True):
+    refresh_tokens: list[RefreshToken] = Relationship()
+
 
 app = FastAPI()
-
 fullauth = FullAuth(
-    adapter=SQLModelAdapter(session_maker=session_maker, user_model=User),
-    config=FullAuthConfig(
-        SECRET_KEY="your-secret-key",
+    adapter=SQLModelAdapter(
+        session_maker=session_maker,
+        user_model=User,
+        refresh_token_model=RefreshToken,
     ),
+    config=FullAuthConfig(SECRET_KEY="your-secret-key"),
 )
 fullauth.init_app(app)
 ```
 
-This registers all auth routes under `/api/v1/auth/` automatically.
+This registers the auth routes under `/api/v1/auth/` automatically. Omit `SECRET_KEY` in development and a random one is generated (tokens won't survive restarts).
 
-Omit `SECRET_KEY` in dev and a random one is generated (tokens won't survive restarts).
+## What you get
 
-### Composable routers
+<div class="grid cards" markdown>
 
-Opt in to a subset of routers:
+- **Authentication**
 
-```python
-fullauth.init_app(app, include_routers=["auth", "profile"])
-```
+    Register, login, logout, JWT refresh rotation, email verification, and password reset.
 
-Or wire routers manually for full control:
+- **Social and passwordless**
 
-```python
-app = FastAPI()
-fullauth.bind(app)  # required for dependencies to work
+    [OAuth2](oauth.md) with Google and GitHub, plus [passkeys](passkeys.md) (WebAuthn) for biometric login.
 
-app.include_router(fullauth.auth_router, prefix="/api/v1/auth")
-app.include_router(fullauth.profile_router, prefix="/api/v1/auth")
-```
+- **Authorization**
 
-| Router | Routes |
-|--------|--------|
-| `auth_router` | register, login, logout, refresh |
-| `profile_router` | me, verified-me, update profile, delete account, change password |
-| `verify_router` | email verification, password reset |
-| `admin_router` | assign/remove roles and permissions (superuser) |
-| `oauth_router` | OAuth provider routes (only if configured) |
-| `passkey_router` | Passkey register, authenticate, list, delete (only if enabled) |
+    Role-based access with `current_user`, `require_role()`, and `require_permission()`.
 
-`fullauth.init_app(app)` with no `include_routers` registers all of them. Pass an explicit list (or use the individual router properties) for granular control. Middleware is never auto-wired; see [Middleware](security/middleware.md).
+- **Protection**
 
-## Routes
-
-<div class="fullauth-routes" markdown>
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST` | `/auth/register` | Create a new user |
-| `POST` | `/auth/login` | Authenticate, get tokens |
-| `POST` | `/auth/logout` | Blacklist token |
-| `POST` | `/auth/refresh` | Rotate token pair |
-| `GET` | `/auth/me` | Get current user |
-| `GET` | `/auth/me/verified` | Verified users only |
-| `PATCH` | `/auth/me` | Update profile |
-| `DELETE` | `/auth/me` | Delete account |
-| `POST` | `/auth/change-password` | Change password |
-| `POST` | `/auth/verify-email/request` | Request verification email |
-| `POST` | `/auth/verify-email/confirm` | Confirm email |
-| `POST` | `/auth/password-reset/request` | Request password reset |
-| `POST` | `/auth/password-reset/confirm` | Reset password |
-| `POST` | `/auth/admin/assign-role` | Assign role (superuser) |
-| `POST` | `/auth/admin/remove-role` | Remove role (superuser) |
-| `POST` | `/auth/admin/assign-permission` | Assign permission to role (superuser) |
-| `POST` | `/auth/admin/remove-permission` | Remove permission from role (superuser) |
-| `GET` | `/auth/admin/role-permissions/{role}` | List role's permissions (superuser) |
+    [Rate limiting](security/rate-limiting.md), account lockout, CSRF, and [security headers](security/middleware.md).
 
 </div>
 
-With OAuth enabled, additional routes are registered under `/auth/oauth/`. With passkeys enabled, routes under `/auth/passkeys/`. See [OAuth2 Social Login](oauth.md) and [Passkeys](passkeys.md).
-
-All routes are prefixed with `/api/v1` by default (configurable via `API_PREFIX`).
+The combined router mounts under `/api/v1/auth` by default. Admin, OAuth, and passkey routes register only when your adapter supports them; the full route list is in [Getting Started](getting-started.md).
 
 ## Learn more
 
-- **[Architecture](architecture.md)**: understand how the library works internally
-- **[Getting Started](getting-started.md)**: step-by-step setup tutorial
-- **[Testing](testing.md)**: test apps built with fastapi-fullauth
-- **[Troubleshooting](troubleshooting.md)**: common errors and solutions
+<div class="grid cards" markdown>
+
+- [**Getting Started**](getting-started.md)
+
+    Step-by-step setup, from install to protected routes.
+
+- [**Architecture**](architecture.md)
+
+    How tokens, adapters, and protection subsystems fit together.
+
+- [**Configuration**](configuration.md)
+
+    Every option, with production `.env` examples.
+
+- [**Troubleshooting**](troubleshooting.md)
+
+    Common errors mapped to fixes.
+
+</div>
 
 ## AI-friendly docs
 
-Using an AI coding assistant? Point it at our LLM-optimized docs:
+Point your AI coding assistant at the LLM-optimized docs:
 
-- **[llms.txt](llms.txt)**: concise overview with links to all doc pages
-- **[llms-full.txt](llms-full.txt)**: full documentation in a single file
-
-Works with Claude, Cursor, Copilot, and any tool that accepts a docs URL.
+- [llms.txt](llms.txt): concise overview with links to all doc pages
+- [llms-full.txt](llms-full.txt): full documentation in a single file
 
 ## License
 
