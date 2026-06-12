@@ -28,6 +28,7 @@ from fastapi_fullauth.routers._schemas import (
     build_login_model,
     build_login_response_model,
 )
+from fastapi_fullauth.routers._transport import resolve_refresh_token, write_tokens
 from fastapi_fullauth.types import (
     CreateUserSchema,
     CreateUserSchemaType,
@@ -35,6 +36,7 @@ from fastapi_fullauth.types import (
     UserSchema,
     UserSchemaType,
 )
+from fastapi_fullauth.utils import request_session_metadata
 
 logger = logging.getLogger("fastapi_fullauth.router")
 
@@ -122,6 +124,9 @@ def create_auth_router(
         password: str = fields["password"]
         user = await fullauth.adapter.get_user_by_field(login_field, identifier)
         extra_claims = await fullauth.get_custom_claims(user) if user else {}
+        user_agent, ip_address = request_session_metadata(
+            request, fullauth.config.TRUSTED_PROXY_HEADERS
+        )
 
         try:
             tokens = await login(
@@ -135,12 +140,13 @@ def create_auth_router(
                 user=user,
                 hash_algorithm=fullauth.config.PASSWORD_HASH_ALGORITHM,
                 prevent_timing_attacks=fullauth.config.PREVENT_LOGIN_TIMING_ATTACKS,
+                user_agent=user_agent,
+                ip_address=ip_address,
             )
         except (AccountLockedError, AuthenticationError):
             raise CREDENTIALS_EXCEPTION
 
-        for backend in fullauth.backends:
-            await backend.write_token(response, tokens.access_token)
+        tokens = await write_tokens(response, fullauth, tokens)
 
         await fullauth.hooks.emit("after_login", user=user)
 
@@ -162,14 +168,21 @@ def create_auth_router(
         description="Rotate token pair. Reuse of old tokens revokes the session.",
     )
     async def refresh_route(
-        data: RefreshRequest,
         request: Request,
+        response: Response,
         fullauth: "FullAuth" = Depends(get_fullauth),
+        data: RefreshRequest | None = Body(None),
     ) -> TokenPair:
         await fullauth.enforce_rate_limit(request, "refresh")
 
+        refresh_token = await resolve_refresh_token(
+            request, fullauth, data.refresh_token if data else None
+        )
+        if refresh_token is None:
+            raise CREDENTIALS_EXCEPTION
+
         try:
-            payload = await fullauth.token_engine.decode_token(data.refresh_token)
+            payload = await fullauth.token_engine.decode_token(refresh_token)
         except TokenError:
             raise CREDENTIALS_EXCEPTION
 
@@ -185,7 +198,7 @@ def create_auth_router(
         if user is None or not user.is_active:
             raise CREDENTIALS_EXCEPTION
 
-        stored = await fullauth.adapter.get_refresh_token(data.refresh_token)
+        stored = await fullauth.adapter.get_refresh_token(refresh_token)
         # Defence in depth: the refresh JWT may decode cleanly (valid signature,
         # unexpired) and still not correspond to a stored session; e.g. an old
         # row pruned, or a token issued before the row was deleted. Reject so
@@ -202,7 +215,7 @@ def create_auth_router(
             # from not-revoked → revoked. The loser sees rowcount=0, that's
             # either a reuse attack or a lost concurrency race. Either way,
             # burn the family.
-            won = await fullauth.adapter.revoke_refresh_token(data.refresh_token)
+            won = await fullauth.adapter.revoke_refresh_token(refresh_token)
             if not won:
                 logger.error(
                     "refresh token reuse/concurrent use; revoking family: %s",
@@ -215,14 +228,20 @@ def create_auth_router(
                 ttl_seconds=fullauth.config.REFRESH_TOKEN_EXPIRE_DAYS * 86400,
             )
 
-            return await issue_token_pair(
+            user_agent, ip_address = request_session_metadata(
+                request, fullauth.config.TRUSTED_PROXY_HEADERS
+            )
+            tokens = await issue_token_pair(
                 fullauth.adapter,
                 fullauth.token_engine,
                 user,
                 extra_claims=extra_claims,
                 family_id=payload.family_id,
                 roles=roles,
+                user_agent=user_agent,
+                ip_address=ip_address,
             )
+            return await write_tokens(response, fullauth, tokens)
 
         if stored.revoked:
             raise CREDENTIALS_EXCEPTION
@@ -230,12 +249,14 @@ def create_auth_router(
             user_id=uid,
             roles=roles,
             extra=extra_claims,
+            family_id=payload.family_id,
         )
-        return TokenPair(
+        tokens = TokenPair(
             access_token=access,
-            refresh_token=data.refresh_token,
+            refresh_token=refresh_token,
             expires_in=fullauth.config.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
         )
+        return await write_tokens(response, fullauth, tokens)
 
     @router.post(
         "/logout",
@@ -243,6 +264,7 @@ def create_auth_router(
         description="Blacklist token. Pass refresh_token in body to revoke the session.",
     )
     async def logout_route(
+        request: Request,
         fullauth: "FullAuth" = Depends(get_fullauth),
         token: str = Depends(_extract_token),
         data: LogoutRequest | None = Body(None),
@@ -252,11 +274,14 @@ def create_auth_router(
         except TokenError:
             raise CREDENTIALS_EXCEPTION
 
+        refresh_token = await resolve_refresh_token(
+            request, fullauth, data.refresh_token if data else None
+        )
         await logout(
             fullauth.token_engine,
             payload,
             adapter=fullauth.adapter,
-            refresh_token=data.refresh_token if data else None,
+            refresh_token=refresh_token,
         )
         with contextlib.suppress(ValueError):
             await fullauth.hooks.emit("after_logout", user_id=UUID(payload.sub))
@@ -264,6 +289,7 @@ def create_auth_router(
         response = Response(status_code=204)
         for backend in fullauth.backends:
             await backend.delete_token(response)
+            await backend.delete_refresh_token(response)
         return response
 
     return router

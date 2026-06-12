@@ -13,7 +13,9 @@ from fastapi_fullauth.exceptions import (
 )
 from fastapi_fullauth.flows.oauth import build_authorization_url, oauth_callback
 from fastapi_fullauth.routers._schemas import LoginResponse, build_login_response_model
+from fastapi_fullauth.routers._transport import write_tokens
 from fastapi_fullauth.types import TokenPair, UserSchema, UserSchemaType
+from fastapi_fullauth.utils import request_session_metadata
 
 logger = logging.getLogger("fastapi_fullauth.oauth")
 
@@ -108,6 +110,10 @@ def create_oauth_router(
                 status_code=404, detail=f"OAuth provider '{provider}' not configured"
             )
 
+        user_agent, ip_address = request_session_metadata(
+            request, fullauth.config.TRUSTED_PROXY_HEADERS
+        )
+
         try:
             token_pair, user, is_new_user, user_info = await oauth_callback(
                 adapter=fullauth.adapter,
@@ -117,12 +123,13 @@ def create_oauth_router(
                 state=data.state,
                 auto_link_by_email=fullauth.config.OAUTH_AUTO_LINK_BY_EMAIL,
                 pkce_enabled=fullauth.config.OAUTH_PKCE_ENABLED,
+                user_agent=user_agent,
+                ip_address=ip_address,
             )
         except (OAuthProviderError, TokenError):
             raise OAUTH_ERROR_EXCEPTION
 
-        for backend in fullauth.backends:
-            await backend.write_token(response, token_pair.access_token)
+        token_pair = await write_tokens(response, fullauth, token_pair)
 
         await fullauth.hooks.emit(
             "after_oauth_login", user=user, provider=provider, is_new_user=is_new_user

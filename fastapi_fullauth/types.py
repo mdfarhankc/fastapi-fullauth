@@ -45,7 +45,9 @@ CreateUserSchemaType = TypeVar(
 
 class TokenPair(BaseModel):
     access_token: str
-    refresh_token: str
+    # None when a cookie backend carries the refresh token (httponly cookie) so
+    # it never reaches JavaScript; populated in the default bearer transport.
+    refresh_token: str | None = None
     token_type: str = "bearer"
     expires_in: int | None = None
 
