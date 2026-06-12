@@ -48,7 +48,7 @@ app = FastAPI()
 fullauth.init_app(app)         # routers + middleware in one call
 ```
 
-That exposes `/api/v1/auth/{register,login,logout,refresh}`, `/api/v1/auth/me`, and more. See `references/getting-started.md` for a runnable walkthrough.
+That exposes `/api/v1/auth/{register,login,logout,refresh}`, `/api/v1/auth/me`, `/api/v1/auth/sessions`, and more. See `references/getting-started.md` for a runnable walkthrough.
 
 ## Things to get right on day one
 
@@ -67,8 +67,11 @@ That exposes `/api/v1/auth/{register,login,logout,refresh}`, `/api/v1/auth/me`, 
 | RBAC            | `RoleAdapterMixin`, `PermissionAdapterMixin` | `admin` | none |
 | OAuth           | `OAuthAdapterMixin`     | `oauth`         | `[oauth]` extra, provider config |
 | Passkeys        | `PasskeyAdapterMixin`   | `passkey`       | `[passkey]` extra, `PASSKEY_ENABLED=True`, `PASSKEY_RP_ID`, `PASSKEY_ORIGINS` |
+| Sessions        | `SessionAdapterMixin`   | `sessions`      | none |
 
 Built-in `SQLAlchemyAdapter` and `SQLModelAdapter` inherit all mixins. A custom adapter implements only what its app uses.
+
+**Token transport.** `backends=[BearerBackend()]` (the default) returns both tokens in the JSON body. Swap in `CookieBackend(config)` to carry the access token *and* the refresh token in separate HttpOnly cookies; the refresh token is then omitted from the response body (`TokenPair.refresh_token` is `None`) and `/refresh`/`/logout` read it from the cookie. Adding a `CookieBackend` is exactly when you must also wire `CSRFMiddleware`.
 
 ## Where to look next
 
@@ -78,6 +81,7 @@ Built-in `SQLAlchemyAdapter` and `SQLModelAdapter` inherit all mixins. A custom 
 - **`references/oauth.md`**: provider setup, callback flow, `email_verified` gate on auto-link, writing custom providers.
 - **`references/passkeys.md`**: WebAuthn setup, UV enforcement, discoverable credentials, sign-count CAS, challenge store.
 - **`references/rbac.md`**: roles + permissions mixins, `require_role` / `require_permission`, admin router, cold-start seeding.
+- **`references/sessions.md`**: the `sessions` router and `SessionAdapterMixin`, what a "session" is (a refresh-token family), the `current` flag, and the cookie refresh-token transport.
 - **`references/hooks.md`**: `after_*` and `send_*` hook signatures, when each fires, gotchas.
 - **`references/migrations.md`**: Alembic `env.py` wiring with your own `Base.metadata`, v0.x → v0.10 mixin pivot step.
 - **`references/production.md`**: deployment checklist: `SECRET_KEY`, Redis backends, cookie flags, rate-limit trust boundary, observability.

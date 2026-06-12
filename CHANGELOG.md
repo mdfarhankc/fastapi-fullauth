@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **Session management.** A new opt-in `sessions` router lets a user see and manage where they're signed in. `GET /auth/sessions` lists active sessions (one per refresh-token family) with device, IP, sign-in time, last-used time, and a `current` flag for the device making the request; `DELETE /auth/sessions/{family_id}` signs out one device; `POST /auth/sessions/revoke-others` signs out everywhere else. The bundled SQLAlchemy and SQLModel adapters support it automatically (the router mounts like `admin` does for roles); custom adapters opt in via the new `SessionAdapterMixin`. Refresh tokens now record the `user_agent` and `ip_address` they were issued from, and the access token carries its `family_id` claim so the list can flag the current session. **Migration:** the refresh-token table gains two nullable columns, `user_agent` and `ip_address` — add them with an additive migration (existing rows stay `NULL`). See [Database Migrations](migrations.md).
+- **Cookie transport now carries the refresh token.** Previously `CookieBackend` only moved the access token, so a cookie-based app still had to hold the long-lived refresh token in JavaScript-reachable storage. The backend abstraction now transports the refresh token too: `CookieBackend` sets a separate HttpOnly refresh cookie (name `fullauth_refresh`, path configurable via `CookieBackend(config, refresh_path=...)`), and `/refresh` and `/logout` read it from the cookie, so cookie clients call them with no body. When a cookie backend is active the refresh token is kept out of the JSON response body entirely. This also wires the previously missing pieces of cookie support: `/refresh` now re-sets the access cookie on rotation, and passkey authentication now sets the auth cookies like login and OAuth do. Bearer transport (the default) is unchanged.
+
+### Changed
+
+- **`TokenPair.refresh_token` is now `str | None`.** It stays populated under the default bearer transport; it is `null` when a cookie backend carries the refresh token (the token lives only in the HttpOnly cookie). Clients that read `refresh_token` from the body in bearer mode are unaffected.
+
+### Fixed
+
+- **`bcrypt` is now an installable extra.** `PASSWORD_HASH_ALGORITHM="bcrypt"` was selectable but the `bcrypt` package was never declared as a dependency, so choosing it raised a bare `ImportError` at the first hash. Install it with `pip install fastapi-fullauth[bcrypt]` (it's also bundled in the `sqlmodel-standard` / `sqlalchemy-standard` extras). Hashing or verifying a bcrypt hash without the package now raises an actionable install hint instead of a bare error, and verifying a stored bcrypt hash no longer fails the login silently when the package is missing.
+
 ## 0.13.0
 
 ### Added

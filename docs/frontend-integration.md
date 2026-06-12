@@ -14,15 +14,15 @@ After login, the server returns an access token and a refresh token. How you sto
 - **sessionStorage** - persists within the tab, cleared when the tab closes. Accessible to JavaScript on the same origin.
 - **localStorage** - persists across tabs and browser restarts. Accessible to JavaScript on the same origin. Convenient but more exposed to XSS.
 
-**Cookie backend**: if you configure `CookieBackend`, the server sets an HttpOnly cookie automatically. Your app doesn't need to store or attach the token manually - the browser handles it. This is the simplest option but requires CSRF protection (see below).
+**Cookie backend**: if you configure `CookieBackend`, the server sets HttpOnly cookies automatically - one for the access token and a separate one for the refresh token. Your app doesn't store or attach anything; the browser carries both. In this mode the `refresh_token` field in the login/refresh JSON is `null` (the token lives only in the HttpOnly cookie and never reaches JavaScript), and `/refresh` and `/logout` read the refresh token from the cookie, so you call them with no body. This is the simplest and most XSS-resistant option, but requires CSRF protection (see below). To limit how widely the refresh cookie travels, pass `CookieBackend(config, refresh_path="/api/v1/auth")` so the browser only sends it to the auth routes.
 
 ### Refreshing tokens
 
 Access tokens are short-lived (default 30 minutes). When one expires, use the refresh token to get a new pair:
 
 1. Detect a 401 response from any API call
-2. Call `POST /api/v1/auth/refresh` with the refresh token in the body
-3. Store the new access token (and new refresh token, if rotation is enabled)
+2. Call `POST /api/v1/auth/refresh` with the refresh token in the body (bearer mode) or with no body (cookie mode - the refresh cookie is sent automatically)
+3. Store the new access token (and new refresh token, if rotation is enabled); in cookie mode the browser updates both cookies and the body's `refresh_token` is `null`
 4. Retry the original request with the new access token
 
 Most HTTP clients support interceptors or middleware that can handle this transparently. The key is to avoid refreshing multiple times concurrently - if several requests fail at once, queue them and refresh only once.

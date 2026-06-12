@@ -148,6 +148,15 @@ alembic revision --autogenerate -m "add display_name and avatar_url to users"
 alembic upgrade head
 ```
 
+### Session management (refresh-token device columns)
+
+[Session management](auth/sessions.md) records where each sign-in came from, adding two **nullable** columns to `fullauth_refresh_tokens`: `user_agent` and `ip_address`. Both are nullable, so existing rows stay `NULL` and the change is additive — no backfill, no new table (the `sessions` router reads the existing refresh-token rows grouped by `family_id`).
+
+```bash
+alembic revision --autogenerate -m "add user_agent and ip_address to refresh tokens"
+alembic upgrade head
+```
+
 ### Existing tables (stamping head)
 
 If you're adding Alembic to a project that already has the tables created (e.g. via `create_all`), stamp the current state so Alembic knows not to recreate them:

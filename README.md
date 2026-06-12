@@ -24,12 +24,13 @@
 
 ---
 
-Add a complete authentication and authorization system to your **FastAPI** project. FastAPI FullAuth is designed to be production-ready, async-native, and pluggable, handling JWT tokens, refresh rotation, password hashing, email verification, OAuth2 social login, and role-based access out of the box.
+A complete, async-native authentication and authorization system for **FastAPI** — production-ready and pluggable. JWT access/refresh tokens with rotation, Argon2 password hashing, email verification, OAuth2 social login, passkeys, session management, and role-based access control, all out of the box. Bring your own database with the SQLModel or SQLAlchemy adapter, and opt into only the features you need.
 
 ## Features
 
 - **JWT access + refresh tokens** with configurable expiry
 - **Refresh token rotation** with reuse detection; revokes entire session family on replay
+- **Session management**: list active sessions (device, IP, last used), revoke one device, or sign out everywhere else
 - **Password hashing** via Argon2id (default) or bcrypt, with transparent rehashing
 - **Email verification** and **password reset** flows with event hooks
 - **Passkey (WebAuthn)**: passwordless login with fingerprint, Face ID, security keys
@@ -37,6 +38,7 @@ Add a complete authentication and authorization system to your **FastAPI** proje
 - **Role-based access control**: `current_user`, `require_role()`, `require_permission()`
 - **Rate limiting**: per-route auth limits + global middleware (memory or Redis)
 - **CSRF protection** and **security headers** middleware
+- **Bearer or cookie transport**: opt into HttpOnly cookies that carry both access and refresh tokens, out of JavaScript's reach; bearer is the default
 - **Pluggable adapters**: SQLModel or SQLAlchemy
 - **Generic type parameters**: define your own schemas with full IDE support and type safety
 - **Composable routers**: include only the route groups you need
@@ -48,31 +50,44 @@ Add a complete authentication and authorization system to your **FastAPI** proje
 
 ## Installation
 
+The fastest way to start: one adapter plus every optional feature in a single extra.
+
 ```bash
-pip install fastapi-fullauth
+# Recommended: SQLModel adapter + Redis, OAuth, passkeys, bcrypt
+pip install "fastapi-fullauth[sqlmodel-standard]"
 
-# with an ORM adapter
-pip install fastapi-fullauth[sqlmodel]
-pip install fastapi-fullauth[sqlalchemy]
-
-# with Redis for token blacklisting
-pip install fastapi-fullauth[sqlmodel,redis]
-
-# with OAuth2 social login
-pip install fastapi-fullauth[sqlmodel,oauth]
-
-# with passkey/WebAuthn
-pip install fastapi-fullauth[sqlmodel,passkey]
-
-# every feature on one adapter (or [sqlalchemy-standard])
-pip install fastapi-fullauth[sqlmodel-standard]
+# Same, on the SQLAlchemy adapter
+pip install "fastapi-fullauth[sqlalchemy-standard]"
 ```
+
+Or stay minimal and add only what you use:
+
+```bash
+# Core + one ORM adapter (pick one)
+pip install "fastapi-fullauth[sqlmodel]"
+
+# Mix and match any extras
+pip install "fastapi-fullauth[sqlalchemy,oauth,redis]"
+```
+
+| Extra | Adds |
+|-------|------|
+| `sqlmodel` / `sqlalchemy` | ORM adapter + Alembic (pick one) |
+| `redis` | Redis backends for token blacklist, lockout, rate limiting, passkey challenges |
+| `oauth` | OAuth2 social login (Google, GitHub) |
+| `passkey` | Passkey / WebAuthn support |
+| `bcrypt` | bcrypt password hashing (Argon2id is the default and needs no extra) |
+| `sqlmodel-standard` / `sqlalchemy-standard` | One adapter plus **all** of the above |
+
+> Quotes around the package spec keep shells like zsh from globbing the `[extras]`.
 
 ## Quick start
 
 ```python
 from fastapi import FastAPI
-from sqlmodel import Field, Relationship
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlmodel import Relationship
+
 from fastapi_fullauth import FullAuth, FullAuthConfig
 from fastapi_fullauth.adapters import SQLModelAdapter
 from fastapi_fullauth.models.sqlmodel import RefreshTokenMixin, UserMixin
@@ -86,6 +101,9 @@ class User(UserMixin, table=True):
     refresh_tokens: list[RefreshToken] = Relationship()
 
 
+engine = create_async_engine("sqlite+aiosqlite:///./app.db")
+session_maker = async_sessionmaker(engine, expire_on_commit=False)
+
 app = FastAPI()
 fullauth = FullAuth(
     adapter=SQLModelAdapter(
@@ -98,7 +116,7 @@ fullauth = FullAuth(
 fullauth.init_app(app)
 ```
 
-That's it; all auth routes are registered under `/api/v1/auth/` automatically.
+That's it; all auth routes are registered under `/api/v1/auth/` automatically. Create the tables with Alembic (see the [migrations guide](https://mdfarhankc.github.io/fastapi-fullauth/migrations/)) or `SQLModel.metadata.create_all` for a quick local start.
 
 Omit `config` in dev and a random secret key is generated (tokens won't survive restarts).
 
@@ -128,6 +146,7 @@ app.include_router(fullauth.profile_router, prefix="/api/v1/auth")
 | `admin_router` | assign/remove roles and permissions (superuser) |
 | `oauth_router` | OAuth provider routes (only if configured) |
 | `passkey_router` | Passkey register, authenticate, list, delete (only if enabled) |
+| `sessions_router` | list active sessions, revoke one device, sign out others |
 
 ### Middleware
 
@@ -145,6 +164,22 @@ app.add_middleware(CSRFMiddleware, secret=fullauth.config.SECRET_KEY)
 app.add_middleware(RateLimitMiddleware, max_requests=60, window_seconds=60)
 ```
 
+### Token transport
+
+By default, tokens are returned in the response body for `Authorization: Bearer` use. Opt into cookie transport to carry both the access and refresh tokens in separate **HttpOnly** cookies, out of JavaScript's reach:
+
+```python
+from fastapi_fullauth.backends import CookieBackend
+
+fullauth = FullAuth(
+    adapter=adapter,
+    config=config,
+    backends=[CookieBackend(config)],
+)
+```
+
+`/refresh` and `/logout` then read the tokens from the cookies, so the browser never stores them. Wire `CSRFMiddleware` whenever you use cookie transport.
+
 ## Routes
 
 | Method | Path | Description |
@@ -153,6 +188,9 @@ app.add_middleware(RateLimitMiddleware, max_requests=60, window_seconds=60)
 | `POST` | `/auth/login` | Authenticate, get tokens |
 | `POST` | `/auth/logout` | Blacklist token |
 | `POST` | `/auth/refresh` | Rotate token pair |
+| `GET` | `/auth/sessions` | List active sessions |
+| `DELETE` | `/auth/sessions/{family_id}` | Revoke one session |
+| `POST` | `/auth/sessions/revoke-others` | Sign out other sessions |
 | `GET` | `/auth/me` | Get current user |
 | `GET` | `/auth/me/verified` | Verified users only |
 | `PATCH` | `/auth/me` | Update profile |
@@ -289,7 +327,12 @@ fullauth = FullAuth(
 )
 ```
 
-Requires `httpx`: `pip install fastapi-fullauth[oauth]`
+Requires `httpx`: `pip install "fastapi-fullauth[oauth]"`
+
+> **Security note**: the OAuth `state` token is signed and carries the PKCE
+> challenge, but it is not bound to the browser session. For defense against
+> login-CSRF, also bind `state` to the initiating browser (e.g. a short-lived
+> cookie you set before redirecting and verify on callback).
 
 ## Event hooks
 

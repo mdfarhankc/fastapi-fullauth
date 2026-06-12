@@ -44,6 +44,7 @@ fullauth = FullAuth(
 | `admin_router` | `APIRouter` | Role/permission management routes (superuser) |
 | `oauth_router` | `APIRouter` | OAuth provider routes |
 | `passkey_router` | `APIRouter` | Passkey WebAuthn routes |
+| `sessions_router` | `APIRouter` | List/revoke active sessions |
 
 ## FullAuthConfig
 
@@ -62,6 +63,7 @@ from fastapi_fullauth.types import (
     TokenPair,          # access_token + refresh_token + token_type + expires_in
     TokenPayload,       # decoded JWT payload
     RefreshToken,       # stored refresh token record
+    SessionInfo,        # one active session (refresh-token family)
     OAuthAccount,       # linked OAuth provider account
     OAuthUserInfo,      # user info from OAuth provider
 )
@@ -91,7 +93,7 @@ Extend `PROTECTED_FIELDS` in subclasses to protect custom sensitive fields from 
 ```python
 class TokenPair(BaseModel):
     access_token: str
-    refresh_token: str
+    refresh_token: str | None = None  # null in cookie mode (carried in an HttpOnly cookie)
     token_type: str = "bearer"
     expires_in: int | None = None
 ```
@@ -113,6 +115,21 @@ class TokenPayload(BaseModel):
     extra: dict[str, Any] # custom claims
     family_id: str | None # refresh token family
 ```
+
+### SessionInfo
+
+```python
+class SessionInfo(BaseModel):
+    family_id: str
+    ip_address: str | None = None
+    user_agent: str | None = None
+    created_at: datetime    # session start (first login)
+    last_used_at: datetime  # most recent refresh
+    expires_at: datetime
+    current: bool = False   # the device making the request
+```
+
+Returned by `GET /auth/sessions`. See [Session Management](auth/sessions.md).
 
 ## Dependencies
 

@@ -154,6 +154,7 @@ app.add_middleware(RateLimitMiddleware, max_requests=60, window_seconds=60)
 | `profile_router` | me, verified-me, update profile, delete account, change password |
 | `verify_router` | email verification, password reset |
 | `admin_router` | assign/remove roles and permissions (superuser) |
+| `sessions_router` | list active sessions, revoke one, revoke others |
 | `oauth_router` | OAuth provider routes (only if configured) |
 | `passkey_router` | Passkey register, authenticate, list, delete (only if enabled) |
 
