@@ -568,3 +568,13 @@ def test_sqlalchemy_oauth_token_columns_are_text():
 
     assert isinstance(OAuthAccount.__table__.c.access_token.type, Text)
     assert isinstance(OAuthAccount.__table__.c.refresh_token.type, Text)
+
+
+def test_sqlalchemy_refresh_token_is_length_capped_varchar():
+    """The refresh-token `token` is uniquely indexed, so it must be a bounded
+    VARCHAR (MySQL can't uniquely index TEXT) wide enough not to truncate a
+    refresh JWT. Mirrors the SQLModel mixin."""
+    col = RefreshToken.__table__.c.token
+    assert isinstance(col.type, String) and col.type.length == 512
+    assert col.unique is True
+    assert col.index is True
