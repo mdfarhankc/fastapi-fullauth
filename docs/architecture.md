@@ -269,7 +269,7 @@ async def my_dependency(fullauth=Depends(get_fullauth)):
 
 ## Composable routers
 
-FullAuth includes six sub-routers:
+FullAuth includes seven sub-routers:
 
 | Router | Routes | Condition |
 |--------|--------|-----------|
@@ -279,6 +279,7 @@ FullAuth includes six sub-routers:
 | `admin_router` | Role/permission management | Adapter inherits `RoleAdapterMixin` |
 | `oauth_router` | OAuth authorize/callback | Providers configured and adapter inherits `OAuthAdapterMixin` |
 | `passkey_router` | WebAuthn registration/auth | `PASSKEY_ENABLED=True` and adapter inherits `PasskeyAdapterMixin` |
+| `sessions_router` | List/revoke active sessions | Adapter inherits `SessionAdapterMixin` |
 
 Feature gating is automatic: if your adapter doesn't support a feature, the corresponding router is not mounted. No dead endpoints, no 501 errors for features you didn't set up.
 

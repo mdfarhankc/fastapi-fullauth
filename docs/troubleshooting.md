@@ -135,7 +135,7 @@ The library logs to loggers under the `fastapi_fullauth` namespace:
 | `fastapi_fullauth.passkey` | Passkey registration and authentication |
 | `fastapi_fullauth.challenges` | Challenge store operations |
 | `fastapi_fullauth.routers.passkey` | Passkey route errors |
-| `fastapi_fullauth.routers.oauth` | OAuth route errors |
+| `fastapi_fullauth.oauth` | OAuth route and flow errors |
 
 To see debug output, configure logging in your app:
 
