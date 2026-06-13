@@ -159,8 +159,11 @@ async def test_redis_blacklist_zero_ttl_does_not_become_default():
     bl._prefix = "fullauth:blacklist:"
 
     await bl.add("jti-zero", ttl_seconds=0)
-    ttl = await bl._redis.ttl("fullauth:blacklist:jti-zero")
-    assert 0 < ttl <= 1  # floored to 1s, not the 1800s default
+    # Assert in milliseconds: `ttl` (whole seconds) floors a just-set 1s key to 0,
+    # which is flaky. `pttl` right after setex is ~1000ms and unambiguously not the
+    # 1800s (1_800_000 ms) default.
+    pttl = await bl._redis.pttl("fullauth:blacklist:jti-zero")
+    assert 0 < pttl <= 1000  # floored to ~1s, not the 1800s default
 
 
 @pytest.mark.asyncio
