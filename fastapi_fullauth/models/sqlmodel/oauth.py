@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from uuid import UUID
 
-from sqlalchemy import Column, DateTime, UniqueConstraint
+from sqlalchemy import Column, DateTime, Text, UniqueConstraint
 from sqlmodel import Field, SQLModel
 from uuid_utils import uuid7
 
@@ -23,8 +23,11 @@ class OAuthAccountMixin(SQLModel):
     provider_user_id: str = Field(max_length=320)
     user_id: UUID = Field(foreign_key="fullauth_users.id")
     provider_email: str | None = Field(default=None, max_length=320)
-    access_token: str | None = Field(default=None)
-    refresh_token: str | None = Field(default=None)
+    # Text, not the default VARCHAR(255): provider access/refresh tokens
+    # (opaque or JWT-shaped) routinely exceed 255 chars and would silently
+    # truncate on MySQL. Mirrors the SQLAlchemy model.
+    access_token: str | None = Field(default=None, sa_column=Column(Text, nullable=True))
+    refresh_token: str | None = Field(default=None, sa_column=Column(Text, nullable=True))
     expires_at: datetime | None = Field(
         default=None, sa_column=Column(DateTime(timezone=True), nullable=True)
     )

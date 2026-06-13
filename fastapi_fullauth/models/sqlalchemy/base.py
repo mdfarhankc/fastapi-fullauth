@@ -53,7 +53,7 @@ class RefreshTokenMixin:
     user_id: Mapped[UUID] = mapped_column(
         Uuid, ForeignKey("fullauth_users.id", ondelete="CASCADE"), nullable=False
     )
-    family_id: Mapped[str] = mapped_column(index=True, nullable=False)
+    family_id: Mapped[str] = mapped_column(String(36), index=True, nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     revoked: Mapped[bool] = mapped_column(Boolean, default=False)
     user_agent: Mapped[str | None] = mapped_column(String(512), nullable=True)

@@ -545,3 +545,26 @@ async def test_transaction_cannot_nest(adapter):
         with pytest.raises(RuntimeError):
             async with tx.transaction():
                 pass
+
+
+# ── Schema parity with the SQLModel mixins ──────────────────────────
+
+
+def test_sqlalchemy_role_permission_name_have_length_and_index():
+    """Role/Permission.name must declare an explicit VARCHAR length and index to
+    match the SQLModel mixins; an unbounded VARCHAR unique key fails DDL on MySQL."""
+    role_name = Role.__table__.c.name
+    perm_name = Permission.__table__.c.name
+    assert isinstance(role_name.type, String) and role_name.type.length == 100
+    assert isinstance(perm_name.type, String) and perm_name.type.length == 200
+    assert role_name.index is True
+    assert perm_name.index is True
+
+
+def test_sqlalchemy_oauth_token_columns_are_text():
+    """OAuth access/refresh tokens must be Text, never a length-capped VARCHAR
+    that would truncate long provider tokens on MySQL."""
+    from sqlalchemy import Text
+
+    assert isinstance(OAuthAccount.__table__.c.access_token.type, Text)
+    assert isinstance(OAuthAccount.__table__.c.refresh_token.type, Text)
