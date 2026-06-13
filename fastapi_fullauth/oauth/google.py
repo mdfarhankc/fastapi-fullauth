@@ -58,7 +58,10 @@ class GoogleOAuthProvider(OAuthProvider):
         return tokens
 
     async def get_user_info(self, tokens: dict[str, Any]) -> OAuthUserInfo:
-        access_token = tokens["access_token"]
+        access_token = tokens.get("access_token")
+        if not access_token:
+            logger.error("Google token response missing access_token")
+            raise OAuthProviderError("Google token exchange failed")
         client = self._client()
         resp = await client.get(
             self.userinfo_endpoint,
@@ -68,6 +71,10 @@ class GoogleOAuthProvider(OAuthProvider):
             logger.error("Google userinfo failed (HTTP %s): %s", resp.status_code, resp.text)
             raise OAuthProviderError("Failed to fetch user info from Google")
         data = resp.json()
+
+        if not data.get("sub"):
+            logger.error("Google userinfo response missing sub")
+            raise OAuthProviderError("Failed to fetch user info from Google")
 
         return OAuthUserInfo(
             provider="google",

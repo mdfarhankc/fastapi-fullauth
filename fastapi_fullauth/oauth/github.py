@@ -61,7 +61,10 @@ class GitHubOAuthProvider(OAuthProvider):
         return data
 
     async def get_user_info(self, tokens: dict[str, Any]) -> OAuthUserInfo:
-        access_token = tokens["access_token"]
+        access_token = tokens.get("access_token")
+        if not access_token:
+            logger.error("GitHub token response missing access_token")
+            raise OAuthProviderError("GitHub token exchange failed")
         headers = {
             "Authorization": f"Bearer {access_token}",
             "Accept": "application/json",
@@ -85,6 +88,10 @@ class GitHubOAuthProvider(OAuthProvider):
                     email = entry["email"]
                     email_verified = True
                     break
+
+        if data.get("id") is None:
+            logger.error("GitHub userinfo response missing id")
+            raise OAuthProviderError("Failed to fetch user info from GitHub")
 
         return OAuthUserInfo(
             provider="github",

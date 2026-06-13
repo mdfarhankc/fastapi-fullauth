@@ -250,6 +250,12 @@ async def oauth_callback(
         adapter, info, provider_tokens, auto_link_by_email
     )
 
+    # Parity with the password (login.py) and passkey flows: a deactivated user
+    # must not be able to sign in, including through a linked social account.
+    if not user.is_active:
+        logger.warning("OAuth login blocked; account deactivated: user_id=%s", user.id)
+        raise OAuthProviderError("User account is deactivated")
+
     if is_new_user:
         logger.info("OAuth user created: provider=%s, email=%s", info.provider, info.email)
     else:

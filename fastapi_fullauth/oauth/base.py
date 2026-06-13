@@ -59,7 +59,9 @@ class OAuthProvider(ABC):
                     "httpx is required for OAuth. "
                     "Install it with: pip install fastapi-fullauth[oauth]"
                 ) from None
-            self._http_client = httpx.AsyncClient()
+            # An explicit timeout so a slow or hostile provider can't tie up the
+            # request worker indefinitely (don't rely on the library default).
+            self._http_client = httpx.AsyncClient(timeout=httpx.Timeout(10.0))
         return self._http_client
 
     async def aclose(self) -> None:
