@@ -244,6 +244,23 @@ async def test_revoke_refresh_token_family(adapter):
         assert stored.revoked is True
 
 
+# ── Schema parity with the SQLAlchemy mixins ────────────────────────
+
+
+def test_sqlmodel_refresh_token_is_length_capped_varchar():
+    """The refresh-token `token` is uniquely indexed, so it must be a bounded
+    VARCHAR (not the AutoString 255 default, which truncates a refresh JWT on
+    MySQL). Mirrors the SQLAlchemy mixin."""
+    from tests.conftest import RefreshToken as RefreshTokenTable
+
+    col = RefreshTokenTable.__table__.c.token
+    # length 512 distinguishes it from both the AutoString 255 default and an
+    # unbounded Text (length None); AutoString isn't a sqlalchemy.String subclass.
+    assert col.type.length == 512
+    assert col.unique is True
+    assert col.index is True
+
+
 # ── Permission tests ────────────────────────────────────────────────
 
 

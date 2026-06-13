@@ -49,7 +49,8 @@ class RefreshTokenMixin:
     __tablename__ = "fullauth_refresh_tokens"
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid7)
-    token: Mapped[str] = mapped_column(Text, unique=True, index=True, nullable=False)
+    # VARCHAR(512), not Text: MySQL can't build a unique index on a TEXT column.
+    token: Mapped[str] = mapped_column(String(512), unique=True, index=True, nullable=False)
     user_id: Mapped[UUID] = mapped_column(
         Uuid, ForeignKey("fullauth_users.id", ondelete="CASCADE"), nullable=False
     )

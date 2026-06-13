@@ -118,6 +118,8 @@ fullauth.init_app(app)
 
 That's it; all auth routes are registered under `/api/v1/auth/` automatically. Create the tables with Alembic (see the [migrations guide](https://mdfarhankc.github.io/fastapi-fullauth/migrations/)) or `SQLModel.metadata.create_all` for a quick local start.
 
+> The SQLite quick-start needs an async driver: `pip install aiosqlite`.
+
 Omit `config` in dev and a random secret key is generated (tokens won't survive restarts).
 
 ### Composable routers
@@ -204,7 +206,7 @@ fullauth = FullAuth(
 | `POST` | `/auth/admin/remove-role` | Remove role (superuser) |
 | `POST` | `/auth/admin/assign-permission` | Assign permission to role (superuser) |
 | `POST` | `/auth/admin/remove-permission` | Remove permission from role (superuser) |
-| `GET` | `/auth/admin/role-permissions/{role}` | List role's permissions (superuser) |
+| `GET` | `/auth/admin/role-permissions/{role_name}` | List role's permissions (superuser) |
 
 With OAuth enabled, additional routes are registered under `/auth/oauth/`. All routes are prefixed with `/api/v1` by default.
 

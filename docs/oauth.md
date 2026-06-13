@@ -67,7 +67,7 @@ Response:
 }
 ```
 
-The `redirect_uri` parameter is optional. If omitted, the first URI in your `redirect_uris` list is used. The value is validated against the allowed list.
+The `redirect_uri` parameter is required and is validated against your `redirect_uris` allow-list; a missing or unlisted value is rejected.
 
 ### 2. Redirect the user
 

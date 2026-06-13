@@ -202,6 +202,7 @@ curl http://localhost:8000/api/v1/auth/me \
 ```python
 from typing import Annotated
 from fastapi import Depends
+from fastapi_fullauth import UserSchema
 from fastapi_fullauth.dependencies import current_user, current_active_verified_user, require_role
 
 CurrentUser = Annotated[UserSchema, Depends(current_user)]

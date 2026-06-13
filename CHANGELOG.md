@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.14.0
 
 ### Added
 
@@ -37,6 +37,7 @@
 - **OAuth provider clients are hardened.** The shared `httpx.AsyncClient` now sets an explicit 10s timeout (instead of relying on the library default), and the Google/GitHub clients validate the token and userinfo responses, raising `OAuthProviderError` (a clean 4xx) instead of a `KeyError` 500 when a provider returns an unexpected body.
 - **`family_id` column has an explicit length.** The SQLAlchemy refresh-token model declared `family_id` without a length, emitting an unbounded indexed column that fails DDL on MySQL; it is now `String(36)`, matching the SQLModel model.
 - **SQLModel OAuth token columns no longer truncate.** The SQLModel `OAuthAccount` mapped `access_token` / `refresh_token` to the default `VARCHAR(255)` while the SQLAlchemy model used `Text`; provider tokens longer than 255 characters were silently truncated on MySQL (or rejected in strict mode). Both SQLModel columns are now `Text`, matching the SQLAlchemy model.
+- **Refresh-token `token` column is a bounded `VARCHAR(512)` on both adapters.** The SQLModel model used the AutoString `VARCHAR(255)` default (truncating a refresh JWT on MySQL) while the SQLAlchemy model used `Text` (which MySQL cannot build the column's unique index on). Both are now `String(512)` — wide enough for a refresh JWT and uniquely indexable on MySQL.
 - **SQLAlchemy `Role.name` / `Permission.name` schema matches SQLModel.** Both were declared `unique=True` with no length and no index, so MySQL could not build the unique key (unbounded `VARCHAR`) and the two ORMs emitted divergent schemas. They are now `String(100)` / `String(200)` with an index, matching the SQLModel mixins.
 - **Token-blacklist TTL of `0` no longer misbehaves.** A `0` TTL was treated as "unset" via `ttl_seconds or default`, making the in-memory entry live forever and the Redis entry silently take the 30-minute default (a literal `setex(0)` would also raise). A non-`None` TTL is now floored to a finite 1s; `None` still means no expiry.
 - **Role and permission assignment is idempotent under concurrency.** Two concurrent identical `assign_role` / `assign_permission_to_role` calls could both pass the existence check and race to insert the same association row; the loser surfaced the composite-PK `IntegrityError` as a 500. The conflict is now swallowed on the standalone path (the row the other caller created is the intended result), while inside a `transaction()` it still propagates.
