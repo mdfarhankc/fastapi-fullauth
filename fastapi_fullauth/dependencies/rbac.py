@@ -1,5 +1,5 @@
 from collections.abc import Callable, Coroutine
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
 from fastapi import Depends
 
@@ -46,7 +46,13 @@ def require_permission(*permissions: str) -> Callable[..., Coroutine[Any, Any, U
         if user.is_superuser:
             return user
 
-        adapter = cast("PermissionAdapterMixin", fullauth.adapter)
+        adapter = fullauth.adapter
+        if not isinstance(adapter, PermissionAdapterMixin):
+            raise RuntimeError(
+                "require_permission() needs an adapter that implements "
+                "PermissionAdapterMixin (RBAC permissions). The configured "
+                f"adapter {type(adapter).__name__} does not."
+            )
         user_perms = await adapter.get_user_permissions(user.id)
         if not set(permissions).intersection(user_perms):
             raise FORBIDDEN_EXCEPTION

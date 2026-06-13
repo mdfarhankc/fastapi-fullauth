@@ -1,4 +1,6 @@
 from abc import ABC, abstractmethod
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from typing import Any, Generic, Protocol, cast
 
 from fastapi_fullauth.types import (
@@ -100,6 +102,21 @@ class AbstractUserAdapter(ABC, Generic[UserSchemaType, CreateUserSchemaType]):
     async def get_user_roles(self, user_id: UserID) -> list[str]:
         """Get user's roles. Returns [] by default. Override or use RoleAdapterMixin."""
         return []
+
+    @asynccontextmanager
+    async def transaction(
+        self,
+    ) -> "AsyncIterator[AbstractUserAdapter[UserSchemaType, CreateUserSchemaType]]":
+        """Group several adapter calls so they commit or roll back together.
+
+        The default yields ``self`` with no atomicity guarantee, so custom
+        adapters keep working unchanged. The built-in SQL adapters override this
+        to run the block in a single database transaction - which the
+        refresh-token rotation relies on so that revoking the old token and
+        storing the new one can't be split by a crash (leaving an orphaned
+        session). Override this when your storage can do better than best-effort.
+        """
+        yield self
 
 
 class RoleAdapterMixin(ABC):

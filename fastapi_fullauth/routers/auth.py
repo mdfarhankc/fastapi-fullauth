@@ -210,35 +210,44 @@ def create_auth_router(
         uid = str(user.id)
 
         if fullauth.config.REFRESH_TOKEN_ROTATION:
-            # Compare-and-swap: exactly one concurrent caller flips the token
-            # from not-revoked → revoked. The loser sees rowcount=0, that's
-            # either a reuse attack or a lost concurrency race. Either way,
-            # burn the family.
-            won = await fullauth.adapter.revoke_refresh_token(refresh_token)
-            if not won:
+            user_agent, ip_address = request_session_metadata(
+                request, fullauth.config.TRUSTED_PROXY_HEADERS
+            )
+            # Revoking the old token and storing its replacement must be atomic:
+            # a crash between them would revoke the family's only live token and
+            # persist no successor, silently orphaning the session. Run both in
+            # one transaction; the compare-and-swap still picks the winner via the
+            # UPDATE rowcount (a flush inside the transaction exposes it).
+            won = False
+            tokens: TokenPair | None = None
+            async with fullauth.adapter.transaction() as tx:
+                # Exactly one concurrent caller flips the token not-revoked →
+                # revoked. The loser sees rowcount=0 - reuse attack or lost race -
+                # and burns the family below.
+                won = await tx.revoke_refresh_token(refresh_token)
+                if won:
+                    tokens = await issue_token_pair(
+                        tx,
+                        fullauth.token_engine,
+                        user,
+                        extra_claims=extra_claims,
+                        family_id=payload.family_id,
+                        roles=roles,
+                        user_agent=user_agent,
+                        ip_address=ip_address,
+                    )
+
+            if not won or tokens is None:
                 logger.error(
                     "refresh token reuse/concurrent use; revoking family: %s",
                     stored.family_id,
                 )
                 await fullauth.adapter.revoke_refresh_token_family(stored.family_id)
                 raise CREDENTIALS_EXCEPTION
+
             await fullauth.token_engine.blacklist_token(
                 payload.jti,
                 ttl_seconds=fullauth.config.REFRESH_TOKEN_EXPIRE_DAYS * 86400,
-            )
-
-            user_agent, ip_address = request_session_metadata(
-                request, fullauth.config.TRUSTED_PROXY_HEADERS
-            )
-            tokens = await issue_token_pair(
-                fullauth.adapter,
-                fullauth.token_engine,
-                user,
-                extra_claims=extra_claims,
-                family_id=payload.family_id,
-                roles=roles,
-                user_agent=user_agent,
-                ip_address=ip_address,
             )
             return await write_tokens(response, fullauth, tokens)
 

@@ -161,6 +161,21 @@ class _BaseSQLAlchemyAdapter(
         else:
             await session.commit()
 
+    async def _commit_idempotent(self, session: AsyncSession) -> None:
+        """Commit, treating a unique/PK conflict from a concurrent identical
+        insert as success (the row another caller raced us to is what we wanted).
+
+        Only swallowed on the standalone path: inside a transaction() the
+        conflict poisons the surrounding work and must propagate to the caller.
+        """
+        if self._tx_session is session:
+            await session.flush()
+            return
+        try:
+            await session.commit()
+        except IntegrityError:
+            await session.rollback()
+
     async def _insert(self, session: AsyncSession, obj: Any) -> None:
         """Add and flush ``obj``, raising IntegrityError on a constraint conflict
         while leaving the session usable for the caller to recover.
@@ -439,7 +454,7 @@ class _BaseSQLAlchemyAdapter(
             if user and role not in user.roles:
                 user.roles.append(role)
                 session.add(user)
-                await self._commit(session)
+                await self._commit_idempotent(session)
 
     async def remove_role(self, user_id: UserID, role_name: str) -> None:
         async with self._begin() as session:
@@ -516,7 +531,7 @@ class _BaseSQLAlchemyAdapter(
             )
             if result.scalars().first() is None:
                 session.add(role_permission_model(role_id=role.id, permission_id=perm.id))
-                await self._commit(session)
+                await self._commit_idempotent(session)
 
     async def remove_permission_from_role(self, role_name: str, permission: str) -> None:
         role_model = self._require(self._role_model, "Permissions")
