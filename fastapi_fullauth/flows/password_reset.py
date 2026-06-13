@@ -57,6 +57,13 @@ async def reset_password(
         logger.error("Password reset failed; user not found: %s", payload.sub)
         raise UserNotFoundError("User not found")
 
+    # Parity with login/OAuth: a deactivated account must not be actionable.
+    # Burn the token first so this rejection can't be retried with the same one.
+    if not user.is_active:
+        await token_engine.blacklist_payload(payload)
+        logger.warning("Password reset blocked; account deactivated: user_id=%s", user.id)
+        raise TokenError("User account is deactivated")
+
     hashed = hash_password(new_password, algorithm=hash_algorithm)
     await adapter.set_password(user.id, hashed)
 
