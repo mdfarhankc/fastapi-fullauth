@@ -3,6 +3,7 @@ import hmac
 import logging
 import secrets
 from typing import Literal
+from urllib.parse import urlparse
 
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
@@ -38,6 +39,13 @@ class CSRFMiddleware(BaseHTTPMiddleware):
 
     Sets a signed CSRF cookie on safe requests. State-changing requests
     must include an X-CSRF-Token header matching the cookie value.
+
+    The signed double-submit token proves the value was server-issued but is not
+    bound to the user's session, so a party able to *write* a cookie for the
+    domain (sibling-subdomain takeover, MITM on a plaintext sibling) could plant
+    a matching cookie+header pair. Set ``trusted_origins`` to the front-end
+    origins you serve to also require a matching Origin/Referer on state-changing
+    requests - the recommended defence in depth for cookie-based auth.
     """
 
     def __init__(
@@ -51,6 +59,7 @@ class CSRFMiddleware(BaseHTTPMiddleware):
         cookie_httponly: bool = False,
         cookie_domain: str | None = None,
         header_name: str = "X-CSRF-Token",
+        trusted_origins: list[str] | None = None,
     ) -> None:
         super().__init__(app)
 
@@ -74,9 +83,30 @@ class CSRFMiddleware(BaseHTTPMiddleware):
         self.cookie_httponly = cookie_httponly
         self.cookie_domain = cookie_domain
         self.header_name = header_name
+        # Normalise to scheme://host[:port] with any trailing slash removed.
+        self.trusted_origins: set[str] = {o.rstrip("/") for o in (trusted_origins or [])}
 
     def _is_exempt(self, path: str) -> bool:
-        return any(path.startswith(p) for p in self.exempt_paths)
+        # Anchor on path-segment boundaries so exempting "/api/foo" does not also
+        # exempt "/api/foobar"; only "/api/foo" itself and "/api/foo/..." match.
+        return any(path == p or path.startswith(p.rstrip("/") + "/") for p in self.exempt_paths)
+
+    def _origin_allowed(self, request: Request) -> bool:
+        """When trusted_origins is configured, a present Origin/Referer must match
+        one of them. Requests with neither header (non-browser clients) defer to
+        the token check; browsers always send Origin on cross-site unsafe requests."""
+        if not self.trusted_origins:
+            return True
+        origin = request.headers.get("origin")
+        if origin is None:
+            referer = request.headers.get("referer")
+            if referer:
+                parsed = urlparse(referer)
+                if parsed.scheme and parsed.netloc:
+                    origin = f"{parsed.scheme}://{parsed.netloc}"
+        if origin is None:
+            return True
+        return origin.rstrip("/") in self.trusted_origins
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         method = request.method.upper()
@@ -99,6 +129,13 @@ class CSRFMiddleware(BaseHTTPMiddleware):
                     path="/",
                 )
             return response
+
+        if not self._origin_allowed(request):
+            logger.warning("CSRF origin not allowed: %s %s", method, path)
+            return JSONResponse(
+                {"detail": "CSRF origin check failed."},
+                status_code=403,
+            )
 
         cookie_value = request.cookies.get(self.cookie_name)
         header_value = request.headers.get(self.header_name)

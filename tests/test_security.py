@@ -35,8 +35,35 @@ async def test_security_headers(security_app):
         assert r.status_code == 200
         assert r.headers["x-content-type-options"] == "nosniff"
         assert r.headers["x-frame-options"] == "DENY"
-        assert "strict-transport-security" in r.headers
+        assert r.headers["x-xss-protection"] == "0"
         assert "referrer-policy" in r.headers
+
+
+@pytest.mark.asyncio
+async def test_hsts_only_on_https():
+    """HSTS must not be sent over plaintext HTTP (browsers ignore it there and a
+    stray HTTP deploy could pin sibling subdomains), but is sent over HTTPS and
+    when a proxy forwards an HTTPS scheme."""
+    app = FastAPI()
+    app.add_middleware(SecurityHeadersMiddleware)
+
+    @app.get("/test")
+    async def test_route():
+        return {"ok": True}
+
+    transport = ASGITransport(app=app)
+    # Plaintext HTTP: no HSTS.
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        r = await client.get("/test")
+        assert "strict-transport-security" not in r.headers
+        # ...unless a trusted proxy says the edge was HTTPS.
+        r = await client.get("/test", headers={"x-forwarded-proto": "https"})
+        assert "strict-transport-security" in r.headers
+
+    # Direct HTTPS: HSTS present.
+    async with AsyncClient(transport=transport, base_url="https://test") as client:
+        r = await client.get("/test")
+        assert "strict-transport-security" in r.headers
 
 
 # CSRF middleware
@@ -463,3 +490,118 @@ async def test_separate_keys():
     await mgr.record_failure("a@test.com")
     assert await mgr.is_locked("a@test.com")
     assert not await mgr.is_locked("b@test.com")
+
+
+# CSRF Origin allow-list and exempt-path anchoring
+
+
+@pytest.fixture
+def csrf_origin_app():
+    app = FastAPI()
+    app.add_middleware(
+        CSRFMiddleware,
+        secret="test-csrf-secret-that-is-at-least-32-chars-long",
+        trusted_origins=["http://allowed.example"],
+    )
+
+    @app.get("/form")
+    async def form():
+        return {"ok": True}
+
+    @app.post("/submit")
+    async def submit():
+        return {"submitted": True}
+
+    return app
+
+
+@pytest.mark.asyncio
+async def test_csrf_rejects_untrusted_origin(csrf_origin_app):
+    """Even with a valid double-submit token, a request whose Origin is not in
+    trusted_origins is rejected - this is what stops a cookie-injecting attacker."""
+    transport = ASGITransport(app=csrf_origin_app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        token = (await client.get("/form")).cookies["fullauth_csrf"]
+        client.cookies.set("fullauth_csrf", token)
+        r = await client.post(
+            "/submit",
+            headers={"X-CSRF-Token": token, "Origin": "http://evil.example"},
+        )
+        assert r.status_code == 403
+        assert "origin" in r.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
+async def test_csrf_allows_trusted_origin(csrf_origin_app):
+    transport = ASGITransport(app=csrf_origin_app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        token = (await client.get("/form")).cookies["fullauth_csrf"]
+        client.cookies.set("fullauth_csrf", token)
+        r = await client.post(
+            "/submit",
+            headers={"X-CSRF-Token": token, "Origin": "http://allowed.example"},
+        )
+        assert r.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_csrf_allows_request_without_origin_header(csrf_origin_app):
+    """A non-browser client sends no Origin/Referer; it must defer to the token
+    check rather than be blocked outright."""
+    transport = ASGITransport(app=csrf_origin_app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        token = (await client.get("/form")).cookies["fullauth_csrf"]
+        client.cookies.set("fullauth_csrf", token)
+        r = await client.post("/submit", headers={"X-CSRF-Token": token})
+        assert r.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_csrf_exempt_paths_are_segment_anchored():
+    """Exempting '/api/foo' must not also exempt '/api/foobar'."""
+    app = FastAPI()
+    app.add_middleware(
+        CSRFMiddleware,
+        secret="test-csrf-secret-that-is-at-least-32-chars-long",
+        exempt_paths=["/api/foo"],
+    )
+
+    @app.post("/api/foo")
+    async def foo():
+        return {"ok": True}
+
+    @app.post("/api/foobar")
+    async def foobar():
+        return {"ok": True}
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        # exact exempt path bypasses CSRF entirely
+        assert (await client.post("/api/foo")).status_code == 200
+        # a sibling that merely shares the prefix is NOT exempt -> blocked (no token)
+        assert (await client.post("/api/foobar")).status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_redis_rate_limiter_enforces_limit_under_concurrency():
+    """The atomic check-and-add must not let a concurrent burst exceed the limit
+    (the old check-then-add was a TOCTOU race)."""
+    import asyncio
+
+    import fakeredis.aioredis
+
+    from fastapi_fullauth.protection.ratelimit import RedisRateLimiter
+
+    limiter = RedisRateLimiter.__new__(RedisRateLimiter)
+    limiter.max_requests = 3
+    limiter.window_seconds = 60
+    limiter._redis = fakeredis.aioredis.FakeRedis(decode_responses=True)
+    limiter._prefix = "fullauth:ratelimit:"
+
+    results = await asyncio.gather(*[limiter.is_allowed("burst-ip") for _ in range(20)])
+    # Never more than the limit may be admitted, no matter the interleaving.
+    assert sum(results) <= 3
+    # And it does admit up to the limit (not trivially rejecting everything).
+    assert sum(results) == 3
+    # The stored set never holds more than the limit either.
+    assert await limiter._redis.zcard("fullauth:ratelimit:burst-ip") == 3

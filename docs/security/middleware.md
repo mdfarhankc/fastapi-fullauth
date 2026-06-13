@@ -45,10 +45,16 @@ Adds standard security headers to every response:
 |--------|-------|---------|
 | `X-Content-Type-Options` | `nosniff` | Prevents MIME-type sniffing |
 | `X-Frame-Options` | `DENY` | Prevents clickjacking via iframes |
-| `X-XSS-Protection` | `1; mode=block` | Activates browser XSS filter |
-| `Strict-Transport-Security` | `max-age=31536000; includeSubDomains` | Forces HTTPS for 1 year |
+| `X-XSS-Protection` | `0` | Disables the deprecated legacy XSS auditor (rely on a CSP) |
+| `Strict-Transport-Security` | `max-age=31536000; includeSubDomains` | Forces HTTPS for 1 year — **sent only over HTTPS** |
 | `Referrer-Policy` | `strict-origin-when-cross-origin` | Controls referrer information |
 | `Permissions-Policy` | `geolocation=(), camera=(), microphone=()` | Disables browser APIs |
+
+!!! note "HSTS is HTTPS-only"
+    `Strict-Transport-Security` is emitted only when the request is HTTPS — directly, or via an `X-Forwarded-Proto: https` header from a trusted proxy. This prevents a stray plaintext-HTTP deploy from pinning HSTS (with `includeSubDomains`) across sibling subdomains. Disable it entirely with `SecurityHeadersMiddleware(app, hsts=False)`, or change the policy with `hsts_value=...`.
+
+!!! info "`X-XSS-Protection` is `0` on purpose"
+    The legacy auditor this header enabled is deprecated, and `1; mode=block` is known to introduce cross-site leak oracles in browsers that still honour it. The modern guidance is to disable it and rely on a `Content-Security-Policy`.
 
 ### Custom headers
 
@@ -89,6 +95,20 @@ app.add_middleware(
 
 The `secret` must be at least 32 characters. Pass `config.SECRET_KEY`, or your own dedicated key if you want to rotate it independently. Match the cookie attributes to whatever you pass your `CookieBackend`.
 
+### Origin allow-list (recommended)
+
+The signed double-submit token proves the cookie was server-issued but is **not bound to the user's session**, so a party able to *write* a cookie for your domain (a sibling-subdomain takeover, or a MITM on a plaintext sibling host) could plant a matching cookie+header pair. Add `trusted_origins` to also require a matching `Origin`/`Referer` on state-changing requests — the recommended defence in depth for cookie-based auth:
+
+```python
+app.add_middleware(
+    CSRFMiddleware,
+    secret=config.SECRET_KEY,
+    trusted_origins=["https://app.example.com"],
+)
+```
+
+When set, a state-changing request whose `Origin` (or `Referer`) is not in the list is rejected even if it carries a valid token. Requests with no `Origin`/`Referer` (non-browser clients) fall back to the token check, so server-to-server callers are unaffected.
+
 ### Frontend integration
 
 Your frontend must read the CSRF cookie and send it as a header:
@@ -121,6 +141,8 @@ app.add_middleware(
     exempt_paths=["/api/v1/webhooks"],
 )
 ```
+
+Exempt paths are matched on path-segment boundaries: `"/api/v1/webhooks"` exempts that exact path and anything under `"/api/v1/webhooks/"`, but **not** a sibling like `"/api/v1/webhooks-admin"`.
 
 ## Rate Limiting
 

@@ -87,25 +87,29 @@ class RedisRateLimiter:
         cutoff = now - self.window_seconds
 
         try:
-            # cleanup + count in one pipeline
-            pipe = self._redis.pipeline()
+            # Cleanup, add, and count in ONE atomic MULTI/EXEC. Counting in a
+            # separate round-trip from the add (check-then-act) is a TOCTOU race:
+            # a concurrent burst all reads count<max before any adds, so they all
+            # pass and blow the limit. Here we add first, then read the post-add
+            # cardinality atomically, and back our own member out if we exceeded.
+            #
+            # The member must be unique per hit; the bare timestamp collides for
+            # requests in the same clock tick (zadd would overwrite, undercounting),
+            # so we append a random suffix.
+            member = f"{now}:{secrets.token_hex(8)}"
+            pipe = self._redis.pipeline(transaction=True)
             pipe.zremrangebyscore(redis_key, "-inf", cutoff)
+            pipe.zadd(redis_key, {member: now})
             pipe.zcard(redis_key)
+            pipe.expire(redis_key, self.window_seconds)
             results = await pipe.execute()
 
-            count = results[1]
-            if count >= self.max_requests:
+            count = results[2]
+            if count > self.max_requests:
+                # We pushed the window over the limit; remove our own member so we
+                # don't permanently inflate the count, and reject.
+                await self._redis.zrem(redis_key, member)
                 return False
-
-            # Only add if allowed. The sorted-set member must be unique per hit;
-            # using the bare timestamp would collide for requests in the same
-            # clock tick, so zadd would overwrite instead of count them and the
-            # limit could be exceeded under concurrency. Add a random suffix.
-            member = f"{now}:{secrets.token_hex(8)}"
-            pipe = self._redis.pipeline()
-            pipe.zadd(redis_key, {member: now})
-            pipe.expire(redis_key, self.window_seconds)
-            await pipe.execute()
             return True
         except Exception:
             # Fail open: a Redis outage must not lock every client out of login.

@@ -1545,8 +1545,8 @@ Adds standard security headers to every response:
 |--------|-------|
 | `X-Content-Type-Options` | `nosniff` |
 | `X-Frame-Options` | `DENY` |
-| `X-XSS-Protection` | `1; mode=block` |
-| `Strict-Transport-Security` | `max-age=31536000; includeSubDomains` |
+| `X-XSS-Protection` | `0` (legacy auditor disabled; rely on a CSP) |
+| `Strict-Transport-Security` | `max-age=31536000; includeSubDomains` (HTTPS responses only) |
 | `Referrer-Policy` | `strict-origin-when-cross-origin` |
 | `Permissions-Policy` | `geolocation=(), camera=(), microphone=()` |
 
