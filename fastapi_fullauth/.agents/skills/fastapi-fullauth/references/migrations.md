@@ -63,6 +63,17 @@ Whenever you:
 
 ## Version-bump schema changes
 
+### Adding session management (refresh-token columns)
+
+Session management records where each sign-in came from, adding two **nullable** columns to `fullauth_refresh_tokens`: `user_agent` (`String(512)`) and `ip_address` (`String(45)`). Both nullable, so existing rows stay `NULL` and the change is purely additive — no backfill.
+
+```bash
+alembic revision --autogenerate -m "add user_agent and ip_address to refresh tokens"
+alembic upgrade head
+```
+
+The `sessions` router itself needs no new table; it reads the existing `fullauth_refresh_tokens` grouped by `family_id`. The `family_id` column already exists from refresh-token rotation.
+
 ### 0.9.x → 0.10.0
 
 No data migration is required; table names and column shapes are unchanged. The breaking change is purely at the Python import layer: classes renamed to `*Mixin`, model paths moved to `fastapi_fullauth.models.{sqlalchemy,sqlmodel}`, and adapter constructors take concrete model classes as kwargs. See the v0.10.0 entry in CHANGELOG for the import-path map.

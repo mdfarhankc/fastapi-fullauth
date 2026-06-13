@@ -6,6 +6,7 @@ from fastapi_fullauth.routers._schemas import LoginResponse, MessageResponse
 from fastapi_fullauth.types import (
     CreateUserSchema,
     CreateUserSchemaType,
+    SessionInfo,
     TokenPair,
     UserSchema,
     UserSchemaType,
@@ -22,6 +23,7 @@ __all__ = [
     "LoginResponse",
     "MessageResponse",
     "PasswordValidator",
+    "SessionInfo",
     "TokenPair",
     "UserSchema",
     "UserSchemaType",

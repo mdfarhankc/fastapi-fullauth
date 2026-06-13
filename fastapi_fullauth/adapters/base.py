@@ -1,4 +1,6 @@
 from abc import ABC, abstractmethod
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from typing import Any, Generic, Protocol, cast
 
 from fastapi_fullauth.types import (
@@ -6,6 +8,7 @@ from fastapi_fullauth.types import (
     OAuthAccount,
     PasskeyCredential,
     RefreshToken,
+    SessionInfo,
     UserID,
     UserSchemaType,
 )
@@ -52,7 +55,16 @@ class AbstractUserAdapter(ABC, Generic[UserSchemaType, CreateUserSchemaType]):
     ) -> UserSchemaType: ...
 
     @abstractmethod
-    async def update_user(self, user_id: UserID, data: dict[str, Any]) -> UserSchemaType: ...
+    async def update_user(self, user_id: UserID, data: dict[str, Any]) -> UserSchemaType:
+        """Apply ``data`` to the user row.
+
+        WARNING: this writes ``data`` verbatim and performs no field filtering -
+        it can set privileged columns (``is_superuser``, ``is_verified``,
+        ``hashed_password``). The profile route filters request input through
+        ``validate_profile_updates`` (``PROTECTED_FIELDS``) before calling this.
+        Never pass an unfiltered request body straight to ``update_user``.
+        """
+        ...
 
     @abstractmethod
     async def delete_user(self, user_id: UserID) -> None: ...
@@ -90,6 +102,21 @@ class AbstractUserAdapter(ABC, Generic[UserSchemaType, CreateUserSchemaType]):
     async def get_user_roles(self, user_id: UserID) -> list[str]:
         """Get user's roles. Returns [] by default. Override or use RoleAdapterMixin."""
         return []
+
+    @asynccontextmanager
+    async def transaction(
+        self,
+    ) -> "AsyncIterator[AbstractUserAdapter[UserSchemaType, CreateUserSchemaType]]":
+        """Group several adapter calls so they commit or roll back together.
+
+        The default yields ``self`` with no atomicity guarantee, so custom
+        adapters keep working unchanged. The built-in SQL adapters override this
+        to run the block in a single database transaction - which the
+        refresh-token rotation relies on so that revoking the old token and
+        storing the new one can't be split by a crash (leaving an orphaned
+        session). Override this when your storage can do better than best-effort.
+        """
+        yield self
 
 
 class RoleAdapterMixin(ABC):
@@ -153,6 +180,33 @@ class OAuthAdapterMixin(ABC):
 
     @abstractmethod
     async def delete_oauth_account(self, provider: str, provider_user_id: str) -> None: ...
+
+
+class SessionAdapterMixin(ABC):
+    """Mixin for user session management. Inherit alongside AbstractUserAdapter.
+
+    A session is one refresh-token family. The built-in SQL adapters implement
+    this automatically; custom adapters inherit it to expose the sessions router.
+    """
+
+    @abstractmethod
+    async def list_user_sessions(self, user_id: UserID) -> list[SessionInfo]:
+        """Return the user's active sessions (live refresh-token families),
+        most recently used first."""
+        ...
+
+    @abstractmethod
+    async def revoke_user_session(self, user_id: UserID, family_id: str) -> bool:
+        """Revoke one of the user's sessions. Returns True if a session with that
+        family_id existed for the user (idempotent), False if it did not = the
+        caller is not the owner, so the route answers 404."""
+        ...
+
+    @abstractmethod
+    async def revoke_user_sessions_except(self, user_id: UserID, keep_family_id: str) -> int:
+        """Revoke all of the user's live sessions except ``keep_family_id``.
+        Returns the number of refresh tokens revoked."""
+        ...
 
 
 class PasskeyAdapterMixin(ABC):

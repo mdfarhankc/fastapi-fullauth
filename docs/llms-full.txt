@@ -1266,6 +1266,26 @@ roles = await adapter.get_user_roles(user_id)
 
 ---
 
+# Session Management
+
+# Session Management
+
+A session is one refresh-token family: every login starts a new family, and refresh rotation keeps that family alive. The sessions router surfaces those families so a user can see where they're signed in and sign out a specific device without affecting the others.
+
+Routes (under the auth prefix, default `/api/v1/auth`):
+
+- `GET /auth/sessions` - list the user's active sessions; the device making the request is flagged `current`. Each entry has `family_id`, `ip_address`, `user_agent`, `created_at` (session start), `last_used_at` (most recent refresh), `expires_at`, and `current`.
+- `DELETE /auth/sessions/{family_id}` - revoke one session; `404` if it isn't the caller's.
+- `POST /auth/sessions/revoke-others` - sign out everywhere except the current session.
+
+The router is opt-in and mounts automatically for the bundled SQLAlchemy and SQLModel adapters, the same way the admin router mounts when the adapter supports roles. Include or exclude it via `init_app(app, include_routers=[...])`.
+
+The access token carries a `family_id` claim identifying its session; the server uses it to flag the current session and to decide which session `revoke-others` keeps. Tokens issued before upgrading lack the claim and resolve it on the next login or refresh.
+
+Custom adapters opt in by inheriting `SessionAdapterMixin` and implementing `list_user_sessions`, `revoke_user_session`, and `revoke_user_sessions_except`. Recording device and IP adds two nullable columns to the refresh-token table (`user_agent`, `ip_address`); add them with an additive migration.
+
+---
+
 # Event Hooks
 
 # Event Hooks
@@ -1525,8 +1545,8 @@ Adds standard security headers to every response:
 |--------|-------|
 | `X-Content-Type-Options` | `nosniff` |
 | `X-Frame-Options` | `DENY` |
-| `X-XSS-Protection` | `1; mode=block` |
-| `Strict-Transport-Security` | `max-age=31536000; includeSubDomains` |
+| `X-XSS-Protection` | `0` (legacy auditor disabled; rely on a CSP) |
+| `Strict-Transport-Security` | `max-age=31536000; includeSubDomains` (HTTPS responses only) |
 | `Referrer-Policy` | `strict-origin-when-cross-origin` |
 | `Permissions-Policy` | `geolocation=(), camera=(), microphone=()` |
 
@@ -2109,7 +2129,7 @@ Extend `PROTECTED_FIELDS` in subclasses to protect custom sensitive fields from 
 ```python
 class TokenPair(BaseModel):
     access_token: str
-    refresh_token: str
+    refresh_token: str | None = None  # null in cookie mode (carried in an HttpOnly cookie)
     token_type: str = "bearer"
     expires_in: int | None = None
 ```

@@ -57,10 +57,13 @@ backend = CookieBackend(
     httponly=True,              # default, don't change this
     samesite="lax",             # or "strict" if cross-site flows don't apply
     domain="app.example.com",   # explicit, not a leading dot
+    refresh_path="/api/v1/auth", # scope the refresh cookie to the auth routes
 )
 ```
 
 `SameSite=none` requires `secure=True` and is only right for cross-origin embeds. For most SPAs on the same domain, `lax` is correct.
+
+`CookieBackend` carries the refresh token too, in a separate HttpOnly `fullauth_refresh` cookie, and the refresh token is then `null` in the JSON body. Set `refresh_path` to your auth prefix so the browser only sends the long-lived refresh cookie to `/refresh` and `/logout`, not on every request. `/refresh` and `/logout` read the refresh token from the cookie, so cookie clients call them with no body.
 
 ## 5. Token lifetimes
 
@@ -122,6 +125,8 @@ target_metadata = Base.metadata
 `alembic revision --autogenerate -m "..."` picks up exactly the tables you defined from the mixins. Apps that don't subclass `OAuthAccountMixin` never get a `fullauth_oauth_accounts` table.
 
 **Since v0.8.0:** the OAuth account model has a new composite unique constraint on `(provider, provider_user_id)`. Existing users upgrading from v0.7.0 should autogenerate a migration to add it before deploying; without it, concurrent OAuth callbacks could have created duplicate-identity rows.
+
+**Session management:** the refresh-token table gains two nullable columns, `user_agent` and `ip_address`. Autogenerate an additive migration before deploying; existing rows stay `NULL`. The `sessions` router needs no new table.
 
 ## 9. Rate limit budgets
 

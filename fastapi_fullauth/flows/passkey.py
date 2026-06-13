@@ -184,6 +184,8 @@ async def complete_authentication(
     passkey_adapter: PasskeyAdapterMixin,
     token_engine: "TokenEngine",
     require_user_verification: bool = True,
+    user_agent: str | None = None,
+    ip_address: str | None = None,
 ) -> tuple[TokenPair, UserSchema]:
     """Verify WebAuthn authentication response and issue JWT tokens."""
     from webauthn import verify_authentication_response
@@ -237,7 +239,9 @@ async def complete_authentication(
     if user is None or not user.is_active:
         raise ValueError("User not found or inactive")
 
-    token_pair = await issue_token_pair(adapter, token_engine, user)
+    token_pair = await issue_token_pair(
+        adapter, token_engine, user, user_agent=user_agent, ip_address=ip_address
+    )
 
     logger.info("Passkey authentication: user_id=%s", user.id)
     return token_pair, user

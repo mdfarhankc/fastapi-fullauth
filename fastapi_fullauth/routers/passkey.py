@@ -2,14 +2,16 @@ import logging
 from typing import TYPE_CHECKING, Any, cast
 from uuid import UUID
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Request
+from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
 
 from fastapi_fullauth.adapters.base import PasskeyAdapterMixin
 from fastapi_fullauth.dependencies.current_user import CurrentUser, get_fullauth
 from fastapi_fullauth.protection.challenges import ChallengeStore
 from fastapi_fullauth.routers._schemas import LoginResponse, build_login_response_model
+from fastapi_fullauth.routers._transport import write_tokens
 from fastapi_fullauth.types import TokenPair, UserSchema, UserSchemaType
+from fastapi_fullauth.utils import request_session_metadata
 
 logger = logging.getLogger("fastapi_fullauth.routers.passkey")
 
@@ -177,6 +179,7 @@ def create_passkey_router(
     async def authenticate_complete(
         data: AuthenticateCompleteRequest,
         request: Request,
+        response: Response,
         fullauth: "FullAuth" = Depends(get_fullauth),
     ) -> TokenPair:
         from fastapi_fullauth.flows.passkey import complete_authentication
@@ -192,6 +195,9 @@ def create_passkey_router(
 
         rp_id = cast("str", fullauth.config.PASSKEY_RP_ID)
         challenge_store = cast("ChallengeStore", fullauth.challenge_store)
+        user_agent, ip_address = request_session_metadata(
+            request, fullauth.config.TRUSTED_PROXY_HEADERS
+        )
 
         try:
             token_pair, user = await complete_authentication(
@@ -204,12 +210,16 @@ def create_passkey_router(
                 passkey_adapter=fullauth.adapter,
                 token_engine=fullauth.token_engine,
                 require_user_verification=fullauth.config.PASSKEY_REQUIRE_USER_VERIFICATION,
+                user_agent=user_agent,
+                ip_address=ip_address,
             )
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
         except Exception:
             logger.exception("Passkey authentication failed")
             raise HTTPException(status_code=401, detail="Passkey authentication failed")
+
+        token_pair = await write_tokens(response, fullauth, token_pair)
 
         await fullauth.hooks.emit("after_login", user=user)
 

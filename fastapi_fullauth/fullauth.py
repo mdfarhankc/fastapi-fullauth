@@ -9,6 +9,7 @@ from fastapi_fullauth.adapters.base import (
     OAuthAdapterMixin,
     PasskeyAdapterMixin,
     RoleAdapterMixin,
+    SessionAdapterMixin,
 )
 from fastapi_fullauth.backends import AbstractBackend, BearerBackend
 from fastapi_fullauth.config import FullAuthConfig
@@ -94,6 +95,7 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
         self._verify_router: APIRouter | None = None
         self._admin_router: APIRouter | None = None
         self._passkey_router: APIRouter | None = None
+        self._sessions_router: APIRouter | None = None
         self._router: APIRouter | None = None
 
     _RESERVED_CLAIM_KEYS = frozenset(
@@ -291,7 +293,23 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
             )
         return self._passkey_router
 
-    _ROUTER_NAMES: set[RouterName] = {"auth", "profile", "verify", "admin", "oauth", "passkey"}
+    @property
+    def sessions_router(self) -> APIRouter:
+        if self._sessions_router is None:
+            from fastapi_fullauth.routers.sessions import create_sessions_router
+
+            self._sessions_router = create_sessions_router()
+        return self._sessions_router
+
+    _ROUTER_NAMES: set[RouterName] = {
+        "auth",
+        "profile",
+        "verify",
+        "admin",
+        "oauth",
+        "passkey",
+        "sessions",
+    }
 
     def _build_router(self, exclude: set[str] | None = None) -> APIRouter:
         """Build combined router, optionally excluding named sub-routers."""
@@ -318,6 +336,8 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
             and self.passkey_router is not None
         ):
             router.include_router(self.passkey_router)
+        if "sessions" not in exclude and isinstance(self.adapter, SessionAdapterMixin):
+            router.include_router(self.sessions_router)
         return router
 
     @property

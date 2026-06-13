@@ -60,6 +60,7 @@ nav:
       - SQLAlchemy: adapters/sqlalchemy.md
   - Authentication:
       - Protected Routes: auth/dependencies.md
+      - Session Management: auth/sessions.md
       - Event Hooks: auth/hooks.md
       - Custom Token Claims: auth/custom-claims.md
       - Password Validation: auth/passwords.md

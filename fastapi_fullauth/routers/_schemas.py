@@ -76,7 +76,9 @@ class VerifyEmailRequest(BaseModel):
 
 
 class RefreshRequest(BaseModel):
-    refresh_token: str
+    # Optional so a cookie-transport client can POST /refresh with an empty body;
+    # the route reads the token from the backend cookie when it isn't supplied.
+    refresh_token: str | None = None
 
 
 class LogoutRequest(BaseModel):

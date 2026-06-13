@@ -15,7 +15,9 @@ class PermissionMixin:
     __tablename__ = "fullauth_permissions"
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid7)
-    name: Mapped[str] = mapped_column(unique=True, nullable=False)
+    # String(200) + index mirrors the SQLModel mixin; an unbounded VARCHAR
+    # unique key fails DDL on MySQL.
+    name: Mapped[str] = mapped_column(String(200), unique=True, index=True, nullable=False)
     description: Mapped[str] = mapped_column(String(500), default="")
 
 

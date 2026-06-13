@@ -61,16 +61,30 @@ from fastapi_fullauth.types import (
     UserID,                    # UUID alias
     UserSchemaType,            # TypeVar bound=UserSchema, default=UserSchema
     CreateUserSchemaType,      # TypeVar bound=CreateUserSchema, default=CreateUserSchema
-    TokenPair,                 # {access_token, refresh_token, token_type, expires_in}
-    TokenPayload,              # decoded JWT
-    RefreshToken,              # persisted refresh token
+    TokenPair,                 # {access_token, refresh_token: str | None, token_type, expires_in}
+    TokenPayload,              # decoded JWT (incl. family_id: str | None)
+    RefreshToken,              # persisted refresh token (incl. user_agent, ip_address)
     RefreshTokenMeta,          # refresh token + metadata at creation time
+    SessionInfo,               # one active session (a refresh-token family)
     OAuthAccount,              # OAuth account row
     OAuthUserInfo,             # what a provider returns
     PasskeyCredential,         # passkey row
-    RouterName,                # Literal["auth", "profile", "verify", "admin", "oauth", "passkey"]
+    RouterName,                # Literal["auth", "profile", "verify", "admin", "oauth", "passkey", "sessions"]
     TokenClaimsBuilder,        # async callable for custom JWT claims
 )
+```
+
+`TokenPair.refresh_token` is `str | None`: populated under the default bearer transport, `None` when a `CookieBackend` carries it in an HttpOnly cookie.
+
+```python
+class SessionInfo(BaseModel):
+    family_id: str
+    ip_address: str | None
+    user_agent: str | None
+    created_at: datetime    # first login in the family
+    last_used_at: datetime  # most recent refresh
+    expires_at: datetime
+    current: bool = False   # the device making the request
 ```
 
 ## Dependencies
@@ -106,7 +120,7 @@ from fastapi_fullauth.backends import (
 )
 ```
 
-Pass `backends=[...]` to `FullAuth(...)`.
+Pass `backends=[...]` to `FullAuth(...)`. `BearerBackend` returns both tokens in the JSON body. `CookieBackend` carries the access token and the refresh token in two separate HttpOnly cookies (`fullauth_access`, `fullauth_refresh`), omits the refresh token from the body, and reads it back on `/refresh` and `/logout` (`handles_refresh_token = True`). The `refresh_path` arg scopes the refresh cookie (default `"/"`; set it to your auth prefix to send it only to the refresh/logout routes).
 
 ## OAuth
 
@@ -149,6 +163,11 @@ from fastapi_fullauth.flows.passkey import (
     complete_registration,
     begin_authentication,
     complete_authentication,
+)
+from fastapi_fullauth.flows.sessions import (
+    list_sessions,
+    revoke_session,
+    revoke_other_sessions,
 )
 ```
 
@@ -315,7 +334,8 @@ Grouped for readability. All read from env with `FULLAUTH_` prefix.
 - Middleware is opt-in: `app.add_middleware(SecurityHeadersMiddleware | CSRFMiddleware | RateLimitMiddleware)`. `init_app()` does not wire anything.
 
 ### Cookies (constructor args on `CookieBackend`, not config)
-- `CookieBackend(config, *, name="fullauth_access", secure=True, httponly=True, samesite="lax", domain=None)`
+- `CookieBackend(config, *, name="fullauth_access", refresh_name="fullauth_refresh", refresh_path="/", secure=True, httponly=True, samesite="lax", domain=None)`
+- Carries both tokens in HttpOnly cookies; `refresh_path` scopes the refresh cookie (set it to your auth prefix, e.g. `"/api/v1/auth"`, to limit where the browser sends it).
 
 ### OAuth
 - `OAUTH_STATE_EXPIRE_SECONDS: int = 300`
@@ -345,7 +365,7 @@ Grouped for readability. All read from env with `FULLAUTH_` prefix.
 - `bind(app)`: sets `app.state.fullauth`.
 - `check_auth_rate_limit(route_name, client_ip)`: manual hit for custom routes.
 - `get_custom_claims(user)`: returns extra JWT claims, validates reserved keys.
-- Router properties: `router`, `auth_router`, `profile_router`, `verify_router`, `admin_router`, `oauth_router`, `passkey_router`.
+- Router properties: `router`, `auth_router`, `profile_router`, `verify_router`, `admin_router`, `oauth_router`, `passkey_router`, `sessions_router`.
 - Attributes: `config`, `adapter`, `backends`, `token_engine`, `lockout`, `auth_rate_limiter`, `challenge_store`, `password_validator`, `on_create_token_claims`, `hooks`, `oauth_providers`.
 
 ## Built-in HTTP routes
@@ -358,13 +378,18 @@ Default prefix `/api/v1/auth`:
 | POST   | `/login`                          | auth     | no            |
 | POST   | `/logout`                         | auth     | yes           |
 | POST   | `/refresh`                        | auth     | (refresh)     |
+| GET    | `/sessions`                       | sessions | yes           |
+| DELETE | `/sessions/{family_id}`           | sessions | yes           |
+| POST   | `/sessions/revoke-others`         | sessions | yes           |
 | GET    | `/me`                             | profile  | yes           |
+| GET    | `/me/verified`                    | profile  | yes (verified)|
 | PATCH  | `/me`                             | profile  | yes           |
+| DELETE | `/me`                             | profile  | yes           |
 | POST   | `/change-password`                | profile  | yes           |
+| POST   | `/verify-email/request`           | verify   | yes           |
+| POST   | `/verify-email/confirm`           | verify   | no            |
 | POST   | `/password-reset/request`         | verify   | no            |
 | POST   | `/password-reset/confirm`         | verify   | no            |
-| POST   | `/verify/request`                 | verify   | yes           |
-| POST   | `/verify/confirm`                 | verify   | no            |
 | GET    | `/admin/users`                    | admin    | role:admin    |
 | GET    | `/admin/users/{id}`               | admin    | role:admin    |
 | PATCH  | `/admin/users/{id}`               | admin    | role:admin    |

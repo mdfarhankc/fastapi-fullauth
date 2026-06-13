@@ -33,6 +33,8 @@ async def login(
     user: UserSchema | None = None,
     hash_algorithm: Literal["argon2id", "bcrypt"] = "argon2id",
     prevent_timing_attacks: bool = False,
+    user_agent: str | None = None,
+    ip_address: str | None = None,
 ) -> TokenPair:
     if lockout and await lockout.is_locked(identifier):
         logger.warning("Login blocked; account locked: %s", identifier)
@@ -74,4 +76,11 @@ async def login(
         await lockout.clear(identifier)
 
     logger.info("Login successful: user_id=%s", user.id)
-    return await issue_token_pair(adapter, token_engine, user, extra_claims=extra_claims)
+    return await issue_token_pair(
+        adapter,
+        token_engine,
+        user,
+        extra_claims=extra_claims,
+        user_agent=user_agent,
+        ip_address=ip_address,
+    )

@@ -13,13 +13,19 @@ async def logout(
     adapter: AbstractUserAdapter | None = None,
     refresh_token: str | None = None,
 ) -> None:
-    """Blacklist the access token and optionally revoke the refresh token family."""
-    await token_engine.blacklist_token(token_payload.jti)
+    """Blacklist the access token and end the session (its refresh-token family)."""
+    await token_engine.blacklist_payload(token_payload)
 
-    if adapter and refresh_token:
-        stored = await adapter.get_refresh_token(refresh_token)
-        # Only revoke when the refresh token belongs to the authenticated user;
+    # End the session using the family_id carried on the access token, so logout
+    # works with just the access credential (the common bearer case) instead of
+    # requiring the client to resupply the refresh token.
+    if adapter and token_payload.family_id:
+        await adapter.revoke_refresh_token_family(token_payload.family_id)
+    elif adapter and refresh_token:
+        # Fallback for access tokens minted before family_id was carried: revoke
+        # via the supplied refresh token, but only when it belongs to the caller;
         # otherwise a valid access token could be used to nuke someone else's family.
+        stored = await adapter.get_refresh_token(refresh_token)
         if stored and str(stored.user_id) == token_payload.sub:
             await adapter.revoke_refresh_token_family(stored.family_id)
         elif stored:

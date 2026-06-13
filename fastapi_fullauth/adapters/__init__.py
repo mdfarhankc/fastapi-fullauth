@@ -17,6 +17,7 @@ from fastapi_fullauth.adapters.base import (
     PasskeyAdapterMixin,
     PermissionAdapterMixin,
     RoleAdapterMixin,
+    SessionAdapterMixin,
 )
 
 __all__ = [
@@ -25,6 +26,7 @@ __all__ = [
     "PasskeyAdapterMixin",
     "PermissionAdapterMixin",
     "RoleAdapterMixin",
+    "SessionAdapterMixin",
 ]
 
 try:

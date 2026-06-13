@@ -233,6 +233,37 @@ async def test_oauth_links_existing_user(adapter, config):
 
 
 @pytest.mark.asyncio
+async def test_oauth_state_is_single_use(adapter, config):
+    """A state token must not be replayable: a second callback with the same
+    state is rejected even though the first succeeded."""
+    from fastapi_fullauth.core.tokens import TokenEngine
+    from fastapi_fullauth.exceptions import TokenError
+
+    engine = TokenEngine(config=config)
+    provider = MockOAuthProvider()
+    state = generate_oauth_state(engine)
+
+    # first use succeeds
+    await oauth_callback(
+        adapter=adapter,
+        token_engine=engine,
+        provider=provider,
+        code="test-code",
+        state=state,
+    )
+
+    # replaying the same state is rejected (it was burned on first use)
+    with pytest.raises(TokenError):
+        await oauth_callback(
+            adapter=adapter,
+            token_engine=engine,
+            provider=provider,
+            code="test-code",
+            state=state,
+        )
+
+
+@pytest.mark.asyncio
 async def test_oauth_unverified_email_refuses_link_to_existing_account(adapter, config):
     from fastapi_fullauth.core.crypto import hash_password
     from fastapi_fullauth.core.tokens import TokenEngine
@@ -540,3 +571,56 @@ async def test_fullauth_aclose_tolerates_provider_without_init(adapter, config):
     # MockOAuthProvider skips super().__init__(); aclose must still be a no-op.
     fullauth = FullAuth(config=config, adapter=adapter, providers=[MockOAuthProvider()])
     await fullauth.aclose()
+
+
+@pytest.mark.asyncio
+async def test_oauth_login_blocked_for_deactivated_user(adapter, config):
+    """A deactivated account must not be able to sign in through a linked OAuth
+    account - parity with the password and passkey flows."""
+    from fastapi_fullauth.core.crypto import hash_password
+    from fastapi_fullauth.core.tokens import TokenEngine
+    from fastapi_fullauth.exceptions import OAuthProviderError
+    from fastapi_fullauth.types import CreateUserSchema
+
+    engine = TokenEngine(config=config)
+
+    # existing account on the same email, then deactivated by an admin
+    data = CreateUserSchema(email="oauth@example.com", password="existing-pass")
+    existing = await adapter.create_user(data, hashed_password=hash_password("existing-pass"))
+    await adapter.update_user(existing.id, {"is_active": False})
+
+    provider = MockOAuthProvider()
+    state = generate_oauth_state(engine)
+
+    with pytest.raises(OAuthProviderError, match="deactivated"):
+        await oauth_callback(
+            adapter=adapter,
+            token_engine=engine,
+            provider=provider,
+            code="test-code",
+            state=state,
+        )
+
+
+@pytest.mark.asyncio
+async def test_google_userinfo_rejects_token_response_without_access_token():
+    from fastapi_fullauth.exceptions import OAuthProviderError
+    from fastapi_fullauth.oauth.google import GoogleOAuthProvider
+
+    provider = GoogleOAuthProvider(
+        client_id="id", client_secret="secret", redirect_uris=["http://localhost/cb"]
+    )
+    with pytest.raises(OAuthProviderError, match="token exchange failed"):
+        await provider.get_user_info({})  # no access_token, must not KeyError
+
+
+@pytest.mark.asyncio
+async def test_github_userinfo_rejects_token_response_without_access_token():
+    from fastapi_fullauth.exceptions import OAuthProviderError
+    from fastapi_fullauth.oauth.github import GitHubOAuthProvider
+
+    provider = GitHubOAuthProvider(
+        client_id="id", client_secret="secret", redirect_uris=["http://localhost/cb"]
+    )
+    with pytest.raises(OAuthProviderError, match="token exchange failed"):
+        await provider.get_user_info({})  # no access_token, must not KeyError

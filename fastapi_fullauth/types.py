@@ -45,7 +45,9 @@ CreateUserSchemaType = TypeVar(
 
 class TokenPair(BaseModel):
     access_token: str
-    refresh_token: str
+    # None when a cookie backend carries the refresh token (httponly cookie) so
+    # it never reaches JavaScript; populated in the default bearer transport.
+    refresh_token: str | None = None
     token_type: str = "bearer"
     expires_in: int | None = None
 
@@ -62,6 +64,8 @@ class RefreshToken(BaseModel):
     expires_at: datetime
     family_id: str
     revoked: bool = False
+    user_agent: str | None = None
+    ip_address: str | None = None
 
 
 class OAuthAccount(BaseModel):
@@ -112,5 +116,17 @@ class PasskeyCredential(BaseModel):
     model_config = {"from_attributes": True}
 
 
-RouterName = Literal["auth", "profile", "verify", "admin", "oauth", "passkey"]
+class SessionInfo(BaseModel):
+    """One active sign-in, aggregated from a refresh-token family."""
+
+    family_id: str
+    ip_address: str | None = None
+    user_agent: str | None = None
+    created_at: datetime
+    last_used_at: datetime
+    expires_at: datetime
+    current: bool = False
+
+
+RouterName = Literal["auth", "profile", "verify", "admin", "oauth", "passkey", "sessions"]
 TokenClaimsBuilder = Callable[[UserSchema], Awaitable[dict[str, Any]]]

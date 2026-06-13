@@ -35,8 +35,35 @@ async def test_security_headers(security_app):
         assert r.status_code == 200
         assert r.headers["x-content-type-options"] == "nosniff"
         assert r.headers["x-frame-options"] == "DENY"
-        assert "strict-transport-security" in r.headers
+        assert r.headers["x-xss-protection"] == "0"
         assert "referrer-policy" in r.headers
+
+
+@pytest.mark.asyncio
+async def test_hsts_only_on_https():
+    """HSTS must not be sent over plaintext HTTP (browsers ignore it there and a
+    stray HTTP deploy could pin sibling subdomains), but is sent over HTTPS and
+    when a proxy forwards an HTTPS scheme."""
+    app = FastAPI()
+    app.add_middleware(SecurityHeadersMiddleware)
+
+    @app.get("/test")
+    async def test_route():
+        return {"ok": True}
+
+    transport = ASGITransport(app=app)
+    # Plaintext HTTP: no HSTS.
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        r = await client.get("/test")
+        assert "strict-transport-security" not in r.headers
+        # ...unless a trusted proxy says the edge was HTTPS.
+        r = await client.get("/test", headers={"x-forwarded-proto": "https"})
+        assert "strict-transport-security" in r.headers
+
+    # Direct HTTPS: HSTS present.
+    async with AsyncClient(transport=transport, base_url="https://test") as client:
+        r = await client.get("/test")
+        assert "strict-transport-security" in r.headers
 
 
 # CSRF middleware
@@ -103,6 +130,22 @@ async def test_csrf_rejects_wrong_token(csrf_app):
             headers={"X-CSRF-Token": "wrong-token"},
         )
         assert r.status_code == 403
+
+
+def test_csrf_middleware_rejects_samesite_none_without_secure():
+    """A SameSite=None CSRF cookie without Secure is dropped by browsers; reject
+    the misconfiguration at construction."""
+
+    async def _dummy_app(scope, receive, send):  # minimal ASGI app
+        return None
+
+    with pytest.raises(ValueError, match="cookie_secure=True"):
+        CSRFMiddleware(
+            _dummy_app,
+            secret="test-csrf-secret-that-is-at-least-32-chars-long",
+            cookie_samesite="none",
+            cookie_secure=False,
+        )
 
 
 # Rate limit middleware
@@ -216,6 +259,38 @@ def test_get_client_ip_falls_back_to_client_host():
     assert get_client_ip(request, None) == "127.0.0.1"
 
 
+def test_request_session_metadata_clamps_to_column_widths():
+    """The client-controlled User-Agent (and a trusted-proxy IP) are clamped to
+    the storage column widths so an oversized value can't overflow the column
+    and 500 the login/refresh INSERT on strict databases."""
+    from fastapi_fullauth.utils import request_session_metadata
+
+    request = MagicMock()
+    request.headers = {
+        "user-agent": "A" * 1000,
+        "X-Forwarded-For": "1" * 100,
+    }
+    request.client.host = "127.0.0.1"
+
+    user_agent, ip_address = request_session_metadata(request, ["X-Forwarded-For"])
+    assert user_agent == "A" * 512
+    assert ip_address == "1" * 45
+
+
+def test_request_session_metadata_passes_through_normal_values():
+    """Values within the limits are returned unchanged; a missing User-Agent
+    stays None rather than becoming an empty string."""
+    from fastapi_fullauth.utils import request_session_metadata
+
+    request = MagicMock()
+    request.headers = {}
+    request.client.host = "203.0.113.7"
+
+    user_agent, ip_address = request_session_metadata(request, [])
+    assert user_agent is None
+    assert ip_address == "203.0.113.7"
+
+
 # Redis rate limiter
 
 
@@ -300,6 +375,66 @@ async def test_redis_rate_limiter_middleware():
         assert r.status_code == 429
 
 
+@pytest.mark.asyncio
+async def test_redis_rate_limiter_counts_hits_in_the_same_clock_tick():
+    """Two requests landing in the same time.time() tick must both count. If the
+    sorted-set member were the bare timestamp they'd collide and zadd would
+    overwrite, letting the limit be exceeded under concurrency."""
+    from unittest.mock import patch
+
+    import fakeredis.aioredis
+
+    from fastapi_fullauth.protection.ratelimit import RedisRateLimiter
+
+    limiter = RedisRateLimiter.__new__(RedisRateLimiter)
+    limiter.max_requests = 3
+    limiter.window_seconds = 60
+    limiter._redis = fakeredis.aioredis.FakeRedis(decode_responses=True)
+    limiter._prefix = "fullauth:ratelimit:"
+
+    # Freeze the clock so every hit shares one timestamp.
+    with patch("fastapi_fullauth.protection.ratelimit.time.time", return_value=1000.0):
+        for _ in range(3):
+            assert await limiter.is_allowed("same-tick-ip") is True
+        assert await limiter.is_allowed("same-tick-ip") is False
+
+
+@pytest.mark.asyncio
+async def test_redis_rate_limiter_fails_open_on_redis_error():
+    """A Redis outage must not lock everyone out: the limiter allows the request."""
+    from fastapi_fullauth.protection.ratelimit import RedisRateLimiter
+
+    class _BoomRedis:
+        def pipeline(self):
+            raise RuntimeError("redis down")
+
+    limiter = RedisRateLimiter.__new__(RedisRateLimiter)
+    limiter.max_requests = 1
+    limiter.window_seconds = 60
+    limiter._redis = _BoomRedis()
+    limiter._prefix = "fullauth:ratelimit:"
+
+    assert await limiter.is_allowed("any-ip") is True
+
+
+@pytest.mark.asyncio
+async def test_redis_blacklist_fails_closed_on_redis_error():
+    """A Redis outage must not let a possibly-revoked token through: treat as
+    blacklisted."""
+    from fastapi_fullauth.core.blacklist import RedisTokenBlacklist
+
+    class _BoomRedis:
+        async def exists(self, *args):
+            raise RuntimeError("redis down")
+
+    bl = RedisTokenBlacklist.__new__(RedisTokenBlacklist)
+    bl._redis = _BoomRedis()
+    bl._default_ttl = 1800
+    bl._prefix = "fullauth:blacklist:"
+
+    assert await bl.is_blacklisted("some-jti") is True
+
+
 # Account lockout
 
 
@@ -355,3 +490,118 @@ async def test_separate_keys():
     await mgr.record_failure("a@test.com")
     assert await mgr.is_locked("a@test.com")
     assert not await mgr.is_locked("b@test.com")
+
+
+# CSRF Origin allow-list and exempt-path anchoring
+
+
+@pytest.fixture
+def csrf_origin_app():
+    app = FastAPI()
+    app.add_middleware(
+        CSRFMiddleware,
+        secret="test-csrf-secret-that-is-at-least-32-chars-long",
+        trusted_origins=["http://allowed.example"],
+    )
+
+    @app.get("/form")
+    async def form():
+        return {"ok": True}
+
+    @app.post("/submit")
+    async def submit():
+        return {"submitted": True}
+
+    return app
+
+
+@pytest.mark.asyncio
+async def test_csrf_rejects_untrusted_origin(csrf_origin_app):
+    """Even with a valid double-submit token, a request whose Origin is not in
+    trusted_origins is rejected - this is what stops a cookie-injecting attacker."""
+    transport = ASGITransport(app=csrf_origin_app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        token = (await client.get("/form")).cookies["fullauth_csrf"]
+        client.cookies.set("fullauth_csrf", token)
+        r = await client.post(
+            "/submit",
+            headers={"X-CSRF-Token": token, "Origin": "http://evil.example"},
+        )
+        assert r.status_code == 403
+        assert "origin" in r.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
+async def test_csrf_allows_trusted_origin(csrf_origin_app):
+    transport = ASGITransport(app=csrf_origin_app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        token = (await client.get("/form")).cookies["fullauth_csrf"]
+        client.cookies.set("fullauth_csrf", token)
+        r = await client.post(
+            "/submit",
+            headers={"X-CSRF-Token": token, "Origin": "http://allowed.example"},
+        )
+        assert r.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_csrf_allows_request_without_origin_header(csrf_origin_app):
+    """A non-browser client sends no Origin/Referer; it must defer to the token
+    check rather than be blocked outright."""
+    transport = ASGITransport(app=csrf_origin_app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        token = (await client.get("/form")).cookies["fullauth_csrf"]
+        client.cookies.set("fullauth_csrf", token)
+        r = await client.post("/submit", headers={"X-CSRF-Token": token})
+        assert r.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_csrf_exempt_paths_are_segment_anchored():
+    """Exempting '/api/foo' must not also exempt '/api/foobar'."""
+    app = FastAPI()
+    app.add_middleware(
+        CSRFMiddleware,
+        secret="test-csrf-secret-that-is-at-least-32-chars-long",
+        exempt_paths=["/api/foo"],
+    )
+
+    @app.post("/api/foo")
+    async def foo():
+        return {"ok": True}
+
+    @app.post("/api/foobar")
+    async def foobar():
+        return {"ok": True}
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        # exact exempt path bypasses CSRF entirely
+        assert (await client.post("/api/foo")).status_code == 200
+        # a sibling that merely shares the prefix is NOT exempt -> blocked (no token)
+        assert (await client.post("/api/foobar")).status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_redis_rate_limiter_enforces_limit_under_concurrency():
+    """The atomic check-and-add must not let a concurrent burst exceed the limit
+    (the old check-then-add was a TOCTOU race)."""
+    import asyncio
+
+    import fakeredis.aioredis
+
+    from fastapi_fullauth.protection.ratelimit import RedisRateLimiter
+
+    limiter = RedisRateLimiter.__new__(RedisRateLimiter)
+    limiter.max_requests = 3
+    limiter.window_seconds = 60
+    limiter._redis = fakeredis.aioredis.FakeRedis(decode_responses=True)
+    limiter._prefix = "fullauth:ratelimit:"
+
+    results = await asyncio.gather(*[limiter.is_allowed("burst-ip") for _ in range(20)])
+    # Never more than the limit may be admitted, no matter the interleaving.
+    assert sum(results) <= 3
+    # And it does admit up to the limit (not trivially rejecting everything).
+    assert sum(results) == 3
+    # The stored set never holds more than the limit either.
+    assert await limiter._redis.zcard("fullauth:ratelimit:burst-ip") == 3

@@ -40,11 +40,9 @@ async def reset_password(
     hash_algorithm: Literal["argon2id", "bcrypt"] = "argon2id",
     password_validator: PasswordValidator | None = None,
 ) -> UserSchema | None:
-    payload = await token_engine.decode_token(token)
-
-    if payload.extra.get("purpose") != "password_reset":
-        logger.warning("Invalid password reset token (wrong purpose)")
-        raise TokenError("Invalid password reset token")
+    payload = await token_engine.decode_token(
+        token, expected_type="access", expected_purpose="password_reset"
+    )
 
     if password_validator:
         password_validator.validate(new_password)
@@ -59,11 +57,18 @@ async def reset_password(
         logger.error("Password reset failed; user not found: %s", payload.sub)
         raise UserNotFoundError("User not found")
 
+    # Parity with login/OAuth: a deactivated account must not be actionable.
+    # Burn the token first so this rejection can't be retried with the same one.
+    if not user.is_active:
+        await token_engine.blacklist_payload(payload)
+        logger.warning("Password reset blocked; account deactivated: user_id=%s", user.id)
+        raise TokenError("User account is deactivated")
+
     hashed = hash_password(new_password, algorithm=hash_algorithm)
     await adapter.set_password(user.id, hashed)
 
-    # Blacklist the reset token so it can't be reused
-    await token_engine.blacklist_token(payload.jti)
+    # Blacklist the reset token so it can't be reused, for its remaining lifetime
+    await token_engine.blacklist_payload(payload)
 
     # Revoke all existing sessions so stolen tokens can't be used
     await adapter.revoke_all_user_refresh_tokens(user.id)

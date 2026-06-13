@@ -1,4 +1,5 @@
 import logging
+import secrets
 import time
 from collections import defaultdict, deque
 from typing import TYPE_CHECKING, Any
@@ -85,22 +86,38 @@ class RedisRateLimiter:
         now = time.time()
         cutoff = now - self.window_seconds
 
-        # cleanup + count in one pipeline
-        pipe = self._redis.pipeline()
-        pipe.zremrangebyscore(redis_key, "-inf", cutoff)
-        pipe.zcard(redis_key)
-        results = await pipe.execute()
+        try:
+            # Cleanup, add, and count in ONE atomic MULTI/EXEC. Counting in a
+            # separate round-trip from the add (check-then-act) is a TOCTOU race:
+            # a concurrent burst all reads count<max before any adds, so they all
+            # pass and blow the limit. Here we add first, then read the post-add
+            # cardinality atomically, and back our own member out if we exceeded.
+            #
+            # The member must be unique per hit; the bare timestamp collides for
+            # requests in the same clock tick (zadd would overwrite, undercounting),
+            # so we append a random suffix.
+            member = f"{now}:{secrets.token_hex(8)}"
+            pipe = self._redis.pipeline(transaction=True)
+            pipe.zremrangebyscore(redis_key, "-inf", cutoff)
+            pipe.zadd(redis_key, {member: now})
+            pipe.zcard(redis_key)
+            pipe.expire(redis_key, self.window_seconds)
+            results = await pipe.execute()
 
-        count = results[1]
-        if count >= self.max_requests:
-            return False
-
-        # only add if allowed
-        pipe = self._redis.pipeline()
-        pipe.zadd(redis_key, {f"{now}": now})
-        pipe.expire(redis_key, self.window_seconds)
-        await pipe.execute()
-        return True
+            count = results[2]
+            if count > self.max_requests:
+                # We pushed the window over the limit; remove our own member so we
+                # don't permanently inflate the count, and reject.
+                await self._redis.zrem(redis_key, member)
+                return False
+            return True
+        except Exception:
+            # Fail open: a Redis outage must not lock every client out of login.
+            # We trade rate-limit enforcement for availability and log loudly so
+            # the outage is visible. (The token blacklist, by contrast, fails
+            # closed - see RedisTokenBlacklist.is_blacklisted.)
+            logger.error("Rate limiter Redis error; allowing request (fail-open)", exc_info=True)
+            return True
 
     async def remaining(self, key: str) -> int:
         redis_key = f"{self._prefix}{key}"

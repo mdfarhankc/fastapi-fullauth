@@ -1,5 +1,10 @@
-/* ── Route table ──────────────────────────────────────────────── */
+/* Home page hero call-to-action buttons. */
 
-.fullauth-routes code {
-  font-size: 0.8rem;
+.hero-buttons {
+  text-align: center;
+  margin: 1.2rem 0 0.5rem;
+}
+
+.hero-buttons .md-button {
+  margin: 0.2rem;
 }

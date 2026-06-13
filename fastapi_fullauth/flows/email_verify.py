@@ -33,11 +33,9 @@ async def verify_email(
     token: str,
 ) -> UserSchema | None:
     """Verify a user's email using the verification token. Returns the user."""
-    payload = await token_engine.decode_token(token)
-
-    if payload.extra.get("purpose") != "email_verify":
-        logger.warning("Invalid email verification token (wrong purpose)")
-        raise TokenError("Invalid email verification token")
+    payload = await token_engine.decode_token(
+        token, expected_type="access", expected_purpose="email_verify"
+    )
 
     try:
         user_id = UUID(payload.sub)
@@ -49,13 +47,19 @@ async def verify_email(
         logger.error("Email verification failed; user not found: %s", payload.sub)
         raise UserNotFoundError("User not found")
 
+    # Burn the token on any successful resolution - including the already-verified
+    # no-op - so a still-live verification token can't be replayed later.
+    await token_engine.blacklist_payload(payload)
+
+    # Parity with login/OAuth: don't act on a deactivated account.
+    if not user.is_active:
+        logger.warning("Email verification blocked; account deactivated: user_id=%s", user.id)
+        raise TokenError("User account is deactivated")
+
     if user.is_verified:
         return user  # already verified, no-op
 
     await adapter.set_user_verified(user.id)
-
-    # blacklist the token so it can't be reused
-    await token_engine.blacklist_token(payload.jti)
 
     logger.info("Email verified: user_id=%s", user.id)
     return user.model_copy(update={"is_verified": True})

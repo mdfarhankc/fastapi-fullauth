@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Any, Literal
 
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
@@ -13,6 +13,18 @@ _BCRYPT_MAX_BYTES = 72
 _BCRYPT_PREFIXES = ("$2a$", "$2b$", "$2y$")
 
 
+def _import_bcrypt() -> Any:
+    """Import bcrypt, raising an install hint when the optional extra is missing."""
+    try:
+        import bcrypt
+    except ImportError:
+        raise ImportError(
+            "bcrypt is required for bcrypt password hashing/verification. "
+            "Install it with: pip install fastapi-fullauth[bcrypt]"
+        ) from None
+    return bcrypt
+
+
 def hash_password(password: str, algorithm: Literal["argon2id", "bcrypt"] = "argon2id") -> str:
     if algorithm == "bcrypt":
         # bcrypt silently truncates to 72 bytes; reject so users aren't locked out
@@ -22,7 +34,7 @@ def hash_password(password: str, algorithm: Literal["argon2id", "bcrypt"] = "arg
                 f"bcrypt passwords must be at most {_BCRYPT_MAX_BYTES} bytes when "
                 "UTF-8 encoded. Use argon2id for longer passwords."
             )
-        import bcrypt  # type: ignore[import-not-found]
+        bcrypt = _import_bcrypt()
 
         hashed: bytes = bcrypt.hashpw(password.encode(), bcrypt.gensalt())
         return hashed.decode()
@@ -31,12 +43,11 @@ def hash_password(password: str, algorithm: Literal["argon2id", "bcrypt"] = "arg
 
 def verify_password(plain: str, hashed: str) -> bool:
     if hashed.startswith(_BCRYPT_PREFIXES):
+        # Surface a missing-bcrypt install rather than failing the login silently.
+        bcrypt = _import_bcrypt()
         try:
-            import bcrypt
-
-            ok: bool = bcrypt.checkpw(plain.encode(), hashed.encode())
-            return ok
-        except (ImportError, ValueError):
+            return bool(bcrypt.checkpw(plain.encode(), hashed.encode()))
+        except ValueError:
             return False
     try:
         return _argon2_hasher.verify(hashed, plain)

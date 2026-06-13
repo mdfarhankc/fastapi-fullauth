@@ -13,13 +13,16 @@ async def issue_token_pair(
     extra_claims: dict[str, Any] | None = None,
     family_id: str | None = None,
     roles: list[str] | None = None,
+    user_agent: str | None = None,
+    ip_address: str | None = None,
 ) -> TokenPair:
     """Create an access/refresh token pair for ``user`` and persist the refresh token.
 
     Shared by the login, OAuth, passkey, and refresh-rotation flows. Pass
     ``family_id`` to keep an existing refresh-token family (rotation); omit it
     to start a new one. Pass ``roles`` to reuse an already-fetched list and skip
-    the lookup.
+    the lookup. ``user_agent``/``ip_address`` are recorded on the refresh token
+    so the session list can show the device and origin of each sign-in.
     """
     if roles is None:
         roles = await adapter.get_user_roles(user.id)
@@ -37,6 +40,8 @@ async def issue_token_pair(
             user_id=user.id,
             expires_at=refresh_meta.expires_at,
             family_id=refresh_meta.family_id,
+            user_agent=user_agent,
+            ip_address=ip_address,
         )
     )
 

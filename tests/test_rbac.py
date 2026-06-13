@@ -456,3 +456,48 @@ async def test_assign_role_user_not_found():
         assert r.status_code == 404
 
     await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_assign_permission_idempotent_under_duplicate_insert():
+    """The loser of a concurrent identical permission assignment hits the
+    composite-PK constraint. _commit_idempotent must swallow it (idempotent),
+    not surface a 500."""
+    from sqlalchemy import select
+
+    app, adapter, fullauth, engine = await _make_app()
+    await adapter.assign_permission_to_role("editor", "posts:edit")
+
+    async with adapter._session_maker() as session:
+        role = (await session.execute(select(Role).where(Role.name == "editor"))).scalars().first()
+        perm = (
+            (await session.execute(select(Permission).where(Permission.name == "posts:edit")))
+            .scalars()
+            .first()
+        )
+
+    # Simulate the racing duplicate: a second identical association row.
+    async with adapter._session_maker() as session:
+        session.add(RolePermission(role_id=role.id, permission_id=perm.id))
+        await adapter._commit_idempotent(session)  # must not raise
+
+    # The permission is still resolvable exactly once.
+    perms = await adapter.get_role_permissions("editor")
+    assert perms.count("posts:edit") == 1
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_require_permission_rejects_adapter_without_permission_support():
+    """require_permission must raise a clear, descriptive error - not an opaque
+    AttributeError 500 - when the configured adapter lacks PermissionAdapterMixin."""
+    from types import SimpleNamespace
+    from uuid import uuid4
+
+    _dep = require_permission("posts:edit")
+    fake_user = SimpleNamespace(is_superuser=False, id=uuid4())
+    fake_fullauth = SimpleNamespace(adapter=object())  # no PermissionAdapterMixin
+
+    with pytest.raises(RuntimeError, match="PermissionAdapterMixin"):
+        await _dep(user=fake_user, fullauth=fake_fullauth)

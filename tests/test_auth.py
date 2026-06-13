@@ -233,6 +233,35 @@ async def test_refresh_reuse_blocked(client, login_tokens):
 
 
 @pytest.mark.asyncio
+async def test_refresh_rotation_is_atomic_on_store_failure(client, login_tokens):
+    """If persisting the new refresh token fails mid-rotation, the whole rotation
+    must roll back so the old token isn't left revoked-with-no-successor (a
+    silently orphaned session). The old token must remain usable."""
+    from unittest.mock import patch
+
+    async def _boom(*args, **kwargs):
+        raise RuntimeError("simulated store failure")
+
+    old_refresh = login_tokens["refresh_token"]
+
+    with (
+        patch("fastapi_fullauth.routers.auth.issue_token_pair", _boom),
+        pytest.raises(RuntimeError),
+    ):
+        await client.post(
+            "/api/v1/auth/refresh",
+            json={"refresh_token": old_refresh},
+        )
+
+    # The failed rotation rolled back: the old refresh token still works.
+    r = await client.post(
+        "/api/v1/auth/refresh",
+        json={"refresh_token": old_refresh},
+    )
+    assert r.status_code == 200
+
+
+@pytest.mark.asyncio
 async def test_refresh_with_access_token_fails(client, login_tokens):
     r = await client.post(
         "/api/v1/auth/refresh",
@@ -462,11 +491,11 @@ async def test_refresh_reuse_caught_by_explicit_blacklist_check():
         original_decode = fullauth.token_engine.decode_token
         blacklist = fullauth.token_engine.blacklist
 
-        async def decode_skipping_blacklist(token):
+        async def decode_skipping_blacklist(token, **kwargs):
             # temporarily disable blacklist during decode
             fullauth.token_engine.blacklist = type(blacklist)()
             try:
-                return await original_decode(token)
+                return await original_decode(token, **kwargs)
             finally:
                 fullauth.token_engine.blacklist = blacklist
 
@@ -574,6 +603,46 @@ async def test_logout_without_body_still_works():
             headers={"Authorization": f"Bearer {token}"},
         )
         assert r.status_code == 204
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_logout_without_refresh_token_ends_the_session():
+    """Logout with only the access token (no refresh in the body) must still end
+    the session: the family is revoked via the access token's family_id, and the
+    refresh token can no longer mint new tokens."""
+    app, adapter, _, engine = await _make_app()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        await client.post(
+            "/api/v1/auth/register",
+            json={"email": "t@t.com", "password": "securepass123"},
+        )
+        r = await client.post(
+            "/api/v1/auth/login",
+            json={"email": "t@t.com", "password": "securepass123"},
+        )
+        tokens = r.json()
+
+        # Log out presenting ONLY the access token - no refresh_token body.
+        r = await client.post(
+            "/api/v1/auth/logout",
+            headers={"Authorization": f"Bearer {tokens['access_token']}"},
+        )
+        assert r.status_code == 204
+
+        # The refresh-token family is revoked...
+        stored = await adapter.get_refresh_token(tokens["refresh_token"])
+        assert stored is not None
+        assert stored.revoked is True
+
+        # ...so the refresh token can no longer be used.
+        r = await client.post(
+            "/api/v1/auth/refresh",
+            json={"refresh_token": tokens["refresh_token"]},
+        )
+        assert r.status_code == 401
 
     await engine.dispose()
 
@@ -726,6 +795,114 @@ async def test_verify_token_single_use(verify_client, sent_emails):
         json={"token": verify_token},
     )
     assert r.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_verify_email_token_burned_when_already_verified():
+    """A verification token must be single-use even when it resolves to an
+    already-verified account (e.g. verified by another path), so it can't be
+    replayed for its remaining lifetime."""
+    from fastapi_fullauth.core.blacklist import InMemoryTokenBlacklist
+    from fastapi_fullauth.core.tokens import TokenEngine
+    from fastapi_fullauth.exceptions import TokenBlacklistedError
+    from fastapi_fullauth.flows.email_verify import (
+        create_email_verification_token,
+        verify_email,
+    )
+    from fastapi_fullauth.types import CreateUserSchema
+
+    engine, session_maker = await _make_db()
+    adapter = make_test_adapter(session_maker)
+    config = FullAuthConfig(SECRET_KEY="test-secret-key-that-is-long-enough-32b")
+    token_engine = TokenEngine(config=config, blacklist=InMemoryTokenBlacklist())
+
+    user = await adapter.create_user(
+        CreateUserSchema(email="already@test.com", password="securepass123"),
+        hashed_password="x",
+    )
+    await adapter.set_user_verified(user.id)
+
+    token = await create_email_verification_token(adapter, token_engine, user.id)
+    assert token is not None
+
+    # First use resolves the already-verified account and burns the token.
+    await verify_email(adapter, token_engine, token)
+
+    # Replay is rejected: the token was blacklisted on that first use.
+    with pytest.raises(TokenBlacklistedError):
+        await verify_email(adapter, token_engine, token)
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_reset_password_blocked_for_deactivated_user():
+    """A held password-reset token must not be actionable once the account is
+    deactivated (parity with login/OAuth). The token is also burned on rejection."""
+    from fastapi_fullauth.core.blacklist import InMemoryTokenBlacklist
+    from fastapi_fullauth.core.tokens import TokenEngine
+    from fastapi_fullauth.exceptions import TokenBlacklistedError, TokenError
+    from fastapi_fullauth.flows.password_reset import request_password_reset, reset_password
+    from fastapi_fullauth.types import CreateUserSchema
+
+    engine, session_maker = await _make_db()
+    adapter = make_test_adapter(session_maker)
+    config = FullAuthConfig(SECRET_KEY="test-secret-key-that-is-long-enough-32b")
+    token_engine = TokenEngine(config=config, blacklist=InMemoryTokenBlacklist())
+
+    user = await adapter.create_user(
+        CreateUserSchema(email="off@test.com", password="securepass123"),
+        hashed_password="x",
+    )
+    token = await request_password_reset(adapter, token_engine, "off@test.com")
+    assert token is not None
+
+    await adapter.update_user(user.id, {"is_active": False})
+
+    with pytest.raises(TokenError, match="deactivated"):
+        await reset_password(adapter, token_engine, token, "newsecurepass123")
+
+    # The token was burned on rejection, so it can't be retried.
+    with pytest.raises(TokenBlacklistedError):
+        await reset_password(adapter, token_engine, token, "newsecurepass123")
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_verify_email_blocked_for_deactivated_user():
+    """Email verification must not act on a deactivated account (parity with
+    login/OAuth). The token is still burned so it can't be replayed."""
+    from fastapi_fullauth.core.blacklist import InMemoryTokenBlacklist
+    from fastapi_fullauth.core.tokens import TokenEngine
+    from fastapi_fullauth.exceptions import TokenBlacklistedError, TokenError
+    from fastapi_fullauth.flows.email_verify import (
+        create_email_verification_token,
+        verify_email,
+    )
+    from fastapi_fullauth.types import CreateUserSchema
+
+    engine, session_maker = await _make_db()
+    adapter = make_test_adapter(session_maker)
+    config = FullAuthConfig(SECRET_KEY="test-secret-key-that-is-long-enough-32b")
+    token_engine = TokenEngine(config=config, blacklist=InMemoryTokenBlacklist())
+
+    user = await adapter.create_user(
+        CreateUserSchema(email="off2@test.com", password="securepass123"),
+        hashed_password="x",
+    )
+    token = await create_email_verification_token(adapter, token_engine, user.id)
+    assert token is not None
+
+    await adapter.update_user(user.id, {"is_active": False})
+
+    with pytest.raises(TokenError, match="deactivated"):
+        await verify_email(adapter, token_engine, token)
+
+    with pytest.raises(TokenBlacklistedError):
+        await verify_email(adapter, token_engine, token)
+
+    await engine.dispose()
 
 
 @pytest.mark.asyncio

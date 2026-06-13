@@ -74,7 +74,7 @@ def build_authorization_url(
 
 
 async def verify_oauth_state(token_engine: TokenEngine, state: str) -> str | None:
-    payload = await token_engine.decode_token(state)
+    payload = await token_engine.decode_token(state, expected_type="access")
     if payload.extra.get("purpose") != "oauth_state":
         logger.warning("Invalid OAuth state token (wrong purpose)")
         raise OAuthProviderError("Invalid OAuth state token")
@@ -90,10 +90,15 @@ async def exchange_oauth_code(
     pkce_enabled: bool = True,
 ) -> tuple[dict[str, Any], OAuthUserInfo]:
     """Verify state and exchange authorization code for user info."""
-    payload = await token_engine.decode_token(state)
+    payload = await token_engine.decode_token(state, expected_type="access")
     if payload.extra.get("purpose") != "oauth_state":
         logger.warning("Invalid OAuth state token (wrong purpose)")
         raise OAuthProviderError("Invalid OAuth state token")
+
+    # Single-use: burn the state so a captured (code, state) pair can't be
+    # replayed within the state's TTL. Decoding it again raises TokenBlacklisted.
+    if token_engine.config.BLACKLIST_ENABLED:
+        await token_engine.blacklist_payload(payload)
 
     redirect_uri = payload.extra.get("redirect_uri") or provider.redirect_uris[0]
 
@@ -215,9 +220,14 @@ async def issue_oauth_tokens(
     adapter: AbstractUserAdapter,
     token_engine: TokenEngine,
     user: UserSchema,
+    *,
+    user_agent: str | None = None,
+    ip_address: str | None = None,
 ) -> TokenPair:
     """Issue JWT token pair for an OAuth-authenticated user."""
-    return await issue_token_pair(adapter, token_engine, user)
+    return await issue_token_pair(
+        adapter, token_engine, user, user_agent=user_agent, ip_address=ip_address
+    )
 
 
 async def oauth_callback(
@@ -228,6 +238,8 @@ async def oauth_callback(
     state: str,
     auto_link_by_email: bool = True,
     pkce_enabled: bool = True,
+    user_agent: str | None = None,
+    ip_address: str | None = None,
 ) -> tuple[TokenPair, UserSchema, bool, OAuthUserInfo]:
     """Full OAuth callback flow. Delegates to smaller functions."""
     provider_tokens, info = await exchange_oauth_code(
@@ -238,11 +250,19 @@ async def oauth_callback(
         adapter, info, provider_tokens, auto_link_by_email
     )
 
+    # Parity with the password (login.py) and passkey flows: a deactivated user
+    # must not be able to sign in, including through a linked social account.
+    if not user.is_active:
+        logger.warning("OAuth login blocked; account deactivated: user_id=%s", user.id)
+        raise OAuthProviderError("User account is deactivated")
+
     if is_new_user:
         logger.info("OAuth user created: provider=%s, email=%s", info.provider, info.email)
     else:
         logger.info("OAuth login: provider=%s, user_id=%s", info.provider, user.id)
 
-    token_pair = await issue_oauth_tokens(adapter, token_engine, user)
+    token_pair = await issue_oauth_tokens(
+        adapter, token_engine, user, user_agent=user_agent, ip_address=ip_address
+    )
 
     return token_pair, user, is_new_user, info
