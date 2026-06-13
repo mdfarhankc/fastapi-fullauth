@@ -24,7 +24,12 @@ class InMemoryTokenBlacklist(TokenBlacklist):
         self._blacklisted: dict[str, float | None] = {}
 
     async def add(self, jti: str, ttl_seconds: int | None = None) -> None:
-        expires_at = (time.monotonic() + ttl_seconds) if ttl_seconds else None
+        # `is None` (not falsy): a ttl of 0 means "already expired", which we
+        # floor to an immediate 1s entry rather than the no-expiry sentinel.
+        if ttl_seconds is None:
+            expires_at: float | None = None
+        else:
+            expires_at = time.monotonic() + max(1, ttl_seconds)
         self._blacklisted[jti] = expires_at
 
     async def is_blacklisted(self, jti: str) -> bool:
@@ -52,11 +57,10 @@ class RedisTokenBlacklist(TokenBlacklist):
         self._prefix = "fullauth:blacklist:"
 
     async def add(self, jti: str, ttl_seconds: int | None = None) -> None:
-        await self._redis.setex(
-            f"{self._prefix}{jti}",
-            ttl_seconds or self._default_ttl,
-            "1",
-        )
+        # `is None` (not falsy): a ttl of 0 would make setex raise, and the old
+        # `or` silently swapped it for the default. Floor a supplied ttl to 1s.
+        ttl = self._default_ttl if ttl_seconds is None else max(1, ttl_seconds)
+        await self._redis.setex(f"{self._prefix}{jti}", ttl, "1")
 
     async def is_blacklisted(self, jti: str) -> bool:
         try:

@@ -129,3 +129,61 @@ async def test_blacklist_payload_bounds_ttl(engine):
     assert stored is not None  # bounded, self-expiring entry
     with pytest.raises(TokenBlacklistedError):
         await engine.decode_token(token)
+
+
+@pytest.mark.asyncio
+async def test_inmemory_blacklist_zero_ttl_is_bounded_not_forever():
+    """A ttl of 0 means 'already expired', not 'no expiry'. It must store a
+    finite entry (so the dict can't grow without bound), while an explicit
+    None still means no-expiry."""
+    bl = InMemoryTokenBlacklist()
+
+    await bl.add("jti-zero", ttl_seconds=0)
+    assert bl._blacklisted["jti-zero"] is not None  # bounded, self-expiring
+
+    await bl.add("jti-none", ttl_seconds=None)
+    assert bl._blacklisted["jti-none"] is None  # explicit no-expiry preserved
+
+
+@pytest.mark.asyncio
+async def test_redis_blacklist_zero_ttl_does_not_become_default():
+    """setex(0) would raise and the old `ttl_seconds or default` silently swapped
+    a 0 for the 1800s default. A 0 must floor to a finite 1s entry instead."""
+    import fakeredis.aioredis
+
+    from fastapi_fullauth.core.blacklist import RedisTokenBlacklist
+
+    bl = RedisTokenBlacklist.__new__(RedisTokenBlacklist)
+    bl._redis = fakeredis.aioredis.FakeRedis(decode_responses=True)
+    bl._default_ttl = 1800
+    bl._prefix = "fullauth:blacklist:"
+
+    await bl.add("jti-zero", ttl_seconds=0)
+    ttl = await bl._redis.ttl("fullauth:blacklist:jti-zero")
+    assert 0 < ttl <= 1  # floored to 1s, not the 1800s default
+
+
+@pytest.mark.asyncio
+async def test_decode_token_tolerates_non_dict_extra(engine):
+    """A signed token whose `extra` claim isn't a dict must decode to extra={}
+    rather than raising AttributeError (which would escape as a 500)."""
+    from datetime import datetime, timedelta, timezone
+
+    import jwt
+
+    now = datetime.now(timezone.utc)
+    raw = jwt.encode(
+        {
+            "sub": "user-123",
+            "exp": now + timedelta(minutes=5),
+            "iat": now,
+            "jti": "non-dict-extra",
+            "type": "access",
+            "extra": "not-a-dict",
+        },
+        engine.config.SECRET_KEY,
+        algorithm=engine.config.ALGORITHM,
+    )
+
+    payload = await engine.decode_token(raw)
+    assert payload.extra == {}

@@ -116,7 +116,12 @@ class TokenEngine:
             )
             raise TokenError("Unexpected token type")
 
-        purpose = data.get("extra", {}).get("purpose")
+        # `extra` is a caller-set claim; a signed token whose `extra` isn't a dict
+        # must be rejected cleanly rather than raising AttributeError into a 500.
+        extra = data.get("extra")
+        if not isinstance(extra, dict):
+            extra = {}
+        purpose = extra.get("purpose")
         if expected_purpose is not None and purpose != expected_purpose:
             logger.warning("Token purpose mismatch: expected=%s", expected_purpose)
             raise TokenError("Unexpected token purpose")
@@ -128,7 +133,7 @@ class TokenEngine:
             jti=jti,
             type=data.get("type", "access"),
             roles=data.get("roles", []),
-            extra=data.get("extra", {}),
+            extra=extra,
             family_id=data.get("family_id"),
         )
 

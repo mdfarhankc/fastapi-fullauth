@@ -21,7 +21,7 @@ def create_sessions_router() -> APIRouter:
 
     async def _current_family_id(fullauth: "FullAuth", token: str) -> str | None:
         try:
-            payload = await fullauth.token_engine.decode_token(token)
+            payload = await fullauth.token_engine.decode_token(token, expected_type="access")
         except TokenError:
             return None
         return payload.family_id
