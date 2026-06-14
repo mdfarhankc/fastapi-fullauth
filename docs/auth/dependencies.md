@@ -40,6 +40,22 @@ Authenticated user with a verified email address. Returns `403 Forbidden` if the
 
 Authenticated user with `is_superuser=True`. Returns `403 Forbidden` if the user is not a superuser.
 
+### current_token_payload
+
+The decoded access-token `TokenPayload` for the request, without a database lookup. It reads the token from the `Authorization` header or a cookie backend and validates it (expiry, blacklist, signature, purpose). Use it when you only need token data - your [custom claims](custom-claims.md) live in `payload.extra`:
+
+```python
+from fastapi import Depends
+from fastapi_fullauth.dependencies import current_token_payload
+from fastapi_fullauth.types import TokenPayload
+
+@app.get("/tenant")
+async def tenant(payload: TokenPayload = Depends(current_token_payload)):
+    return {"tenant_id": payload.extra.get("tenant_id")}
+```
+
+Reach for `current_user` when you need the user record; reach for `current_token_payload` when a DB hit would be wasted.
+
 ### require_role
 
 Check that the user has at least one of the specified roles. Superusers bypass all role checks.
@@ -159,17 +175,22 @@ You can write your own dependency functions for full control over the auth flow.
 `get_fullauth` is a FastAPI dependency that returns the `FullAuth` instance from `app.state`. It gives you access to the adapter, token engine, config, and everything else:
 
 ```python
-from fastapi import Depends
-from fastapi_fullauth.dependencies import get_fullauth
+from uuid import UUID
 
-async def my_current_user(fullauth=Depends(get_fullauth), token: str = Depends(...)):
-    payload = await fullauth.token_engine.decode_token(token)
-    user = await fullauth.adapter.get_user_by_id(payload.sub)
+from fastapi import Depends
+from fastapi_fullauth.dependencies import current_token_payload, get_fullauth
+from fastapi_fullauth.types import TokenPayload
+
+async def my_current_user(
+    fullauth=Depends(get_fullauth),
+    payload: TokenPayload = Depends(current_token_payload),
+):
+    user = await fullauth.adapter.get_user_by_id(UUID(payload.sub))
     # your custom logic: load relations, check feature flags, etc.
     return user
 ```
 
-This is useful when your dependency lives in a separate module from where you set up FullAuth.
+Let `current_token_payload` handle token extraction and validation (header or cookie) so you don't reimplement it. This is useful when your dependency lives in a separate module from where you set up FullAuth.
 
 ### Using the FullAuth instance directly
 

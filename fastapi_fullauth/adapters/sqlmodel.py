@@ -1,4 +1,3 @@
-from sqlalchemy.ext.asyncio import AsyncSession as SAAsyncSession
 from sqlalchemy.ext.asyncio import async_sessionmaker
 from sqlmodel.ext.asyncio.session import AsyncSession as SMAsyncSession
 
@@ -26,7 +25,7 @@ class SQLModelAdapter(_BaseSQLAlchemyAdapter[UserSchemaType, CreateUserSchemaTyp
 
     def __init__(
         self,
-        session_maker: async_sessionmaker[SMAsyncSession | SAAsyncSession],
+        session_maker: async_sessionmaker[SMAsyncSession],
         *,
         user_model: type[UserMixin],
         refresh_token_model: type[RefreshTokenMixin],

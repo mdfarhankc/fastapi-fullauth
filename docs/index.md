@@ -128,6 +128,10 @@ The combined router mounts under `/api/v1/auth` by default. Admin, OAuth, and pa
 
     Every option, with production `.env` examples.
 
+- [**Customization**](customization.md)
+
+    Every extension point: custom adapters, schemas, claims, hooks, and transport.
+
 - [**Troubleshooting**](troubleshooting.md)
 
     Common errors mapped to fixes.

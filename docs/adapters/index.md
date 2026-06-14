@@ -61,34 +61,9 @@ You only need the mixins for features you use. A minimal setup needs just `UserM
 
 ## Custom adapters
 
-Subclass `AbstractUserAdapter` for core auth. Add mixins for the features you need:
+Not using SQL? Subclass `AbstractUserAdapter` for core auth and add a mixin per feature you need. The library checks `isinstance()` at startup, so routers for unimplemented features never mount.
 
-```python
-from fastapi_fullauth.adapters.base import (
-    AbstractUserAdapter,
-    RoleAdapterMixin,
-    OAuthAdapterMixin,
-    PasskeyAdapterMixin,
-)
-
-class MyAdapter(AbstractUserAdapter, RoleAdapterMixin, OAuthAdapterMixin):
-    async def get_user_by_id(self, user_id): ...
-    async def get_user_by_email(self, email): ...
-    async def create_user(self, data, hashed_password): ...
-    # ... implement all abstract methods
-```
-
-### Key method contracts
-
-Most methods are straightforward CRUD. A few have important semantics:
-
-**`revoke_refresh_token(token_str) -> bool`**: Atomically flip the token from `revoked=False` to `revoked=True`. Returns `True` if this call performed the flip (caller won the race), `False` if the token was already revoked. This compare-and-swap behavior is critical for refresh token reuse detection. If it returns `False`, the library revokes the entire token family.
-
-**`update_passkey_sign_count(credential_id, new_count) -> bool`**: Only advance the sign count if `new_count > stored_count`. Returns `True` on success, `False` if the stored count is already higher (clone detection).
-
-**`get_user_roles(user_id) -> list[str]`**: Returns the user's role names. This is called at token creation time; the roles are embedded in the JWT.
-
-See the [source of AbstractUserAdapter](https://github.com/mdfarhankc/fastapi-fullauth/blob/main/fastapi_fullauth/adapters/base.py) for the full interface.
+See **[Writing a custom adapter](custom.md)** for a complete, runnable worked example (an in-memory store), the key method contracts, and how to opt into roles, permissions, OAuth, passkeys, and sessions.
 
 ## Custom schemas
 

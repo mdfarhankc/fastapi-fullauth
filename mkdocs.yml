@@ -54,10 +54,13 @@ nav:
   - Getting Started: getting-started.md
   - Architecture: architecture.md
   - Configuration: configuration.md
+  - Customization: customization.md
+  - Recipes: recipes.md
   - Adapters:
       - Overview: adapters/index.md
       - SQLModel: adapters/sqlmodel.md
       - SQLAlchemy: adapters/sqlalchemy.md
+      - Custom Adapters: adapters/custom.md
   - Authentication:
       - Protected Routes: auth/dependencies.md
       - Session Management: auth/sessions.md

@@ -16,10 +16,13 @@ FastAPI FullAuth is a pluggable authentication and authorization library for Fas
 - [Architecture](https://mdfarhankc.github.io/fastapi-fullauth/architecture/): How the library works internally -- adapters, backends, flows, routers, and protection layers
 - [Getting Started](https://mdfarhankc.github.io/fastapi-fullauth/getting-started/): Step-by-step setup guide with user model, database, FullAuth config, FastAPI wiring, and first API calls
 - [Configuration](https://mdfarhankc.github.io/fastapi-fullauth/configuration/): All FullAuthConfig options -- core, tokens, passwords, login, rate limiting, Redis, blacklist, middleware, cookies, OAuth, routing
+- [Customization](https://mdfarhankc.github.io/fastapi-fullauth/customization/): Map of every extension point -- custom adapters, user schemas, token claims, event hooks, password rules, token transport, and route selection
+- [Recipes](https://mdfarhankc.github.io/fastapi-fullauth/recipes/): End-to-end examples combining customization seams -- multi-tenant SaaS (custom field + claims + dependency) and username-based login
 - [Adapters Overview](https://mdfarhankc.github.io/fastapi-fullauth/adapters/): Adapter architecture, choosing an adapter, custom adapter implementation via AbstractUserAdapter
 - [SQLModel Adapter](https://mdfarhankc.github.io/fastapi-fullauth/adapters/sqlmodel/): Recommended adapter setup with UserMixin fields, session configuration, table schema, custom schemas, and OAuth support
 - [SQLAlchemy Adapter](https://mdfarhankc.github.io/fastapi-fullauth/adapters/sqlalchemy/): SQLAlchemy declarative base adapter setup with user model, table creation, and custom schemas
-- [Protected Routes](https://mdfarhankc.github.io/fastapi-fullauth/auth/dependencies/): current_user, current_active_verified_user, current_superuser, require_role, require_permission dependencies
+- [Custom Adapters](https://mdfarhankc.github.io/fastapi-fullauth/adapters/custom/): Complete worked in-memory adapter example, key method contracts (revoke CAS, transaction, sign-count), and opting into roles/permissions/OAuth/passkeys/sessions
+- [Protected Routes](https://mdfarhankc.github.io/fastapi-fullauth/auth/dependencies/): current_user, current_active_verified_user, current_superuser, current_token_payload, require_role, require_permission dependencies
 - [Session Management](https://mdfarhankc.github.io/fastapi-fullauth/auth/sessions/): List active sessions (refresh-token families) with device/IP, revoke one device, or sign out everywhere else; opt-in sessions router and SessionAdapterMixin
 - [Event Hooks](https://mdfarhankc.github.io/fastapi-fullauth/auth/hooks/): Register callbacks for auth events -- after_register, after_login, send_verification_email, after_oauth_login, etc.
 - [Password Validation](https://mdfarhankc.github.io/fastapi-fullauth/auth/passwords/): Custom password rules (length, complexity, blocklist), hashing algorithms, and transparent rehashing

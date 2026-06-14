@@ -70,7 +70,7 @@ class _BaseSQLAlchemyAdapter(
 
     def _configure(
         self,
-        session_maker: async_sessionmaker[AsyncSession],
+        session_maker: async_sessionmaker[Any],
         *,
         user_model: Any,
         refresh_token_model: Any,
