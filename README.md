@@ -24,7 +24,7 @@
 
 ---
 
-A complete, async-native authentication and authorization system for **FastAPI** — production-ready and pluggable. JWT access/refresh tokens with rotation, Argon2 password hashing, email verification, OAuth2 social login, passkeys, session management, and role-based access control, all out of the box. Bring your own database with the SQLModel or SQLAlchemy adapter, and opt into only the features you need.
+A complete, async-native authentication and authorization system for **FastAPI** - production-ready and pluggable. JWT access/refresh tokens with rotation, Argon2 password hashing, email verification, OAuth2 social login, passkeys, session management, and role-based access control, all out of the box. Bring your own database with the SQLModel or SQLAlchemy adapter, and opt into only the features you need.
 
 ## Features
 
@@ -39,7 +39,7 @@ A complete, async-native authentication and authorization system for **FastAPI**
 - **Rate limiting**: per-route auth limits + global middleware (memory or Redis)
 - **CSRF protection** and **security headers** middleware
 - **Bearer or cookie transport**: opt into HttpOnly cookies that carry both access and refresh tokens, out of JavaScript's reach; bearer is the default
-- **Pluggable adapters**: SQLModel or SQLAlchemy
+- **Pluggable adapters**: SQLModel, SQLAlchemy, or [write your own](https://mdfarhankc.github.io/fastapi-fullauth/adapters/custom/) for any data store
 - **Generic type parameters**: define your own schemas with full IDE support and type safety
 - **Composable routers**: include only the route groups you need
 - **Event hooks**: `after_register`, `after_login`, `send_verification_email`, etc.

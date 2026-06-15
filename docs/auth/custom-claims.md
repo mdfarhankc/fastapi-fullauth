@@ -13,10 +13,12 @@ Custom claims live in the token's `extra` field and travel with every request. D
 Pass an async callback to `on_create_token_claims`:
 
 ```python
+from typing import Any
+
 from fastapi_fullauth import FullAuth, FullAuthConfig
 from fastapi_fullauth.types import UserSchema
 
-async def add_claims(user: UserSchema) -> dict:
+async def add_claims(user: UserSchema) -> dict[str, Any]:
     return {
         "tenant_id": "acme",
         "plan": "pro",
@@ -33,29 +35,30 @@ The returned dict is embedded in the `extra` field of every access token.
 
 ## Accessing claims
 
-Custom claims are available when decoding tokens:
+The `current_token_payload` dependency hands you the decoded payload - including
+`extra` - directly. It reads the token from the `Authorization` header **or** a
+cookie backend and validates it for you, so it works in both transports:
 
 ```python
-payload = await fullauth.token_engine.decode_token(token)
-tenant_id = payload.extra.get("tenant_id")
-plan = payload.extra.get("plan")
-```
+from fastapi import Depends, HTTPException
+from fastapi_fullauth.dependencies import current_token_payload
+from fastapi_fullauth.types import TokenPayload
 
-You can also access them in a custom FastAPI dependency:
 
-```python
-from fastapi import Depends
-from fastapi_fullauth.dependencies import get_fullauth
-
-async def get_tenant(
-    fullauth=Depends(get_fullauth),
-    token: str = Depends(_extract_token),
-):
-    payload = await fullauth.token_engine.decode_token(token)
+async def get_tenant(payload: TokenPayload = Depends(current_token_payload)) -> str:
     tenant_id = payload.extra.get("tenant_id")
     if not tenant_id:
         raise HTTPException(status_code=403, detail="No tenant")
     return tenant_id
+```
+
+Use `current_token_payload` when you only need claims (no database hit) and
+[`current_user`](dependencies.md) when you need the user record. To decode a
+token you obtained some other way, call the engine directly:
+
+```python
+payload = await fullauth.token_engine.decode_token(token, expected_type="access")
+tenant_id = payload.extra.get("tenant_id")
 ```
 
 ## Reserved keys

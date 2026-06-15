@@ -754,8 +754,10 @@ class MyFullAdapter(AbstractUserAdapter, RoleAdapterMixin, PermissionAdapterMixi
 | `RoleAdapterMixin` | `assign_role`, `remove_role`, `get_user_roles` | Role management |
 | `PermissionAdapterMixin` | `get_role_permissions`, `assign/remove_permission_to_role` | RBAC permissions |
 | `OAuthAdapterMixin` | 5 OAuth account methods | OAuth providers |
+| `PasskeyAdapterMixin` | `get_passkey_by_credential_id`, `get_user_passkeys`, `store_passkey`, `update_passkey_sign_count`, `delete_passkey` | WebAuthn passkeys |
+| `SessionAdapterMixin` | `list_user_sessions`, `revoke_user_session`, `revoke_user_sessions_except` | Sessions router |
 
-See the [source of AbstractUserAdapter](https://github.com/mdfarhankc/fastapi-fullauth/blob/main/fastapi_fullauth/adapters/base.py) for the full interface.
+Key contracts: `revoke_refresh_token(token_str)` must be an atomic compare-and-swap returning `True` only if this call flipped the token from not-revoked to revoked (a `False` result is the reuse signal and triggers family revocation); `update_passkey_sign_count` only advances if the new value is strictly greater (clone detection); override `transaction()` if your store supports real transactions so refresh-token rotation is atomic. See the [Custom Adapters guide](https://mdfarhankc.github.io/fastapi-fullauth/adapters/custom/) for a complete runnable example, and the [source of AbstractUserAdapter](https://github.com/mdfarhankc/fastapi-fullauth/blob/main/fastapi_fullauth/adapters/base.py) for the full interface.
 
 ## Custom schemas
 
@@ -1099,6 +1101,10 @@ Authenticated user with a verified email address. Returns `403 Forbidden` if the
 
 Authenticated user with `is_superuser=True`. Returns `403 Forbidden` if the user is not a superuser.
 
+### current_token_payload
+
+The decoded access-token `TokenPayload` for the request, without a database lookup. Reads the token from the `Authorization` header or a cookie backend and validates it (expiry, blacklist, signature, purpose). Use it when you only need token data - custom claims live in `payload.extra`. Reach for `current_user` when you need the user record. `current_user` is built on `current_token_payload`.
+
 ### require_role
 
 Check that the user has at least one of the specified roles. Superusers bypass all role checks.
@@ -1216,12 +1222,17 @@ You can write your own dependency functions for full control over the auth flow.
 Using `get_fullauth` (useful when your dependency is in a separate module):
 
 ```python
-from fastapi import Depends
-from fastapi_fullauth.dependencies import get_fullauth
+from uuid import UUID
 
-async def my_current_user(fullauth=Depends(get_fullauth), token: str = Depends(...)):
-    payload = await fullauth.token_engine.decode_token(token)
-    user = await fullauth.adapter.get_user_by_id(payload.sub)
+from fastapi import Depends
+from fastapi_fullauth.dependencies import current_token_payload, get_fullauth
+from fastapi_fullauth.types import TokenPayload
+
+async def my_current_user(
+    fullauth=Depends(get_fullauth),
+    payload: TokenPayload = Depends(current_token_payload),
+):
+    user = await fullauth.adapter.get_user_by_id(UUID(payload.sub))
     # your custom logic
     return user
 ```
@@ -2155,6 +2166,7 @@ from fastapi_fullauth.dependencies import (
     current_user,                   # any authenticated user
     current_active_verified_user,   # verified email required
     current_superuser,              # superuser required
+    current_token_payload,          # decoded access-token payload (claims), no DB hit
     get_fullauth,                   # access the FullAuth instance in a dependency
     require_role,                   # require_role("admin", "editor")
     require_permission,             # require_permission("posts:edit", "posts:delete")

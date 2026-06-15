@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlmodel import SQLModel
 
 from fastapi_fullauth import AuthRateLimits, FullAuth, FullAuthConfig
-from fastapi_fullauth.dependencies import current_user
+from fastapi_fullauth.dependencies import current_token_payload, current_user
 from tests.conftest import make_test_adapter
 
 
@@ -134,6 +134,44 @@ async def test_login_nonexistent_user(client):
         json={"email": "nobody@test.com", "password": "whatever123"},
     )
     assert r.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_current_token_payload_exposes_claims():
+    async def add_claims(user):
+        return {"tenant_id": "acme", "plan": "pro"}
+
+    app, adapter, fullauth, engine = await _make_app(on_create_token_claims=add_claims)
+
+    @app.get("/whoami")
+    async def whoami(payload=Depends(current_token_payload)):
+        return {"sub": payload.sub, "extra": payload.extra}
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        await client.post(
+            "/api/v1/auth/register",
+            json={"email": "claims@test.com", "password": "securepass123"},
+        )
+        login = await client.post(
+            "/api/v1/auth/login",
+            json={"email": "claims@test.com", "password": "securepass123"},
+        )
+        token = login.json()["access_token"]
+
+        # no token -> 401
+        anon = await client.get("/whoami")
+        assert anon.status_code == 401
+
+        # valid token -> payload carries the custom claims
+        r = await client.get("/whoami", headers={"Authorization": f"Bearer {token}"})
+        assert r.status_code == 200
+        body = r.json()
+        assert body["sub"]
+        assert body["extra"]["tenant_id"] == "acme"
+        assert body["extra"]["plan"] == "pro"
+
+    await engine.dispose()
 
 
 @pytest.mark.asyncio

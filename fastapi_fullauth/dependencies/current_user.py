@@ -5,7 +5,7 @@ from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from fastapi_fullauth.exceptions import CREDENTIALS_EXCEPTION
-from fastapi_fullauth.types import UserSchema
+from fastapi_fullauth.types import TokenPayload, UserSchema
 
 if TYPE_CHECKING:
     from fastapi_fullauth.fullauth import FullAuth
@@ -36,10 +36,17 @@ async def _extract_token(
     raise CREDENTIALS_EXCEPTION
 
 
-async def current_user(
+async def current_token_payload(
     fullauth: "FullAuth" = Depends(get_fullauth),
     token: str = Depends(_extract_token),
-) -> UserSchema:
+) -> TokenPayload:
+    """Decoded access-token payload for the current request.
+
+    Reads the token from the Authorization header or a cookie backend, validates
+    it, and returns the TokenPayload - including any custom claims in ``extra``.
+    Use this when you only need claims (no database hit); use ``current_user``
+    when you need the user record.
+    """
     from fastapi_fullauth.exceptions import TokenError
 
     try:
@@ -52,6 +59,13 @@ async def current_user(
     if payload.extra.get("purpose"):
         raise CREDENTIALS_EXCEPTION
 
+    return payload
+
+
+async def current_user(
+    fullauth: "FullAuth" = Depends(get_fullauth),
+    payload: TokenPayload = Depends(current_token_payload),
+) -> UserSchema:
     try:
         user_id = UUID(payload.sub)
     except ValueError:
