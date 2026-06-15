@@ -1,0 +1,39 @@
+# FastAPI FullAuth
+
+> Production-grade, async-native authentication and authorization for FastAPI.
+
+FastAPI FullAuth is a pluggable authentication and authorization library for FastAPI. It provides JWT access and refresh tokens with rotation and reuse detection, password hashing (Argon2id or bcrypt), email verification and password reset flows, OAuth2 social login (Google, GitHub), role-based access control with permissions, rate limiting, CSRF protection, and security headers middleware. The library uses a layered architecture: adapters handle database storage (SQLModel, SQLAlchemy), backends handle token extraction, flows implement auth logic, and composable routers expose API endpoints. Configuration is managed through Pydantic Settings with environment variable support. Generic type parameters allow custom user schemas with full IDE support.
+
+- Documentation: https://mdfarhankc.github.io/fastapi-fullauth/
+- Source: https://github.com/mdfarhankc/fastapi-fullauth
+- PyPI: https://pypi.org/project/fastapi-fullauth/
+- License: MIT
+- Python: 3.10 -- 3.14
+
+## Docs
+
+- [Home](https://mdfarhankc.github.io/fastapi-fullauth/): Overview, features, installation, quick start example, route table, and composable routers
+- [Architecture](https://mdfarhankc.github.io/fastapi-fullauth/architecture/): How the library works internally -- adapters, backends, flows, routers, and protection layers
+- [Getting Started](https://mdfarhankc.github.io/fastapi-fullauth/getting-started/): Step-by-step setup guide with user model, database, FullAuth config, FastAPI wiring, and first API calls
+- [Configuration](https://mdfarhankc.github.io/fastapi-fullauth/configuration/): All FullAuthConfig options -- core, tokens, passwords, login, rate limiting, Redis, blacklist, middleware, cookies, OAuth, routing
+- [Customization](https://mdfarhankc.github.io/fastapi-fullauth/customization/): Map of every extension point -- custom adapters, user schemas, token claims, event hooks, password rules, token transport, and route selection
+- [Recipes](https://mdfarhankc.github.io/fastapi-fullauth/recipes/): End-to-end examples combining customization seams -- multi-tenant SaaS (custom field + claims + dependency) and username-based login
+- [Adapters Overview](https://mdfarhankc.github.io/fastapi-fullauth/adapters/): Adapter architecture, choosing an adapter, custom adapter implementation via AbstractUserAdapter
+- [SQLModel Adapter](https://mdfarhankc.github.io/fastapi-fullauth/adapters/sqlmodel/): Recommended adapter setup with UserMixin fields, session configuration, table schema, custom schemas, and OAuth support
+- [SQLAlchemy Adapter](https://mdfarhankc.github.io/fastapi-fullauth/adapters/sqlalchemy/): SQLAlchemy declarative base adapter setup with user model, table creation, and custom schemas
+- [Custom Adapters](https://mdfarhankc.github.io/fastapi-fullauth/adapters/custom/): Complete worked in-memory adapter example, key method contracts (revoke CAS, transaction, sign-count), and opting into roles/permissions/OAuth/passkeys/sessions
+- [Protected Routes](https://mdfarhankc.github.io/fastapi-fullauth/auth/dependencies/): current_user, current_active_verified_user, current_superuser, current_token_payload, require_role, require_permission dependencies
+- [Session Management](https://mdfarhankc.github.io/fastapi-fullauth/auth/sessions/): List active sessions (refresh-token families) with device/IP, revoke one device, or sign out everywhere else; opt-in sessions router and SessionAdapterMixin
+- [Event Hooks](https://mdfarhankc.github.io/fastapi-fullauth/auth/hooks/): Register callbacks for auth events -- after_register, after_login, send_verification_email, after_oauth_login, etc.
+- [Password Validation](https://mdfarhankc.github.io/fastapi-fullauth/auth/passwords/): Custom password rules (length, complexity, blocklist), hashing algorithms, and transparent rehashing
+- [Custom Token Claims](https://mdfarhankc.github.io/fastapi-fullauth/auth/custom-claims/): Embed app-specific data in JWTs via on_create_token_claims callback, accessed through payload.extra
+- [Middleware](https://mdfarhankc.github.io/fastapi-fullauth/security/middleware/): Security headers and CSRF double-submit cookie protection, added manually with app.add_middleware
+- [Rate Limiting](https://mdfarhankc.github.io/fastapi-fullauth/security/rate-limiting/): Per-route auth limits and global IP-based rate limiting with memory or Redis backends
+- [OAuth2 Social Login](https://mdfarhankc.github.io/fastapi-fullauth/oauth/): Google and GitHub OAuth setup, authorization flow, auto-linking by email, provider unlinking
+- [Passkeys](https://mdfarhankc.github.io/fastapi-fullauth/passkeys/): WebAuthn passwordless login -- registration and authentication flows, clone detection, frontend integration
+- [Frontend Integration](https://mdfarhankc.github.io/fastapi-fullauth/frontend-integration/): Wiring auth into a frontend -- token storage, refresh handling, and protected requests
+- [Database Migrations](https://mdfarhankc.github.io/fastapi-fullauth/migrations/): Alembic env.py wiring with your project's Base.metadata, opt-in tables via mixin subclassing
+- [API Reference](https://mdfarhankc.github.io/fastapi-fullauth/api-reference/): FullAuth class, FullAuthConfig, types (UserSchema, TokenPair, TokenPayload), dependencies, exceptions, utilities
+- [Testing](https://mdfarhankc.github.io/fastapi-fullauth/testing/): Test apps built with fastapi-fullauth -- fixtures, overriding dependencies, and asserting auth behavior
+- [Troubleshooting](https://mdfarhankc.github.io/fastapi-fullauth/troubleshooting/): Common errors and solutions
+- [Contributing](https://mdfarhankc.github.io/fastapi-fullauth/contributing/): Development setup, testing, linting, branch naming, and contribution guidelines
