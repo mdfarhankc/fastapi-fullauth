@@ -4,13 +4,7 @@ from typing import Any, Generic
 
 from fastapi import APIRouter, FastAPI, Request
 
-from fastapi_fullauth.adapters.base import (
-    AbstractUserAdapter,
-    OAuthAdapterMixin,
-    PasskeyAdapterMixin,
-    RoleAdapterMixin,
-    SessionAdapterMixin,
-)
+from fastapi_fullauth.adapters.base import AbstractUserAdapter
 from fastapi_fullauth.backends import AbstractBackend, BearerBackend
 from fastapi_fullauth.config import FullAuthConfig
 from fastapi_fullauth.core.tokens import TokenEngine, create_blacklist
@@ -129,20 +123,24 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
             )
 
     def _warn_adapter_feature_mismatch(self) -> None:
-        # A feature can be configured while the adapter doesn't implement the
-        # matching mixin. The router build silently skips those routes, so the
-        # symptom is a 404 with no explanation. Surface it at construction.
-        if self.config.PASSKEY_ENABLED and not isinstance(self.adapter, PasskeyAdapterMixin):
+        # A feature can be configured while the adapter can't serve it - either
+        # the matching mixin isn't implemented, or (for the SQL adapters, which
+        # inherit every mixin) the required model wasn't passed. The router build
+        # skips those routes, so the symptom is a 404 with no explanation.
+        # Surface it at construction.
+        if self.config.PASSKEY_ENABLED and not self.adapter.supports_feature("passkey"):
             warnings.warn(
-                "PASSKEY_ENABLED is set but the adapter does not implement "
-                "PasskeyAdapterMixin; passkey routes will not be registered.",
+                "PASSKEY_ENABLED is set but the adapter cannot serve passkeys "
+                "(missing PasskeyAdapterMixin or passkey_model); passkey routes "
+                "will not be registered.",
                 UserWarning,
                 stacklevel=3,
             )
-        if self.oauth_providers and not isinstance(self.adapter, OAuthAdapterMixin):
+        if self.oauth_providers and not self.adapter.supports_feature("oauth"):
             warnings.warn(
-                "OAuth providers are configured but the adapter does not implement "
-                "OAuthAdapterMixin; OAuth routes will not be registered.",
+                "OAuth providers are configured but the adapter cannot serve OAuth "
+                "(missing OAuthAdapterMixin or oauth_account_model); OAuth routes "
+                "will not be registered.",
                 UserWarning,
                 stacklevel=3,
             )
@@ -182,6 +180,44 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
             UserWarning,
             stacklevel=3,
         )
+
+    def _warn_custom_lifespan_aclose(self, app: FastAPI) -> None:
+        # Starlette only runs add_event_handler("shutdown", ...) through its
+        # default lifespan. When the app is built with a custom lifespan, the
+        # aclose handler init_app() just registered never fires, leaking pooled
+        # Redis connections and OAuth HTTP clients. Detect it by the context
+        # type name to stay resilient across Starlette versions.
+        if type(app.router.lifespan_context).__name__ == "_DefaultLifespan":
+            return
+        warnings.warn(
+            "init_app() registered fullauth.aclose() on app shutdown, but this app "
+            "uses a custom lifespan, so Starlette will not run it. Call "
+            "'await fullauth.aclose()' in your lifespan's shutdown section to release "
+            "pooled Redis connections and OAuth HTTP clients.",
+            UserWarning,
+            stacklevel=3,
+        )
+
+    def _warn_missing_email_hooks(self, mounted: set[str]) -> None:
+        # The verify router exposes email verification and password reset, which
+        # only deliver anything if the matching send_* hook is registered.
+        # Without it the endpoint still returns 200 and the token is dropped.
+        if "verify" not in mounted:
+            return
+        missing = [
+            event
+            for event in ("send_verification_email", "send_password_reset_email")
+            if not self.hooks.has_listeners(event)
+        ]
+        if missing:
+            warnings.warn(
+                f"The verify router is mounted but no hook is registered for "
+                f"{', '.join(missing)}; those tokens are generated but never delivered. "
+                "Register the hook(s) with fullauth.hooks.on(...) before init_app(), "
+                "or drop the verify router via init_app(include_routers=...).",
+                UserWarning,
+                stacklevel=3,
+            )
 
     async def get_custom_claims(self, user: UserSchema) -> dict[str, Any]:
         if not self.on_create_token_claims:
@@ -322,21 +358,21 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
             router.include_router(self.profile_router)
         if "verify" not in exclude:
             router.include_router(self.verify_router)
-        if "admin" not in exclude and isinstance(self.adapter, RoleAdapterMixin):
+        if "admin" not in exclude and self.adapter.supports_feature("role"):
             router.include_router(self.admin_router)
         if (
             "oauth" not in exclude
-            and isinstance(self.adapter, OAuthAdapterMixin)
+            and self.adapter.supports_feature("oauth")
             and self.oauth_router is not None
         ):
             router.include_router(self.oauth_router)
         if (
             "passkey" not in exclude
-            and isinstance(self.adapter, PasskeyAdapterMixin)
+            and self.adapter.supports_feature("passkey")
             and self.passkey_router is not None
         ):
             router.include_router(self.passkey_router)
-        if "sessions" not in exclude and isinstance(self.adapter, SessionAdapterMixin):
+        if "sessions" not in exclude and self.adapter.supports_feature("session"):
             router.include_router(self.sessions_router)
         return router
 
@@ -390,16 +426,23 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
         self.bind(app)
         app.router.add_event_handler("shutdown", self.aclose)
         self._warn_cookie_backend_without_csrf(app)
+        self._warn_custom_lifespan_aclose(app)
+
+        if include_routers is None:
+            mounted: set[str] = set(self._ROUTER_NAMES)
+        else:
+            unknown = set(include_routers) - self._ROUTER_NAMES
+            if unknown:
+                raise ValueError(
+                    f"Unknown routers: {', '.join(sorted(unknown))}. "
+                    f"Valid names: {', '.join(sorted(self._ROUTER_NAMES))}"
+                )
+            mounted = set(include_routers)
+
+        self._warn_missing_email_hooks(mounted)
 
         if include_routers is None:
             app.include_router(self.router)
-            return
-
-        unknown = set(include_routers) - self._ROUTER_NAMES
-        if unknown:
-            raise ValueError(
-                f"Unknown routers: {', '.join(sorted(unknown))}. "
-                f"Valid names: {', '.join(sorted(self._ROUTER_NAMES))}"
-            )
-        exclude: set[str] = {n for n in self._ROUTER_NAMES if n not in include_routers}
-        app.include_router(self._build_router(exclude=exclude))
+        else:
+            exclude: set[str] = {n for n in self._ROUTER_NAMES if n not in mounted}
+            app.include_router(self._build_router(exclude=exclude))

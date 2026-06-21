@@ -838,6 +838,10 @@ async def test_cookie_backend_with_csrf_no_warning(config, adapter):
     from fastapi_fullauth.middleware.csrf import CSRFMiddleware
 
     fa = FullAuth(config=config, adapter=adapter, backends=[CookieBackend(config)])
+    # Register the email hooks the verify router expects, so the only thing
+    # under test here is that wiring CSRF silences the cookie-backend warning.
+    fa.hooks.on("send_verification_email", lambda email, token: None)
+    fa.hooks.on("send_password_reset_email", lambda email, token: None)
     app = FastAPI()
     app.add_middleware(CSRFMiddleware, secret=config.SECRET_KEY)
     with warnings.catch_warnings():

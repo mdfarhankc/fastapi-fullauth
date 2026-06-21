@@ -47,7 +47,7 @@ class RefreshTokenMixin(SQLModel):
     id: UUID = Field(default_factory=uuid7, primary_key=True)
     # VARCHAR(512): the AutoString 255 default truncates a refresh JWT on MySQL.
     token: str = Field(unique=True, index=True, max_length=512)
-    user_id: UUID = Field(foreign_key="fullauth_users.id")
+    user_id: UUID = Field(foreign_key="fullauth_users.id", ondelete="CASCADE")
     family_id: str = Field(index=True, max_length=36)
     expires_at: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
     revoked: bool = Field(default=False)

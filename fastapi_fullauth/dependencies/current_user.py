@@ -17,7 +17,11 @@ _bearer_scheme = HTTPBearer(auto_error=False)
 def get_fullauth(request: Request) -> "FullAuth":
     fullauth: FullAuth | None = getattr(request.app.state, "fullauth", None)
     if fullauth is None:
-        raise RuntimeError("FullAuth not initialized on app.state")
+        raise RuntimeError(
+            "FullAuth not initialized on app.state. Call fullauth.init_app(app), "
+            "or fullauth.bind(app) if you mount the composable routers yourself, "
+            "before the app handles requests."
+        )
     return fullauth
 
 

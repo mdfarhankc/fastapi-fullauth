@@ -23,6 +23,17 @@ async def on_register(user):
 fullauth.hooks.on("after_register", on_register)
 ```
 
+You can also use `on()` as a decorator, which registers the callback and returns it unchanged:
+
+```python
+@fullauth.hooks.on("after_register")
+async def on_register(user):
+    print(f"New user: {user.email}")
+```
+
+!!! tip "Mistakes surface at registration"
+    `on()` validates as you register: an unknown event name (a typo like `after_registr`) raises a `UserWarning` with a "did you mean" hint, and a callback whose signature can't accept the event's arguments warns too - so a misregistered hook fails loudly here instead of silently never firing. If you emit your own custom events with `fullauth.hooks.emit("my_event", ...)`, the unknown-event warning is expected and safe to ignore.
+
 ## Available events
 
 | Event | Callback signature | When it fires |
@@ -66,7 +77,7 @@ fullauth.hooks.on("send_password_reset_email", send_password_reset_email)
 ```
 
 !!! note
-    If you don't register a `send_verification_email` hook, the verification token is generated but never delivered. Same for password reset. The endpoint still returns a success response.
+    If you don't register a `send_verification_email` hook, the verification token is generated but never delivered. Same for password reset. The endpoint still returns a success response. To catch this, `init_app()` emits a `UserWarning` when the verify router is mounted but the matching `send_*` hook is missing - register the hook before `init_app()`, or drop the router with `init_app(include_routers=...)` if you don't use those flows.
 
 ### Audit logging
 

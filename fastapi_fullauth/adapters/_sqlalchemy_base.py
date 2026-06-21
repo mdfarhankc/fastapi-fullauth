@@ -106,13 +106,40 @@ class _BaseSQLAlchemyAdapter(
         self._user_schema = user_schema
         self._create_user_schema = create_user_schema
 
+    # feature label -> the constructor kwargs that feature needs. Used to make
+    # _require() and supports_feature() name the exact missing argument(s).
+    _FEATURE_REQUIRED_KWARGS: dict[str, tuple[str, ...]] = {
+        "Role assignment": ("role_model", "user_role_model"),
+        "Permissions": (
+            "role_model",
+            "user_role_model",
+            "permission_model",
+            "role_permission_model",
+        ),
+        "OAuth": ("oauth_account_model",),
+        "Passkeys": ("passkey_model",),
+    }
+
     def _require(self, model: _T | None, feature: str) -> _T:
         if model is None:
+            kwargs = self._FEATURE_REQUIRED_KWARGS.get(feature)
+            needed = f" Pass {', '.join(kwargs)}." if kwargs else ""
             raise RuntimeError(
-                f"{feature} requires the corresponding model class "
-                f"passed to {self._adapter_name}(...)."
+                f"{feature} requires the corresponding model class passed to "
+                f"{self._adapter_name}(...).{needed}"
             )
         return model
+
+    def supports_feature(self, feature: str) -> bool:
+        # The SQL adapters inherit every mixin, so isinstance() is always true.
+        # Real capability is whether the model class was passed to the constructor.
+        return {
+            "role": self._role_model is not None,
+            "permission": self._permission_model is not None,
+            "oauth": self._oauth_account_model is not None,
+            "passkey": self._passkey_model is not None,
+            "session": True,
+        }.get(feature, False)
 
     # ── Transactions ─────────────────────────────────────────────────
 

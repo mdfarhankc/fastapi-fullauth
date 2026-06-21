@@ -1,5 +1,30 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **`fullauth.hooks.on()` works as a decorator.** Call it with just the event name to register the function it decorates: `@fullauth.hooks.on("after_register")` over `async def on_register(user): ...`. The two-argument form (`on(event, callback)`) is unchanged.
+- **`fullauth check` CLI command.** Loads `FULLAUTH_*` config from the environment and `.env`, prints the resolved effective settings (including the `BACKEND` / `PASSKEY_ENABLED` values that are inferred from `REDIS_URL` / `PASSKEY_RP_ID`), and reports the warnings the app would emit at startup. Exits non-zero when the config fails to construct, so it doubles as a CI pre-flight check.
+
+### Changed
+
+- **Event-hook registration now validates as you register.** Registering a hook for an unknown event name (e.g. a typo like `after_registr`) emits a `UserWarning` with a "did you mean" suggestion instead of silently registering a hook that never fires, and a callback whose signature can't accept the event's arguments warns too. Custom events you emit yourself via `fullauth.hooks.emit()` still work; the unknown-event warning is informational. Adds `EventHooks.has_listeners(event)`.
+- **`init_app()` warns when the verify router is mounted without its email hooks.** Email verification and password reset only deliver anything if you register `send_verification_email` / `send_password_reset_email`; without them the endpoints return success while the token is silently dropped. `init_app()` now surfaces this at startup. Register the hook(s) before `init_app()`, or exclude the router with `init_app(include_routers=...)`.
+
+- **Feature/adapter mismatch is now detected for the bundled SQL adapters.** The startup warning that fires when a feature is configured against an adapter that can't serve it previously only checked whether the adapter implemented the matching mixin. The `SQLAlchemyAdapter` and `SQLModelAdapter` statically inherit every mixin, so the check never caught the real mistake: enabling passkeys or OAuth without passing `passkey_model` / `oauth_account_model`. Capability is now reported from the model classes actually passed to the constructor (a new `AbstractUserAdapter.supports_feature()`), so the warning fires correctly and the affected routers are no longer mounted (they would have returned a 500 on first use). Custom adapters are unaffected: the default still reports capability from the implemented mixins.
+- **SQLModel mixin foreign keys now use `ondelete="CASCADE"`** to match the SQLAlchemy mixins, which already did. Refresh tokens, OAuth accounts, passkeys, and the role/permission association rows are now removed by the database when their parent user/role/permission is deleted, instead of being left orphaned. **Migration:** this changes the generated DDL for SQLModel users - regenerate or add a migration that recreates the affected foreign keys with `ON DELETE CASCADE`.
+
+### Fixed
+
+- **Missing-model errors now name the exact constructor argument.** When a role, permission, OAuth, or passkey method runs on an adapter that wasn't given the corresponding model, the raised `RuntimeError` now lists the precise kwarg(s) to pass (e.g. `Pass oauth_account_model.`) instead of a generic "the corresponding model class" message.
+- **`init_app()` warns when a custom `lifespan` is in use.** It registers `fullauth.aclose()` on shutdown, but Starlette ignores shutdown handlers under a custom lifespan, silently leaking pooled Redis connections and OAuth HTTP clients. It now emits a `UserWarning` telling you to call `await fullauth.aclose()` in your lifespan.
+- **Clearer error when dependencies run before the app is wired.** `FullAuth not initialized on app.state` now points to `init_app(app)` (or `bind(app)` for manual router mounting).
+
+### Docs
+
+- The homepage quick example now defines the `engine`/`session_maker` it references, so it runs as written.
+
 ## 0.14.1
 
 ### Added

@@ -127,6 +127,10 @@ class FullAuthConfig(BaseSettings):
         effective backend becomes ``redis`` so configuring Redis actually
         switches the features over instead of silently staying in-memory.
         An explicit ``BACKEND`` (including ``memory``) always takes priority.
+
+        Setting ``PASSKEY_RP_ID`` is treated as opting into passkeys, so
+        ``PASSKEY_ENABLED`` defaults to True unless you set it explicitly (set
+        it to False to configure passkeys while keeping the routes off).
         """
         if not isinstance(values, dict):
             return values

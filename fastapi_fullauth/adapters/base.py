@@ -103,6 +103,23 @@ class AbstractUserAdapter(ABC, Generic[UserSchemaType, CreateUserSchemaType]):
         """Get user's roles. Returns [] by default. Override or use RoleAdapterMixin."""
         return []
 
+    def supports_feature(self, feature: str) -> bool:
+        """Whether this adapter can actually serve ``feature``.
+
+        ``feature`` is one of ``"role"``, ``"permission"``, ``"oauth"``,
+        ``"passkey"``, ``"session"``. FullAuth uses this to decide which routers
+        to register and to warn at startup about features configured against an
+        adapter that can't serve them.
+
+        The default answers based on which mixins the adapter inherits, which is
+        correct for custom adapters that only inherit the mixins they implement.
+        The built-in SQL adapters statically inherit every mixin, so they
+        override this to report capability from the model classes actually
+        passed to the constructor.
+        """
+        mixin = _FEATURE_MIXINS.get(feature)
+        return mixin is not None and isinstance(self, mixin)
+
     @asynccontextmanager
     async def transaction(
         self,
@@ -233,3 +250,14 @@ class PasskeyAdapterMixin(ABC):
 
     @abstractmethod
     async def delete_passkey(self, passkey_id: UserID) -> None: ...
+
+
+# Maps the feature names used by supports_feature() to the mixin that implements
+# them. Defined after the mixins so the references resolve.
+_FEATURE_MIXINS: dict[str, type] = {
+    "role": RoleAdapterMixin,
+    "permission": PermissionAdapterMixin,
+    "oauth": OAuthAdapterMixin,
+    "passkey": PasskeyAdapterMixin,
+    "session": SessionAdapterMixin,
+}

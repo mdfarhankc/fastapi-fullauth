@@ -59,6 +59,7 @@ pip install fastapi-fullauth[sqlmodel]
 
 ```python
 from fastapi import FastAPI
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlmodel import Relationship
 
 from fastapi_fullauth import FullAuth, FullAuthConfig
@@ -73,6 +74,9 @@ class RefreshToken(RefreshTokenMixin, table=True):
 class User(UserMixin, table=True):
     refresh_tokens: list[RefreshToken] = Relationship()
 
+
+engine = create_async_engine("sqlite+aiosqlite:///app.db")
+session_maker = async_sessionmaker(engine, expire_on_commit=False)
 
 app = FastAPI()
 fullauth = FullAuth(

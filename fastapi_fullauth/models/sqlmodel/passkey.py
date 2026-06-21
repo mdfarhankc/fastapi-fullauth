@@ -16,7 +16,7 @@ class PasskeyMixin(SQLModel):
     __tablename__ = "fullauth_passkeys"
 
     id: UUID = Field(default_factory=uuid7, primary_key=True)
-    user_id: UUID = Field(foreign_key="fullauth_users.id", index=True)
+    user_id: UUID = Field(foreign_key="fullauth_users.id", ondelete="CASCADE", index=True)
     credential_id: str = Field(sa_column=Column(Text, unique=True, index=True, nullable=False))
     public_key: str = Field(sa_column=Column(Text, nullable=False))
     sign_count: int = Field(default=0)

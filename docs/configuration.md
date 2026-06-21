@@ -69,6 +69,19 @@ fullauth secret
 Prints a random key suitable for `FULLAUTH_SECRET_KEY`. The `fullauth` command ships
 with the package.
 
+### Checking your configuration
+
+```bash
+fullauth check
+```
+
+Loads `FULLAUTH_*` from the environment and `.env`, prints the resolved settings, and
+reports the warnings the app would emit at startup (a generated secret key, in-memory
+backends under multi-worker deployments, and so on). Because `BACKEND` and
+`PASSKEY_ENABLED` are inferred from `REDIS_URL` and `PASSKEY_RP_ID`, this is the quickest
+way to confirm what the library actually resolved before you boot. It exits non-zero when
+the config fails to construct, so it works as a CI pre-flight check.
+
 ### Precedence
 
 pydantic-settings resolves values in this order, first wins:
