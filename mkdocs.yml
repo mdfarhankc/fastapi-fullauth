@@ -60,6 +60,8 @@ nav:
       - Overview: adapters/index.md
       - SQLModel: adapters/sqlmodel.md
       - SQLAlchemy: adapters/sqlalchemy.md
+      - Tortoise ORM: adapters/tortoise.md
+      - Beanie (MongoDB): adapters/beanie.md
       - Custom Adapters: adapters/custom.md
   - Authentication:
       - Protected Routes: auth/dependencies.md

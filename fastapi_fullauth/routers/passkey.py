@@ -196,7 +196,7 @@ def create_passkey_router(
         rp_id = cast("str", fullauth.config.PASSKEY_RP_ID)
         challenge_store = cast("ChallengeStore", fullauth.challenge_store)
         user_agent, ip_address = request_session_metadata(
-            request, fullauth.config.TRUSTED_PROXY_HEADERS
+            request, fullauth.config.TRUSTED_PROXY_HEADERS, fullauth.config.TRUSTED_PROXY_COUNT
         )
 
         try:
@@ -213,9 +213,11 @@ def create_passkey_router(
                 user_agent=user_agent,
                 ip_address=ip_address,
             )
-        except ValueError as e:
-            raise HTTPException(status_code=400, detail=str(e))
         except Exception:
+            # Uniform 401 for every failure (unknown credential, bad signature,
+            # clone detection, inactive user) so this login-equivalent endpoint
+            # can't be used to enumerate credentials or account state. The
+            # specific reason is logged server-side.
             logger.exception("Passkey authentication failed")
             raise HTTPException(status_code=401, detail="Passkey authentication failed")
 

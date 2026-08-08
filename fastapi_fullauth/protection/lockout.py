@@ -76,15 +76,10 @@ class RedisLockoutManager(LockoutManager):
         lockout_seconds: int = 900,
     ) -> None:
         super().__init__(max_attempts, lockout_seconds)
-        try:
-            import redis.asyncio as aioredis
-        except ImportError:
-            raise ImportError(
-                "redis package is required for the Redis lockout manager. "
-                "Install it with: pip install fastapi-fullauth[redis]"
-            ) from None
+        from fastapi_fullauth.core._redis import acquire_redis
 
-        self._redis = aioredis.from_url(redis_url, decode_responses=True)
+        self._redis = acquire_redis(redis_url, feature="the Redis lockout manager")
+        self._redis_url: str | None = redis_url
         self._prefix = "fullauth:lockout:"
 
     async def is_locked(self, key: str) -> bool:
@@ -102,8 +97,12 @@ class RedisLockoutManager(LockoutManager):
 
         count = results[0]
         if count >= self.max_attempts:
-            await self._redis.setex(locked_key, self.lockout_seconds, "1")
-            await self._redis.delete(attempts_key)
+            # Set the lock and clear the counter in one round-trip so a concurrent
+            # burst can't observe a half-applied state.
+            lock_pipe = self._redis.pipeline()
+            lock_pipe.setex(locked_key, self.lockout_seconds, "1")
+            lock_pipe.delete(attempts_key)
+            await lock_pipe.execute()
             logger.warning(
                 "Account locked after %d failed attempts: %s",
                 self.max_attempts,
@@ -117,7 +116,11 @@ class RedisLockoutManager(LockoutManager):
         await pipe.execute()
 
     async def aclose(self) -> None:
-        await self._redis.aclose()
+        from fastapi_fullauth.core._redis import release_redis
+
+        if self._redis_url is not None:
+            await release_redis(self._redis_url)
+            self._redis_url = None
 
 
 _lockout_registry: dict[str, type[LockoutManager]] = {

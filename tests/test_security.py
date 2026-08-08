@@ -238,14 +238,51 @@ async def test_rate_limit_ignores_proxy_header_when_not_trusted():
         assert r.status_code == 429  # still blocked = header ignored
 
 
-def test_get_client_ip_chain():
-    """When X-Forwarded-For contains a chain, the first IP is returned."""
+def test_get_client_ip_returns_rightmost_hop_by_default():
+    """A single trusted proxy appends the real client as the right-most entry,
+    so the default (1 hop) returns it, not the spoofable left-most value."""
     from fastapi_fullauth.utils import get_client_ip
 
     request = MagicMock()
-    request.headers = {"X-Forwarded-For": "1.1.1.1, 10.0.0.1, 10.0.0.2"}
+    request.headers = {"X-Forwarded-For": "1.1.1.1, 10.0.0.1, 203.0.113.9"}
     request.client.host = "127.0.0.1"
-    assert get_client_ip(request, ["X-Forwarded-For"]) == "1.1.1.1"
+    assert get_client_ip(request, ["X-Forwarded-For"]) == "203.0.113.9"
+
+
+def test_get_client_ip_ignores_spoofed_leftmost_entries():
+    """An attacker prepending entries cannot control the resolved IP: the
+    trusted proxy always appends the true peer to the right of the chain."""
+    from fastapi_fullauth.utils import get_client_ip
+
+    request = MagicMock()
+    # Attacker sends "6.6.6.6"; the single trusted proxy appends the real peer.
+    request.headers = {"X-Forwarded-For": "6.6.6.6, 203.0.113.9"}
+    request.client.host = "127.0.0.1"
+    assert get_client_ip(request, ["X-Forwarded-For"], trusted_proxy_count=1) == "203.0.113.9"
+
+
+def test_get_client_ip_respects_trusted_proxy_count():
+    """With two trusted proxies, the client is two positions from the right;
+    left-most padding is still ignored."""
+    from fastapi_fullauth.utils import get_client_ip
+
+    request = MagicMock()
+    # spoofed, client, proxy1(appended by proxy2), proxy2 view is the peer
+    request.headers = {"X-Forwarded-For": "6.6.6.6, 203.0.113.9, 10.0.0.1"}
+    request.client.host = "127.0.0.1"
+    assert get_client_ip(request, ["X-Forwarded-For"], trusted_proxy_count=2) == "203.0.113.9"
+
+
+def test_get_client_ip_falls_back_when_chain_shorter_than_hops():
+    """If the chain has fewer entries than the configured proxy count, the
+    header is malformed/overwritten, so fall back to the direct peer rather
+    than trusting a client-supplied value."""
+    from fastapi_fullauth.utils import get_client_ip
+
+    request = MagicMock()
+    request.headers = {"X-Forwarded-For": "6.6.6.6"}
+    request.client.host = "127.0.0.1"
+    assert get_client_ip(request, ["X-Forwarded-For"], trusted_proxy_count=2) == "127.0.0.1"
 
 
 def test_get_client_ip_falls_back_to_client_host():
@@ -554,6 +591,21 @@ async def test_csrf_allows_request_without_origin_header(csrf_origin_app):
         client.cookies.set("fullauth_csrf", token)
         r = await client.post("/submit", headers={"X-CSRF-Token": token})
         assert r.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_csrf_rejects_unparseable_referer(csrf_origin_app):
+    """A present but unparseable Referer (no scheme/host, and no Origin) must fail
+    the origin check, not silently fall back to the token-only path."""
+    transport = ASGITransport(app=csrf_origin_app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        token = (await client.get("/form")).cookies["fullauth_csrf"]
+        client.cookies.set("fullauth_csrf", token)
+        r = await client.post(
+            "/submit",
+            headers={"X-CSRF-Token": token, "Referer": "about:blank"},
+        )
+        assert r.status_code == 403
 
 
 @pytest.mark.asyncio

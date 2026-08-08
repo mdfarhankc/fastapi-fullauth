@@ -86,6 +86,9 @@ def auth_header(token: str) -> dict:
     return {"Authorization": f"Bearer {token}"}
 ```
 
+!!! note
+    `PREVENT_REGISTRATION_ENUMERATION` defaults to `True`, which makes `/register` answer `202` with a generic message instead of `201` + the created user. Set `PREVENT_REGISTRATION_ENUMERATION=False` in your test config (as assumed above) when your tests need the created user in the response.
+
 ## Testing protected routes
 
 ```python

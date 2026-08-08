@@ -1,10 +1,10 @@
 # OAuth2 social login
 
-The library ships two providers (GitHub, Google) and a base class for the rest. The flow is standard authorization-code with a signed state token.
+The library ships four providers (GitHub, Google, Discord, GitLab) and a base class for the rest. The flow is standard authorization-code with a signed state token.
 
 ## Feature matrix
 
-- **Built-in providers:** `GitHubOAuthProvider`, `GoogleOAuthProvider`
+- **Built-in providers:** `GitHubOAuthProvider`, `GoogleOAuthProvider`, `DiscordOAuthProvider`, `GitLabOAuthProvider`
 - **Adapter mixin:** `OAuthAdapterMixin`
 - **Router:** `oauth`
 - **Extra:** `fastapi-fullauth[oauth]` (pulls in `httpx`)
@@ -71,7 +71,7 @@ State is a JWT carrying `{"purpose": "oauth_state", "nonce": ..., "redirect_uri"
 
 ## PKCE
 
-PKCE (S256) is enabled by default for providers that support it (Google, GitHub) via the `OAUTH_PKCE_ENABLED` setting. The flow stays stateless: the `code_verifier` is derived from the signed state token's nonce keyed by `SECRET_KEY`, so it never travels through the browser. Treat this as defense-in-depth for a confidential client that already sends a `client_secret`, not as a replacement for binding the OAuth state to the browser session. A custom provider opts in by setting `supports_pkce = True` and accepting the `code_challenge` (on `get_authorization_url`) and `code_verifier` (on `exchange_code`) keyword arguments; providers that leave `supports_pkce = False` keep the two-argument method signatures.
+PKCE (S256) is enabled by default for providers that support it (Google, GitHub, Discord, GitLab) via the `OAUTH_PKCE_ENABLED` setting. The flow stays stateless: the `code_verifier` is derived from the signed state token's nonce keyed by `SECRET_KEY`, so it never travels through the browser. Treat this as defense-in-depth for a confidential client that already sends a `client_secret`, not as a replacement for binding the OAuth state to the browser session. A custom provider opts in by setting `supports_pkce = True` and accepting the `code_challenge` (on `get_authorization_url`) and `code_verifier` (on `exchange_code`) keyword arguments; providers that leave `supports_pkce = False` keep the two-argument method signatures.
 
 ## Auto-link-by-email and the email_verified gate
 
@@ -121,43 +121,38 @@ There's no separate `set-password` route; `/change-password` handles both first-
 
 ## Writing a custom provider
 
+For a provider with the standard OAuth2 authorization-code wire format, subclass `StandardOAuthProvider`: set the endpoints and implement only the userinfo mapping. PKCE, code exchange, and error handling come from the base.
+
 ```python
-from fastapi_fullauth.oauth.base import OAuthProvider
+from fastapi_fullauth.oauth import StandardOAuthProvider
 from fastapi_fullauth.types import OAuthUserInfo
 
-class DiscordProvider(OAuthProvider):
-    name = "discord"
+class MyProvider(StandardOAuthProvider):
+    name = "myprovider"
+    display_name = "MyProvider"   # used in log/error messages
+    authorization_endpoint = "https://auth.example.com/oauth/authorize"
+    token_endpoint = "https://auth.example.com/oauth/token"
+    userinfo_endpoint = "https://auth.example.com/oauth/userinfo"
 
     @property
     def default_scopes(self) -> list[str]:
-        return ["identify", "email"]
+        return ["openid", "email"]
 
-    def get_authorization_url(self, state: str, redirect_uri: str) -> str:
-        return (
-            "https://discord.com/oauth2/authorize?"
-            f"client_id={self.client_id}&"
-            f"redirect_uri={redirect_uri}&"
-            "response_type=code&"
-            f"scope={'+'.join(self.scopes)}&"
-            f"state={state}"
-        )
-
-    async def exchange_code(self, code: str, redirect_uri: str) -> dict:
-        # POST to the provider's token endpoint
-        ...
-
-    async def get_user_info(self, tokens: dict) -> OAuthUserInfo:
-        # GET the profile endpoint, return OAuthUserInfo
+    async def parse_user_info(self, data: dict, headers: dict) -> OAuthUserInfo:
+        if not data.get("sub"):
+            raise self._invalid_user_info("sub")
         return OAuthUserInfo(
-            provider="discord",
-            provider_user_id=...,
-            email=...,
-            email_verified=...,
-            name=...,
-            picture=...,
-            raw={...},   # full payload for hooks / debugging
+            provider=self.name,
+            provider_user_id=str(data["sub"]),
+            email=data.get("email"),
+            email_verified=bool(data.get("email_verified", False)),
+            name=data.get("name"),
+            picture=data.get("picture"),
+            raw=data,   # full payload for hooks / debugging
         )
 ```
+
+Wire-format quirks go in the `_authorize_params` / `_token_request_body` hooks or `extra_authorize_params` (see `GitHubOAuthProvider` and `GoogleOAuthProvider` in the source). A provider that deviates from the standard flow entirely subclasses the bare `OAuthProvider` ABC and implements `get_authorization_url`, `exchange_code`, and `get_user_info` itself.
 
 Instantiate with `client_id`, `client_secret`, `redirect_uris` and pass to `FullAuth(providers=[...])`.
 

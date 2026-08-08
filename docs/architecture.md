@@ -67,6 +67,8 @@ app.include_router(auth.auth_router, prefix="/api/v1/auth", tags=["Auth"])
 app.include_router(auth.profile_router, prefix="/api/v1/auth", tags=["Auth"])
 ```
 
+Unlike `init_app()`, `bind()` registers no shutdown cleanup - only `init_app()` wraps the app's lifespan to run `aclose()`. On the `bind()` path, call `await fullauth.aclose()` in your own shutdown to release pooled Redis connections and OAuth HTTP clients.
+
 ### Why middleware isn't auto-wired
 
 Middleware is never added by `init_app()`. You add it yourself with `app.add_middleware(...)`. This is deliberate: middleware order matters in FastAPI (they execute in reverse registration order), and implicit wiring hides that from you.
@@ -82,7 +84,7 @@ Middleware is never added by `init_app()`. You add it yourself with `app.add_mid
 - **Refresh tokens**: `store_refresh_token()`, `get_refresh_token()`, `revoke_refresh_token()`, `revoke_refresh_token_family()`, `revoke_all_user_refresh_tokens()`
 - **Verification**: `set_user_verified()`, `get_user_roles()`
 
-The library ships two adapters: `SQLModelAdapter` and `SQLAlchemyAdapter`.
+The library ships four adapters: `SQLModelAdapter`, `SQLAlchemyAdapter`, `TortoiseAdapter`, and `BeanieAdapter`.
 
 ### Mixin architecture
 
@@ -116,7 +118,7 @@ Short-lived JWTs (default 30 minutes). They carry the user ID (`sub`), roles, an
 
 ### Refresh tokens
 
-Long-lived JWTs (default 30 days). Stored in the database and organized into **families**. A family groups all the refresh tokens in a single login session.
+Long-lived JWTs (default 30 days). Stored in the database as sha256 digests - a leaked database exposes no usable tokens - and organized into **families**. A family groups all the refresh tokens in a single login session. The flows hash tokens before every store and lookup, so adapters (including custom ones) only ever see digests.
 
 ### Token pair creation
 

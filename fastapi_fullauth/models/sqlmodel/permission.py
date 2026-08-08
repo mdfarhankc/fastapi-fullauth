@@ -13,8 +13,10 @@ class RolePermissionMixin(SQLModel):
 
     __tablename__ = "fullauth_role_permissions"
 
-    role_id: UUID = Field(foreign_key="fullauth_roles.id", primary_key=True)
-    permission_id: UUID = Field(foreign_key="fullauth_permissions.id", primary_key=True)
+    role_id: UUID = Field(foreign_key="fullauth_roles.id", ondelete="CASCADE", primary_key=True)
+    permission_id: UUID = Field(
+        foreign_key="fullauth_permissions.id", ondelete="CASCADE", primary_key=True
+    )
 
 
 class PermissionMixin(SQLModel):

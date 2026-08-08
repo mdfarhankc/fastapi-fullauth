@@ -13,15 +13,16 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from copy import copy
 from datetime import datetime, timezone
-from typing import Any, TypeVar
+from typing import Any, TypeVar, cast
 
-from sqlalchemy import select, update
+from sqlalchemy import CursorResult, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import selectinload
 
 from fastapi_fullauth.adapters.base import (
     AbstractUserAdapter,
+    AdapterFeature,
     OAuthAdapterMixin,
     PasskeyAdapterMixin,
     PermissionAdapterMixin,
@@ -106,13 +107,40 @@ class _BaseSQLAlchemyAdapter(
         self._user_schema = user_schema
         self._create_user_schema = create_user_schema
 
+    # feature label -> the constructor kwargs that feature needs. Used to make
+    # _require() and supports_feature() name the exact missing argument(s).
+    _FEATURE_REQUIRED_KWARGS: dict[str, tuple[str, ...]] = {
+        "Role assignment": ("role_model", "user_role_model"),
+        "Permissions": (
+            "role_model",
+            "user_role_model",
+            "permission_model",
+            "role_permission_model",
+        ),
+        "OAuth": ("oauth_account_model",),
+        "Passkeys": ("passkey_model",),
+    }
+
     def _require(self, model: _T | None, feature: str) -> _T:
         if model is None:
+            kwargs = self._FEATURE_REQUIRED_KWARGS.get(feature)
+            needed = f" Pass {', '.join(kwargs)}." if kwargs else ""
             raise RuntimeError(
-                f"{feature} requires the corresponding model class "
-                f"passed to {self._adapter_name}(...)."
+                f"{feature} requires the corresponding model class passed to "
+                f"{self._adapter_name}(...).{needed}"
             )
         return model
+
+    def supports_feature(self, feature: AdapterFeature) -> bool:
+        # The SQL adapters inherit every mixin, so isinstance() is always true.
+        # Real capability is whether the model class was passed to the constructor.
+        return {
+            "role": self._role_model is not None,
+            "permission": self._permission_model is not None,
+            "oauth": self._oauth_account_model is not None,
+            "passkey": self._passkey_model is not None,
+            "session": True,
+        }.get(feature, False)
 
     # ── Transactions ─────────────────────────────────────────────────
 
@@ -209,7 +237,7 @@ class _BaseSQLAlchemyAdapter(
             val = getattr(user, field_name, None)
             if val is not None:
                 data[field_name] = val
-        if hasattr(user, "roles"):
+        if "roles" in self._user_schema.model_fields and hasattr(user, "roles"):
             data["roles"] = [r.name for r in user.roles]
         return self._user_schema.model_validate(data)
 
@@ -224,8 +252,10 @@ class _BaseSQLAlchemyAdapter(
 
     async def get_user_by_field(self, field: str, value: str) -> UserSchemaType | None:
         column = getattr(self._user_model, field, None)
-        if column is None:
-            raise ValueError(f"Model has no field '{field}'")
+        if column is None or field not in self._user_model.__table__.columns:
+            # Reject non-column attributes (relationships, methods); otherwise a
+            # name like "roles" would build a nonsensical WHERE and error opaquely.
+            raise ValueError(f"Model has no column '{field}'")
         if field == "email":
             value = normalize_email(value)
         async with self._begin() as session:
@@ -261,10 +291,13 @@ class _BaseSQLAlchemyAdapter(
         if "email" in data and data["email"] is not None:
             data = {**data, "email": normalize_email(data["email"])}
         async with self._begin() as session:
-            await session.execute(
-                update(self._user_model).where(self._user_model.id == user_id).values(**data)
-            )
-            await self._commit(session)
+            if data:
+                # Skip an empty UPDATE: update(...).values() with no columns is a
+                # compile error in SQLAlchemy. An empty update is a no-op anyway.
+                await session.execute(
+                    update(self._user_model).where(self._user_model.id == user_id).values(**data)
+                )
+                await self._commit(session)
             result = await session.execute(self._user_query().where(self._user_model.id == user_id))
             user = result.scalars().first()
             if user is None:
@@ -343,11 +376,14 @@ class _BaseSQLAlchemyAdapter(
 
     async def revoke_refresh_token(self, token_str: str) -> bool:
         async with self._begin() as session:
-            result = await session.execute(
-                update(self._refresh_token_model)
-                .where(self._refresh_token_model.token == token_str)
-                .where(self._refresh_token_model.revoked.is_(False))
-                .values(revoked=True)
+            result = cast(
+                "CursorResult[Any]",
+                await session.execute(
+                    update(self._refresh_token_model)
+                    .where(self._refresh_token_model.token == token_str)
+                    .where(self._refresh_token_model.revoked.is_(False))
+                    .values(revoked=True)
+                ),
             )
             await self._commit(session)
             return result.rowcount == 1
@@ -407,24 +443,39 @@ class _BaseSQLAlchemyAdapter(
     async def revoke_user_session(self, user_id: UserID, family_id: str) -> bool:
         model = self._refresh_token_model
         async with self._begin() as session:
-            result = await session.execute(
+            # Existence, not UPDATE rowcount: on MySQL an UPDATE that changes no
+            # rows (re-revoking an already-revoked family) reports rowcount 0,
+            # which would wrongly 404 a session the user still owns. The contract
+            # is idempotent: True if a row existed for (user_id, family_id).
+            existing = await session.execute(
+                select(model.id)
+                .where(model.user_id == user_id)
+                .where(model.family_id == family_id)
+                .limit(1)
+            )
+            if existing.first() is None:
+                return False
+            await session.execute(
                 update(model)
                 .where(model.user_id == user_id)
                 .where(model.family_id == family_id)
                 .values(revoked=True)
             )
             await self._commit(session)
-            return result.rowcount > 0
+            return True
 
     async def revoke_user_sessions_except(self, user_id: UserID, keep_family_id: str) -> int:
         model = self._refresh_token_model
         async with self._begin() as session:
-            result = await session.execute(
-                update(model)
-                .where(model.user_id == user_id)
-                .where(model.family_id != keep_family_id)
-                .where(model.revoked.is_(False))
-                .values(revoked=True)
+            result = cast(
+                "CursorResult[Any]",
+                await session.execute(
+                    update(model)
+                    .where(model.user_id == user_id)
+                    .where(model.family_id != keep_family_id)
+                    .where(model.revoked.is_(False))
+                    .values(revoked=True)
+                ),
             )
             await self._commit(session)
             return int(result.rowcount)
@@ -631,15 +682,16 @@ class _BaseSQLAlchemyAdapter(
     ) -> OAuthAccount | None:
         oauth_model = self._require(self._oauth_account_model, "OAuth")
         async with self._begin() as session:
-            await session.execute(
-                update(oauth_model)
-                .where(
-                    oauth_model.provider == provider,
-                    oauth_model.provider_user_id == provider_user_id,
+            if data:
+                await session.execute(
+                    update(oauth_model)
+                    .where(
+                        oauth_model.provider == provider,
+                        oauth_model.provider_user_id == provider_user_id,
+                    )
+                    .values(**data)
                 )
-                .values(**data)
-            )
-            await self._commit(session)
+                await self._commit(session)
             return await self.get_oauth_account(provider, provider_user_id)
 
     async def delete_oauth_account(self, provider: str, provider_user_id: str) -> None:
@@ -710,11 +762,14 @@ class _BaseSQLAlchemyAdapter(
         passkey_model = self._require(self._passkey_model, "Passkeys")
         now = datetime.now(timezone.utc)
         async with self._begin() as session:
-            result = await session.execute(
-                update(passkey_model)
-                .where(passkey_model.credential_id == credential_id)
-                .where(passkey_model.sign_count < sign_count)
-                .values(sign_count=sign_count, last_used_at=now)
+            result = cast(
+                "CursorResult[Any]",
+                await session.execute(
+                    update(passkey_model)
+                    .where(passkey_model.credential_id == credential_id)
+                    .where(passkey_model.sign_count < sign_count)
+                    .values(sign_count=sign_count, last_used_at=now)
+                ),
             )
             if result.rowcount == 0:
                 # Counter did not advance. Either the authenticator doesn't maintain a

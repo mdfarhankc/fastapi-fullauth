@@ -60,15 +60,10 @@ class RedisChallengeStore(ChallengeStore):
     """Redis-backed challenge store. Works across multiple workers."""
 
     def __init__(self, redis_url: str) -> None:
-        try:
-            import redis.asyncio as aioredis
-        except ImportError:
-            raise ImportError(
-                "redis package is required for the Redis challenge store. "
-                "Install it with: pip install fastapi-fullauth[redis]"
-            ) from None
+        from fastapi_fullauth.core._redis import acquire_redis
 
-        self._redis = aioredis.from_url(redis_url, decode_responses=True)
+        self._redis = acquire_redis(redis_url, feature="the Redis challenge store")
+        self._redis_url: str | None = redis_url
         self._prefix = "fullauth:challenge:"
 
     async def store(self, key: str, challenge: str, ttl: int = 60) -> None:
@@ -80,7 +75,11 @@ class RedisChallengeStore(ChallengeStore):
         return challenge
 
     async def aclose(self) -> None:
-        await self._redis.aclose()
+        from fastapi_fullauth.core._redis import release_redis
+
+        if self._redis_url is not None:
+            await release_redis(self._redis_url)
+            self._redis_url = None
 
 
 _challenge_store_registry: dict[str, type[ChallengeStore]] = {

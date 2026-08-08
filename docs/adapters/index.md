@@ -4,7 +4,7 @@
 
 Adapters decouple the authentication logic from the database. The library defines abstract interfaces for user management, token storage, roles, OAuth, and passkeys. Concrete adapters implement these interfaces for specific ORMs.
 
-The library ships adapters for SQLModel and SQLAlchemy. You can write your own for MongoDB, Tortoise ORM, or any other data store by implementing the abstract interface.
+The library ships adapters for SQLModel, SQLAlchemy, Tortoise ORM, and Beanie (MongoDB). You can write your own for any other data store by implementing the abstract interface.
 
 ## Available adapters
 
@@ -12,13 +12,17 @@ The library ships adapters for SQLModel and SQLAlchemy. You can write your own f
 |---------|---------|---------|
 | [SQLModel](sqlmodel.md) | Any SQLAlchemy-supported DB | `pip install fastapi-fullauth[sqlmodel]` |
 | [SQLAlchemy](sqlalchemy.md) | Any SQLAlchemy-supported DB | `pip install fastapi-fullauth[sqlalchemy]` |
+| [Tortoise ORM](tortoise.md) | Any Tortoise-supported DB | `pip install fastapi-fullauth[tortoise]` |
+| [Beanie](beanie.md) | MongoDB | `pip install fastapi-fullauth[beanie]` |
 
 ## Choosing an adapter
 
 - **SQLModel**: recommended for most projects. Clean model definitions, good type support. Use SQLite for prototyping.
 - **SQLAlchemy**: use if your project already uses SQLAlchemy's declarative base.
+- **Tortoise ORM**: use if your project is built on Tortoise's async, Django-like ORM.
+- **Beanie**: use if your data lives in MongoDB. Roles and permissions are embedded on the document rather than joined, and refresh-token rotation stays atomic without a replica set.
 
-Both adapters support the same features. The difference is in model definition style.
+All four adapters support the same features. The difference is in model definition style and the data store they bind to.
 
 ## Adapter architecture
 
@@ -44,7 +48,7 @@ Mixins add capabilities to your adapter. The library checks `isinstance()` at st
 
 ## Model mixins
 
-The library provides SQLAlchemy declarative mixins for database tables. You subclass them to create concrete tables in your app's metadata. The library never ships its own tables - your app owns every table definition, which means Alembic migrations work naturally.
+The library provides SQLAlchemy and SQLModel mixins for database tables. You subclass them to create concrete tables in your app's metadata. The library never ships its own tables - your app owns every table definition, which means Alembic migrations work naturally. (Tortoise ships an equivalent set of abstract model mixins with a slightly different shape - native M2M relations, no association tables; see the [Tortoise adapter](tortoise.md).)
 
 | Mixin | Default table name | Purpose |
 |-------|-------------------|---------|

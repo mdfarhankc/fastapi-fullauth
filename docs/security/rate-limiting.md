@@ -86,6 +86,7 @@ app.add_middleware(
     max_requests=60,
     window_seconds=60,
     trusted_proxy_headers=fullauth.config.TRUSTED_PROXY_HEADERS,
+    trusted_proxy_count=fullauth.config.TRUSTED_PROXY_COUNT,
     exempt_paths=["/health", "/metrics"],
 )
 ```
@@ -121,6 +122,7 @@ app.add_middleware(
     RateLimitMiddleware,
     limiter=limiter,
     trusted_proxy_headers=fullauth.config.TRUSTED_PROXY_HEADERS,
+    trusted_proxy_count=fullauth.config.TRUSTED_PROXY_COUNT,
 )
 ```
 
@@ -134,13 +136,17 @@ Behind a reverse proxy (Nginx, Cloudflare, AWS ALB), `request.client.host` is th
 config = FullAuthConfig(
     SECRET_KEY="...",
     TRUSTED_PROXY_HEADERS=["X-Forwarded-For"],
+    TRUSTED_PROXY_COUNT=1,  # number of trusted proxies in front of the app
 )
 ```
 
 !!! warning
     Only list headers you trust. If your server is directly exposed to the internet (no proxy), leave this empty; otherwise users can spoof their IP via the header.
 
-When `X-Forwarded-For` contains a chain (e.g. `1.2.3.4, 10.0.0.1`), the first IP (original client) is used.
+When `X-Forwarded-For` contains a chain, the client IP is read from the **right**, not the left. Each trusted proxy appends the address it received from, so the right-most entries are set by your infrastructure while the left-most are supplied by the client and are spoofable. `TRUSTED_PROXY_COUNT` (default `1`) is how many proxy hops sit in front of the app; the resolver returns the entry that many positions from the right. For a chain `6.6.6.6, 203.0.113.9` behind one proxy, `203.0.113.9` is used and the client-injected `6.6.6.6` is ignored.
+
+!!! danger
+    Set `TRUSTED_PROXY_COUNT` to your real proxy depth. If it is larger than the number of proxies that actually append the header, an attacker can pad the chain and control the resolved IP, defeating rate limiting and lockout. When the chain is shorter than the configured count, the direct peer is used instead of a client-supplied value.
 
 Common proxy configurations:
 

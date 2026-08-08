@@ -1,8 +1,14 @@
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 from fastapi_fullauth.adapters.base import AbstractUserAdapter
+from fastapi_fullauth.core.crypto import hash_refresh_token
 from fastapi_fullauth.core.tokens import TokenEngine
 from fastapi_fullauth.types import RefreshToken, TokenPair, UserSchema
+
+# Async callback that builds the custom claims for a user's tokens; flows call
+# it only after authentication succeeds (e.g. FullAuth.get_custom_claims).
+ClaimsProvider = Callable[[UserSchema], Awaitable[dict[str, Any]]]
 
 
 async def issue_token_pair(
@@ -34,9 +40,11 @@ async def issue_token_pair(
         family_id=family_id,
     )
 
+    # Only the sha256 digest is persisted: a leaked database must not hand out
+    # live sessions. Lookups hash the presented token the same way.
     await adapter.store_refresh_token(
         RefreshToken(
-            token=refresh_meta.token,
+            token=hash_refresh_token(refresh_meta.token),
             user_id=user.id,
             expires_at=refresh_meta.expires_at,
             family_id=refresh_meta.family_id,

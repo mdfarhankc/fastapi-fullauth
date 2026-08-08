@@ -2,7 +2,7 @@ import logging
 from typing import Literal
 
 from fastapi_fullauth.adapters.base import AbstractUserAdapter
-from fastapi_fullauth.core.crypto import hash_password
+from fastapi_fullauth.core.crypto import ahash_password
 from fastapi_fullauth.exceptions import UserAlreadyExistsError
 from fastapi_fullauth.types import CreateUserSchema, UserSchema
 from fastapi_fullauth.validators import PasswordValidator
@@ -33,7 +33,7 @@ async def register(
                 logger.warning("Registration rejected = %s exists", login_field)
                 raise UserAlreadyExistsError(f"User with {login_field} already exists")
 
-    hashed = hash_password(data.password, algorithm=hash_algorithm)
+    hashed = await ahash_password(data.password, algorithm=hash_algorithm)
     user = await adapter.create_user(data, hashed_password=hashed)
     logger.info("User registered: user_id=%s, email=%s", user.id, user.email)
     return user

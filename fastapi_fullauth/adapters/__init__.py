@@ -1,18 +1,24 @@
 """Adapters = the persistence seam between FullAuth and your database.
 
-Two built-ins ship: ``SQLAlchemyAdapter`` and ``SQLModelAdapter``. Each is
-imported only when the matching optional dependency is installed, so a
-missing extra (e.g. you installed ``[sqlalchemy]`` only) leaves the other
-adapter unbound rather than breaking import. Any other ``ImportError``
-inside the adapter module propagates = masking those would hide real bugs.
+Four built-ins ship: ``SQLAlchemyAdapter``, ``SQLModelAdapter``,
+``TortoiseAdapter``, and ``BeanieAdapter`` (MongoDB). Each is imported only when
+the matching optional dependency is installed, so a missing extra (e.g. you
+installed ``[sqlalchemy]`` only) leaves the others unbound rather than breaking
+import. Any other ``ImportError`` inside the adapter module propagates = masking
+those would hide real bugs.
 
     from fastapi_fullauth.adapters import SQLAlchemyAdapter
     # or
     from fastapi_fullauth.adapters import SQLModelAdapter
+    # or
+    from fastapi_fullauth.adapters import TortoiseAdapter
+    # or
+    from fastapi_fullauth.adapters import BeanieAdapter
 """
 
 from fastapi_fullauth.adapters.base import (
     AbstractUserAdapter,
+    AdapterFeature,
     OAuthAdapterMixin,
     PasskeyAdapterMixin,
     PermissionAdapterMixin,
@@ -22,6 +28,7 @@ from fastapi_fullauth.adapters.base import (
 
 __all__ = [
     "AbstractUserAdapter",
+    "AdapterFeature",
     "OAuthAdapterMixin",
     "PasskeyAdapterMixin",
     "PermissionAdapterMixin",
@@ -46,3 +53,21 @@ else:
     from fastapi_fullauth.adapters.sqlmodel import SQLModelAdapter  # noqa: F401
 
     __all__.append("SQLModelAdapter")
+
+try:
+    import tortoise  # noqa: F401
+except ImportError:
+    pass
+else:
+    from fastapi_fullauth.adapters.tortoise import TortoiseAdapter  # noqa: F401
+
+    __all__.append("TortoiseAdapter")
+
+try:
+    import beanie  # noqa: F401
+except ImportError:
+    pass
+else:
+    from fastapi_fullauth.adapters.beanie import BeanieAdapter  # noqa: F401
+
+    __all__.append("BeanieAdapter")

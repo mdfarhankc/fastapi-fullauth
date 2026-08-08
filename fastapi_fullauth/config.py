@@ -71,8 +71,9 @@ class FullAuthConfig(BaseSettings):
     LOGIN_FIELD: str = "email"
     # When True, login runs a dummy password verify on unknown-user / no-password
     # paths so responses take roughly the same time as a real wrong-password attempt.
-    # Defaults off; adds ~argon2 hashing time to every failed lookup.
-    PREVENT_LOGIN_TIMING_ATTACKS: bool = False
+    # Costs ~one hash per failed lookup; disable only if that cost matters more
+    # than hiding which emails are registered.
+    PREVENT_LOGIN_TIMING_ATTACKS: bool = True
 
     LOCKOUT_ENABLED: bool = True
     LOCKOUT_BACKEND: Literal["memory", "redis"] = "memory"
@@ -81,6 +82,12 @@ class FullAuthConfig(BaseSettings):
 
     RATE_LIMIT_BACKEND: Literal["memory", "redis"] = "memory"
     TRUSTED_PROXY_HEADERS: Annotated[list[str], NoDecode] = []
+    # Number of trusted proxy hops in front of the app. The client IP is read
+    # as the entry this many positions from the right of a forwarded-for chain,
+    # since each trusted proxy appends the address it received from. Left-most
+    # entries are client-supplied and never trusted. Set this to match your
+    # actual proxy depth; an incorrect value is what enables IP spoofing.
+    TRUSTED_PROXY_COUNT: int = Field(default=1, ge=1)
 
     AUTH_RATE_LIMIT_ENABLED: bool = True
     AUTH_RATE_LIMITS: AuthRateLimits = Field(default_factory=AuthRateLimits)
@@ -95,7 +102,9 @@ class FullAuthConfig(BaseSettings):
     OAUTH_AUTO_LINK_BY_EMAIL: bool = True
     OAUTH_PKCE_ENABLED: bool = True
 
-    PREVENT_REGISTRATION_ENUMERATION: bool = False
+    # When True, /auth/register always returns 202 + a generic message so the
+    # response never reveals whether an email is already registered.
+    PREVENT_REGISTRATION_ENUMERATION: bool = True
 
     PASSKEY_ENABLED: bool = False
     PASSKEY_RP_ID: str | None = None
@@ -127,6 +136,10 @@ class FullAuthConfig(BaseSettings):
         effective backend becomes ``redis`` so configuring Redis actually
         switches the features over instead of silently staying in-memory.
         An explicit ``BACKEND`` (including ``memory``) always takes priority.
+
+        Setting ``PASSKEY_RP_ID`` is treated as opting into passkeys, so
+        ``PASSKEY_ENABLED`` defaults to True unless you set it explicitly (set
+        it to False to configure passkeys while keeping the routes off).
         """
         if not isinstance(values, dict):
             return values

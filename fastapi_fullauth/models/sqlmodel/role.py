@@ -13,8 +13,8 @@ class UserRoleMixin(SQLModel):
 
     __tablename__ = "fullauth_user_roles"
 
-    user_id: UUID = Field(foreign_key="fullauth_users.id", primary_key=True)
-    role_id: UUID = Field(foreign_key="fullauth_roles.id", primary_key=True)
+    user_id: UUID = Field(foreign_key="fullauth_users.id", ondelete="CASCADE", primary_key=True)
+    role_id: UUID = Field(foreign_key="fullauth_roles.id", ondelete="CASCADE", primary_key=True)
 
 
 class RoleMixin(SQLModel):

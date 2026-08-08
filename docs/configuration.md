@@ -69,6 +69,19 @@ fullauth secret
 Prints a random key suitable for `FULLAUTH_SECRET_KEY`. The `fullauth` command ships
 with the package.
 
+### Checking your configuration
+
+```bash
+fullauth check
+```
+
+Loads `FULLAUTH_*` from the environment and `.env`, prints the resolved settings, and
+reports the warnings the app would emit at startup (a generated secret key, in-memory
+backends under multi-worker deployments, and so on). Because `BACKEND` and
+`PASSKEY_ENABLED` are inferred from `REDIS_URL` and `PASSKEY_RP_ID`, this is the quickest
+way to confirm what the library actually resolved before you boot. It exits non-zero when
+the config fails to construct, so it works as a CI pre-flight check.
+
 ### Precedence
 
 pydantic-settings resolves values in this order, first wins:
@@ -155,7 +168,8 @@ middleware (`RateLimitMiddleware`) is opt-in; import it from
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `RATE_LIMIT_BACKEND` | `"memory" \| "redis"` | `"memory"` | Backend used by `AuthRateLimiter` and `create_rate_limiter()`. Use `"redis"` in production; `"memory"` is per-process, so the effective limit is multiplied by the worker count. |
-| `TRUSTED_PROXY_HEADERS` | `list[str]` | `[]` | Headers to read real client IP from (e.g. `["X-Forwarded-For"]`). |
+| `TRUSTED_PROXY_HEADERS` | `list[str]` | `[]` | Headers to read the real client IP from (e.g. `["X-Forwarded-For"]`). The IP is taken from the right of the chain, not the left; left-most entries are client-supplied and never trusted. |
+| `TRUSTED_PROXY_COUNT` | `int` | `1` | Number of trusted proxy hops in front of the app. The client IP is the entry this many positions from the right of the forwarded chain. Must be `>= 1`. Set it too high and an attacker can spoof their IP; see [Rate Limiting](security/rate-limiting.md#proxy-support). |
 | `AUTH_RATE_LIMIT_ENABLED` | `bool` | `True` | Enable per-route auth rate limits. |
 | `AUTH_RATE_LIMITS` | `AuthRateLimits` | see below | Per-route request caps: `login=5`, `register=3`, `password_reset=3`, `passkey_auth=10`, `refresh=30`. |
 | `AUTH_RATE_LIMIT_WINDOW_SECONDS` | `int` | `60` | Rate limit window in seconds. |
@@ -229,8 +243,8 @@ fullauth = FullAuth(config=config, adapter=adapter, backends=[backend])
 |--------|------|---------|-------------|
 | `OAUTH_STATE_EXPIRE_SECONDS` | `int` | `300` | OAuth state token TTL (5 min). |
 | `OAUTH_AUTO_LINK_BY_EMAIL` | `bool` | `True` | Auto-link OAuth accounts to existing users by email. |
-| `OAUTH_PKCE_ENABLED` | `bool` | `True` | Send PKCE (S256) on providers that support it (Google, GitHub). |
-| `PREVENT_REGISTRATION_ENUMERATION` | `bool` | `False` | When `True`, `/register` always returns `202` + a generic message whether or not the email is already registered; an attacker can't use registration responses to probe the user table. Opt-in because the default `201` + user / `409` conflict behavior is simpler for client apps. |
+| `OAUTH_PKCE_ENABLED` | `bool` | `True` | Send PKCE (S256) on providers that support it (Google, GitHub, Discord, GitLab). |
+| `PREVENT_REGISTRATION_ENUMERATION` | `bool` | `True` | `/register` always returns `202` + a generic message whether or not the email is already registered, so an attacker can't use registration responses to probe the user table. Set to `False` for the simpler `201` + user / `409` conflict behavior if enumeration is not a concern for your app. |
 
 ### Routing
 
@@ -244,7 +258,7 @@ fullauth = FullAuth(config=config, adapter=adapter, backends=[backend])
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `PREVENT_LOGIN_TIMING_ATTACKS` | `bool` | `False` | Run a dummy password hash on failed lookups to mask response time. Prevents email enumeration via timing. |
+| `PREVENT_LOGIN_TIMING_ATTACKS` | `bool` | `True` | Run a dummy password hash on failed lookups to mask response time. Prevents email enumeration via timing. Costs about one hash per failed lookup; set to `False` only if that cost matters more than hiding which emails are registered. |
 
 ### Global defaults
 
@@ -301,4 +315,5 @@ FULLAUTH_API_PREFIX=/api/v1
 
 # Proxy (if behind Nginx/Cloudflare)
 FULLAUTH_TRUSTED_PROXY_HEADERS=["X-Forwarded-For"]
+FULLAUTH_TRUSTED_PROXY_COUNT=1
 ```

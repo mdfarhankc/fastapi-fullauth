@@ -70,7 +70,10 @@ def test_password_validator_blocked_passwords():
 async def test_register_rejects_weak_password_via_validator():
     engine, session_maker = await _make_db()
     adapter = make_test_adapter(session_maker)
-    config = FullAuthConfig(SECRET_KEY="test-secret-key-that-is-long-enough-32b")
+    config = FullAuthConfig(
+        SECRET_KEY="test-secret-key-that-is-long-enough-32b",
+        PREVENT_REGISTRATION_ENUMERATION=False,
+    )
     fullauth = FullAuth(
         config=config,
         adapter=adapter,
@@ -204,7 +207,10 @@ async def test_custom_create_user_schema():
         user_schema=MyUserSchema,
         create_user_schema=MyCreateSchema,
     )
-    config = FullAuthConfig(SECRET_KEY="test-secret-key-that-is-long-enough-32b")
+    config = FullAuthConfig(
+        SECRET_KEY="test-secret-key-that-is-long-enough-32b",
+        PREVENT_REGISTRATION_ENUMERATION=False,
+    )
     fullauth = FullAuth(config=config, adapter=adapter)
     app = FastAPI()
     fullauth.init_app(app)
@@ -221,6 +227,62 @@ async def test_custom_create_user_schema():
         )
         assert r.status_code == 201
         assert r.json()["display_name"] == "John"
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_typed_current_user_returns_custom_schema_instance():
+    """typed_current_user(MyUserSchema) behaves exactly like current_user but
+    lets routes use the custom schema's fields without casts."""
+    from typing import Annotated
+
+    from fastapi import Depends
+
+    from fastapi_fullauth.dependencies import typed_current_user
+
+    class MyCreateSchema(CreateUserSchema):
+        display_name: str
+
+    class MyUserSchema(UserSchema):
+        display_name: str | None = None
+
+    engine, session_maker = await _make_db()
+    adapter = make_test_adapter(
+        session_maker,
+        user_schema=MyUserSchema,
+        create_user_schema=MyCreateSchema,
+    )
+    config = FullAuthConfig(
+        SECRET_KEY="test-secret-key-that-is-long-enough-32b",
+        PREVENT_REGISTRATION_ENUMERATION=False,
+    )
+    fullauth = FullAuth(config=config, adapter=adapter)
+    app = FastAPI()
+    fullauth.init_app(app)
+
+    CurrentUser = Annotated[MyUserSchema, Depends(typed_current_user(MyUserSchema))]  # noqa: N806
+
+    @app.get("/display-name")
+    async def display_name(user: CurrentUser) -> dict:
+        assert isinstance(user, MyUserSchema)
+        return {"display_name": user.display_name}
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        await client.post(
+            "/api/v1/auth/register",
+            json={"email": "t@t.com", "password": "securepass123", "display_name": "John"},
+        )
+        r = await client.post(
+            "/api/v1/auth/login",
+            json={"email": "t@t.com", "password": "securepass123"},
+        )
+        token = r.json()["access_token"]
+
+        r = await client.get("/display-name", headers={"Authorization": f"Bearer {token}"})
+        assert r.status_code == 200
+        assert r.json() == {"display_name": "John"}
 
     await engine.dispose()
 
@@ -558,7 +620,10 @@ async def test_explicit_schemas_on_adapter():
     )
     fullauth = FullAuth(
         adapter=adapter,
-        config=FullAuthConfig(SECRET_KEY="test-key-32b-long-enough-here!!!"),
+        config=FullAuthConfig(
+            SECRET_KEY="test-key-32b-long-enough-here!!!",
+            PREVENT_REGISTRATION_ENUMERATION=False,
+        ),
     )
     app = FastAPI()
     fullauth.init_app(app)
@@ -799,6 +864,68 @@ def test_list_field_from_env_comma_separated(monkeypatch):
     assert cfg.TRUSTED_PROXY_HEADERS == ["X-Forwarded-For", "X-Real-IP"]
 
 
+def test_config_loads_from_dotenv_file(tmp_path, monkeypatch):
+    (tmp_path / ".env").write_text(
+        "FULLAUTH_SECRET_KEY=dotenv-secret-key-that-is-long-enough-32\n"
+        "FULLAUTH_ACCESS_TOKEN_EXPIRE_MINUTES=45\n"
+        'FULLAUTH_AUTH_RATE_LIMITS={"login": 11}\n',
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+    cfg = FullAuthConfig()
+    assert cfg.SECRET_KEY == "dotenv-secret-key-that-is-long-enough-32"
+    assert cfg.ACCESS_TOKEN_EXPIRE_MINUTES == 45
+    assert cfg.AUTH_RATE_LIMITS.login == 11
+    assert cfg.AUTH_RATE_LIMITS.register == 3  # unset routes keep their defaults
+
+
+def test_config_explicit_env_file_path(tmp_path):
+    env_file = tmp_path / "custom.env"
+    env_file.write_text(
+        "FULLAUTH_SECRET_KEY=customenv-secret-key-that-is-long-32ch\n", encoding="utf-8"
+    )
+    cfg = FullAuthConfig(_env_file=env_file)
+    assert cfg.SECRET_KEY == "customenv-secret-key-that-is-long-32ch"
+
+
+def test_config_precedence_kwargs_over_env_over_dotenv(tmp_path, monkeypatch):
+    (tmp_path / ".env").write_text(
+        "FULLAUTH_SECRET_KEY=dotenv-secret-key-that-is-long-enough-32\n"
+        "FULLAUTH_ACCESS_TOKEN_EXPIRE_MINUTES=45\n",
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+
+    monkeypatch.setenv("FULLAUTH_ACCESS_TOKEN_EXPIRE_MINUTES", "99")
+    assert FullAuthConfig().ACCESS_TOKEN_EXPIRE_MINUTES == 99  # env var beats .env
+
+    cfg = FullAuthConfig(ACCESS_TOKEN_EXPIRE_MINUTES=5)
+    assert cfg.ACCESS_TOKEN_EXPIRE_MINUTES == 5  # kwargs beat both
+
+
+def test_auth_rate_limits_from_env_json(monkeypatch):
+    monkeypatch.setenv("FULLAUTH_SECRET_KEY", "test-secret-key-that-is-long-enough-32b")
+    monkeypatch.setenv("FULLAUTH_AUTH_RATE_LIMITS", '{"refresh": 77}')
+    cfg = FullAuthConfig()
+    assert cfg.AUTH_RATE_LIMITS.refresh == 77
+    assert cfg.AUTH_RATE_LIMITS.login == 5
+
+
+def test_enumeration_and_timing_defenses_default_on():
+    cfg = FullAuthConfig(SECRET_KEY="test-secret-key-that-is-long-enough-32b")
+    assert cfg.PREVENT_REGISTRATION_ENUMERATION is True
+    assert cfg.PREVENT_LOGIN_TIMING_ATTACKS is True
+
+
+def test_trusted_proxy_count_defaults_to_one():
+    assert FullAuthConfig().TRUSTED_PROXY_COUNT == 1
+
+
+def test_trusted_proxy_count_rejects_below_one():
+    with pytest.raises(ValueError):
+        FullAuthConfig(TRUSTED_PROXY_COUNT=0)
+
+
 def test_cli_secret_prints_key(capsys):
     from fastapi_fullauth.cli import main
 
@@ -838,6 +965,10 @@ async def test_cookie_backend_with_csrf_no_warning(config, adapter):
     from fastapi_fullauth.middleware.csrf import CSRFMiddleware
 
     fa = FullAuth(config=config, adapter=adapter, backends=[CookieBackend(config)])
+    # Register the email hooks the verify router expects, so the only thing
+    # under test here is that wiring CSRF silences the cookie-backend warning.
+    fa.hooks.on("send_verification_email", lambda email, token: None)
+    fa.hooks.on("send_password_reset_email", lambda email, token: None)
     app = FastAPI()
     app.add_middleware(CSRFMiddleware, secret=config.SECRET_KEY)
     with warnings.catch_warnings():

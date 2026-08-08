@@ -191,6 +191,9 @@ The schemas flow through `response_model=` and dependency injection. Existing ro
 curl -X POST http://localhost:8000/api/v1/auth/register \
   -H "content-type: application/json" \
   -d '{"email":"a@b.com","password":"correct horse battery staple"}'
+# → 202 + generic message (anti-enumeration, on by default; the account is
+#   created when the email is new). PREVENT_REGISTRATION_ENUMERATION=False
+#   restores 201 + the created user.
 
 curl -X POST http://localhost:8000/api/v1/auth/login \
   -H "content-type: application/json" \

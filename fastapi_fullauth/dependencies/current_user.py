@@ -1,11 +1,12 @@
-from typing import TYPE_CHECKING, Annotated
+from collections.abc import Callable, Coroutine
+from typing import TYPE_CHECKING, Annotated, Any, cast
 from uuid import UUID
 
 from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from fastapi_fullauth.exceptions import CREDENTIALS_EXCEPTION
-from fastapi_fullauth.types import TokenPayload, UserSchema
+from fastapi_fullauth.types import TokenPayload, UserSchema, UserSchemaType
 
 if TYPE_CHECKING:
     from fastapi_fullauth.fullauth import FullAuth
@@ -17,7 +18,11 @@ _bearer_scheme = HTTPBearer(auto_error=False)
 def get_fullauth(request: Request) -> "FullAuth":
     fullauth: FullAuth | None = getattr(request.app.state, "fullauth", None)
     if fullauth is None:
-        raise RuntimeError("FullAuth not initialized on app.state")
+        raise RuntimeError(
+            "FullAuth not initialized on app.state. Call fullauth.init_app(app), "
+            "or fullauth.bind(app) if you mount the composable routers yourself, "
+            "before the app handles requests."
+        )
     return fullauth
 
 
@@ -103,3 +108,48 @@ async def current_superuser(
 
 VerifiedUser = Annotated[UserSchema, Depends(current_active_verified_user)]
 SuperUser = Annotated[UserSchema, Depends(current_superuser)]
+
+
+def _typed(
+    base_dependency: Callable[..., Any],
+    user_schema: type[UserSchemaType],
+) -> Callable[..., Coroutine[Any, Any, UserSchemaType]]:
+    async def _dep(user: UserSchema = Depends(base_dependency)) -> UserSchemaType:
+        # The adapter returns instances of the schema it was constructed with,
+        # so when the app's schema matches this is a plain (honest) narrowing.
+        return cast("UserSchemaType", user)
+
+    return _dep
+
+
+def typed_current_user(
+    user_schema: type[UserSchemaType],
+) -> Callable[..., Coroutine[Any, Any, UserSchemaType]]:
+    """``current_user`` typed as your custom user schema.
+
+    Runtime behavior is identical to ``current_user`` - the adapter already
+    returns instances of the ``user_schema`` it was built with - but the
+    dependency's return type becomes your subclass, so custom fields
+    type-check without casts::
+
+        CurrentUser = Annotated[MyUser, Depends(typed_current_user(MyUser))]
+
+        @app.get("/me/display-name")
+        async def display_name(user: CurrentUser) -> str:
+            return user.display_name
+    """
+    return _typed(current_user, user_schema)
+
+
+def typed_verified_user(
+    user_schema: type[UserSchemaType],
+) -> Callable[..., Coroutine[Any, Any, UserSchemaType]]:
+    """``current_active_verified_user`` typed as your custom user schema."""
+    return _typed(current_active_verified_user, user_schema)
+
+
+def typed_superuser(
+    user_schema: type[UserSchemaType],
+) -> Callable[..., Coroutine[Any, Any, UserSchemaType]]:
+    """``current_superuser`` typed as your custom user schema."""
+    return _typed(current_superuser, user_schema)

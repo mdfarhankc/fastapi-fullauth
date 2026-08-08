@@ -111,7 +111,7 @@ def create_oauth_router(
             )
 
         user_agent, ip_address = request_session_metadata(
-            request, fullauth.config.TRUSTED_PROXY_HEADERS
+            request, fullauth.config.TRUSTED_PROXY_HEADERS, fullauth.config.TRUSTED_PROXY_COUNT
         )
 
         try:

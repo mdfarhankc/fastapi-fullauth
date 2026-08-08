@@ -1,6 +1,8 @@
 """Tests for event hooks: after_register, after_login, after_logout,
 send_password_reset_email, and send_verification_email callbacks."""
 
+import warnings
+
 import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
@@ -8,6 +10,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlmodel import SQLModel
 
 from fastapi_fullauth import FullAuth, FullAuthConfig
+from fastapi_fullauth.hooks import EventHooks
 from tests.conftest import make_test_adapter
 
 
@@ -144,7 +147,10 @@ async def test_raising_hook_does_not_break_subsequent_hooks_or_request():
     engine, session_maker = await _make_db()
     adapter = make_test_adapter(session_maker)
     fullauth = FullAuth(
-        config=FullAuthConfig(SECRET_KEY="test-secret-key-that-is-long-enough-32b"),
+        config=FullAuthConfig(
+            SECRET_KEY="test-secret-key-that-is-long-enough-32b",
+            PREVENT_REGISTRATION_ENUMERATION=False,
+        ),
         adapter=adapter,
     )
 
@@ -175,6 +181,83 @@ async def test_raising_hook_does_not_break_subsequent_hooks_or_request():
         assert r.status_code == 201
 
     assert fired == ["first", "third"]
+    await engine.dispose()
+
+
+# Registration ergonomics and validation
+
+
+@pytest.mark.asyncio
+async def test_decorator_form_registers_and_fires():
+    hooks = EventHooks()
+    fired = []
+
+    @hooks.on("after_register")
+    async def on_register(user):
+        fired.append(user)
+
+    # decorator returns the original function untouched
+    assert on_register.__name__ == "on_register"
+    assert hooks.has_listeners("after_register")
+
+    await hooks.emit("after_register", user="alice")
+    assert fired == ["alice"]
+
+
+def test_unknown_event_warns_with_suggestion():
+    hooks = EventHooks()
+    with pytest.warns(UserWarning, match="after_register"):
+        hooks.on("after_registr", lambda user: None)
+
+
+def test_known_event_does_not_warn():
+    hooks = EventHooks()
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        hooks.on("after_login", lambda user: None)
+
+
+def test_wrong_signature_warns():
+    hooks = EventHooks()
+    # after_oauth_login fires with (user, provider, is_new_user); a one-arg
+    # callback can't accept them and would silently fail at emit time.
+    with pytest.warns(UserWarning, match="does not accept its arguments"):
+        hooks.on("after_oauth_login", lambda user: None)
+
+
+def test_callback_with_kwargs_is_accepted():
+    hooks = EventHooks()
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        hooks.on("after_oauth_login", lambda **kw: None)
+
+
+@pytest.mark.asyncio
+async def test_missing_email_hook_warns_at_init_app():
+    engine, session_maker = await _make_db()
+    adapter = make_test_adapter(session_maker)
+    fullauth = FullAuth(
+        config=FullAuthConfig(SECRET_KEY="test-secret-key-that-is-long-enough-32b"),
+        adapter=adapter,
+    )
+    app = FastAPI()
+    with pytest.warns(UserWarning, match="verify router is mounted"):
+        fullauth.init_app(app)
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_no_email_warning_when_verify_router_excluded():
+    engine, session_maker = await _make_db()
+    adapter = make_test_adapter(session_maker)
+    fullauth = FullAuth(
+        config=FullAuthConfig(SECRET_KEY="test-secret-key-that-is-long-enough-32b"),
+        adapter=adapter,
+    )
+    app = FastAPI()
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        fullauth.init_app(app, include_routers=["auth", "profile"])
     await engine.dispose()
 
 

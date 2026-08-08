@@ -1,16 +1,13 @@
+import asyncio
 import logging
 import warnings
+from collections.abc import AsyncIterator, Coroutine
+from contextlib import asynccontextmanager
 from typing import Any, Generic
 
 from fastapi import APIRouter, FastAPI, Request
 
-from fastapi_fullauth.adapters.base import (
-    AbstractUserAdapter,
-    OAuthAdapterMixin,
-    PasskeyAdapterMixin,
-    RoleAdapterMixin,
-    SessionAdapterMixin,
-)
+from fastapi_fullauth.adapters.base import AbstractUserAdapter
 from fastapi_fullauth.backends import AbstractBackend, BearerBackend
 from fastapi_fullauth.config import FullAuthConfig
 from fastapi_fullauth.core.tokens import TokenEngine, create_blacklist
@@ -99,7 +96,7 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
         self._router: APIRouter | None = None
 
     _RESERVED_CLAIM_KEYS = frozenset(
-        {"sub", "exp", "iat", "jti", "type", "roles", "extra", "family_id"}
+        {"sub", "exp", "iat", "jti", "type", "roles", "extra", "family_id", "purpose"}
     )
 
     @staticmethod
@@ -129,20 +126,33 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
             )
 
     def _warn_adapter_feature_mismatch(self) -> None:
-        # A feature can be configured while the adapter doesn't implement the
-        # matching mixin. The router build silently skips those routes, so the
-        # symptom is a 404 with no explanation. Surface it at construction.
-        if self.config.PASSKEY_ENABLED and not isinstance(self.adapter, PasskeyAdapterMixin):
+        # A feature can be configured while the adapter can't serve it - either
+        # the matching mixin isn't implemented, or (for the SQL adapters, which
+        # inherit every mixin) the required model wasn't passed. The router build
+        # skips those routes, so the symptom is a 404 with no explanation.
+        # Surface it at construction.
+        if self.config.PASSKEY_ENABLED and not self.adapter.supports_feature("passkey"):
             warnings.warn(
-                "PASSKEY_ENABLED is set but the adapter does not implement "
-                "PasskeyAdapterMixin; passkey routes will not be registered.",
+                "PASSKEY_ENABLED is set but the adapter cannot serve passkeys "
+                "(missing PasskeyAdapterMixin or passkey_model); passkey routes "
+                "will not be registered.",
                 UserWarning,
                 stacklevel=3,
             )
-        if self.oauth_providers and not isinstance(self.adapter, OAuthAdapterMixin):
+        if self.oauth_providers and not self.adapter.supports_feature("oauth"):
             warnings.warn(
-                "OAuth providers are configured but the adapter does not implement "
-                "OAuthAdapterMixin; OAuth routes will not be registered.",
+                "OAuth providers are configured but the adapter cannot serve OAuth "
+                "(missing OAuthAdapterMixin or oauth_account_model); OAuth routes "
+                "will not be registered.",
+                UserWarning,
+                stacklevel=3,
+            )
+        if self.oauth_providers and not self.config.BLACKLIST_ENABLED:
+            warnings.warn(
+                "OAuth providers are configured but BLACKLIST_ENABLED is False, so "
+                "OAuth state tokens can't be burned after use; a captured (code, "
+                "state) pair is replayable within the state TTL. Enable the token "
+                "blacklist in production.",
                 UserWarning,
                 stacklevel=3,
             )
@@ -183,6 +193,49 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
             stacklevel=3,
         )
 
+    def _register_aclose(self, app: FastAPI) -> None:
+        # add_event_handler("shutdown", ...) only fires under Starlette's default
+        # lifespan; an app built with a custom lifespan= would silently leak
+        # pooled Redis connections and OAuth HTTP clients. Wrap the existing
+        # lifespan_context instead so cleanup composes with any lifespan: the
+        # existing context becomes the inner one, and aclose() runs after its
+        # teardown. The sentinel keeps an accidental double-wrap a no-op.
+        existing = app.router.lifespan_context
+        if getattr(existing, "_fullauth_aclose_wrapped", False):
+            return
+
+        @asynccontextmanager
+        async def wrapped(app: FastAPI) -> AsyncIterator[Any]:
+            try:
+                async with existing(app) as state:
+                    yield state
+            finally:
+                await self.aclose()
+
+        wrapped._fullauth_aclose_wrapped = True  # type: ignore[attr-defined]
+        app.router.lifespan_context = wrapped
+
+    def _warn_missing_email_hooks(self, mounted: set[str]) -> None:
+        # The verify router exposes email verification and password reset, which
+        # only deliver anything if the matching send_* hook is registered.
+        # Without it the endpoint still returns 200 and the token is dropped.
+        if "verify" not in mounted:
+            return
+        missing = [
+            event
+            for event in ("send_verification_email", "send_password_reset_email")
+            if not self.hooks.has_listeners(event)
+        ]
+        if missing:
+            warnings.warn(
+                f"The verify router is mounted but no hook is registered for "
+                f"{', '.join(missing)}; those tokens are generated but never delivered. "
+                "Register the hook(s) with fullauth.hooks.on(...) before init_app(), "
+                "or drop the verify router via init_app(include_routers=...).",
+                UserWarning,
+                stacklevel=3,
+            )
+
     async def get_custom_claims(self, user: UserSchema) -> dict[str, Any]:
         if not self.on_create_token_claims:
             return {}
@@ -205,24 +258,39 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
 
     async def enforce_rate_limit(self, request: Request, route_name: str) -> None:
         """Resolve the client IP and apply the auth rate limit for ``route_name``."""
-        client_ip = get_client_ip(request, self.config.TRUSTED_PROXY_HEADERS)
+        client_ip = get_client_ip(
+            request, self.config.TRUSTED_PROXY_HEADERS, self.config.TRUSTED_PROXY_COUNT
+        )
         await self.check_auth_rate_limit(route_name, client_ip)
 
     async def aclose(self) -> None:
         """Close pooled resources: Redis connections and OAuth HTTP clients.
 
-        Idempotent. ``init_app()`` registers this on app shutdown. Call it
-        yourself if you pass a custom ``lifespan`` to FastAPI, since Starlette
-        ignores shutdown event handlers when a lifespan is provided.
+        Idempotent. ``init_app()`` runs this on app shutdown by wrapping the
+        app's lifespan, so it fires even under a custom ``lifespan``. You only
+        need to call it yourself when managing FullAuth without ``init_app()``.
+
+        Each resource is closed independently: a failure closing one (for
+        example a Redis socket error during shutdown) is logged and does not
+        prevent the others from closing, so nothing leaks.
         """
-        await self.token_engine.blacklist.aclose()
+        closers: list[tuple[str, Coroutine[Any, Any, Any]]] = [
+            ("token blacklist", self.token_engine.blacklist.aclose()),
+        ]
         if self.lockout is not None:
-            await self.lockout.aclose()
-        await self.auth_rate_limiter.aclose()
+            closers.append(("lockout store", self.lockout.aclose()))
+        closers.append(("auth rate limiter", self.auth_rate_limiter.aclose()))
         if self.challenge_store is not None:
-            await self.challenge_store.aclose()
-        for provider in self.oauth_providers.values():
-            await provider.aclose()
+            closers.append(("passkey challenge store", self.challenge_store.aclose()))
+        for name, provider in self.oauth_providers.items():
+            closers.append((f"oauth provider '{name}'", provider.aclose()))
+
+        results = await asyncio.gather(*(coro for _, coro in closers), return_exceptions=True)
+        for (label, _), result in zip(closers, results, strict=True):
+            if isinstance(result, Exception):
+                logger.warning(
+                    "Error closing %s during shutdown: %s", label, result, exc_info=result
+                )
 
     # ── composable routers ──────────────────────────────────────────
 
@@ -322,21 +390,21 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
             router.include_router(self.profile_router)
         if "verify" not in exclude:
             router.include_router(self.verify_router)
-        if "admin" not in exclude and isinstance(self.adapter, RoleAdapterMixin):
+        if "admin" not in exclude and self.adapter.supports_feature("role"):
             router.include_router(self.admin_router)
         if (
             "oauth" not in exclude
-            and isinstance(self.adapter, OAuthAdapterMixin)
+            and self.adapter.supports_feature("oauth")
             and self.oauth_router is not None
         ):
             router.include_router(self.oauth_router)
         if (
             "passkey" not in exclude
-            and isinstance(self.adapter, PasskeyAdapterMixin)
+            and self.adapter.supports_feature("passkey")
             and self.passkey_router is not None
         ):
             router.include_router(self.passkey_router)
-        if "sessions" not in exclude and isinstance(self.adapter, SessionAdapterMixin):
+        if "sessions" not in exclude and self.adapter.supports_feature("session"):
             router.include_router(self.sessions_router)
         return router
 
@@ -353,6 +421,10 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
         Required when using composable routers without init_app().
         Sets app.state.fullauth so dependencies can resolve.
         Called automatically by init_app().
+
+        Unlike init_app(), this registers no shutdown cleanup: call
+        ``await fullauth.aclose()`` in your own shutdown to release pooled
+        Redis connections and OAuth HTTP clients.
         """
         app.state.fullauth = self
 
@@ -368,8 +440,9 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
         ``fastapi_fullauth.middleware`` and call ``app.add_middleware(...)``
         yourself.
 
-        Registers ``aclose()`` on app shutdown to release pooled resources. If
-        you use a custom ``lifespan``, call ``await fullauth.aclose()`` yourself.
+        Registers ``aclose()`` on app shutdown to release pooled resources. This
+        composes with a custom ``lifespan`` (the existing lifespan is wrapped),
+        so you do not need to call ``aclose()`` yourself.
 
         Args:
             app: The FastAPI application.
@@ -388,18 +461,24 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
         app.state._fullauth_app_wired = True
 
         self.bind(app)
-        app.router.add_event_handler("shutdown", self.aclose)
+        self._register_aclose(app)
         self._warn_cookie_backend_without_csrf(app)
 
         if include_routers is None:
-            app.include_router(self.router)
-            return
+            mounted: set[str] = set(self._ROUTER_NAMES)
+        else:
+            unknown = set(include_routers) - self._ROUTER_NAMES
+            if unknown:
+                raise ValueError(
+                    f"Unknown routers: {', '.join(sorted(unknown))}. "
+                    f"Valid names: {', '.join(sorted(self._ROUTER_NAMES))}"
+                )
+            mounted = set(include_routers)
 
-        unknown = set(include_routers) - self._ROUTER_NAMES
-        if unknown:
-            raise ValueError(
-                f"Unknown routers: {', '.join(sorted(unknown))}. "
-                f"Valid names: {', '.join(sorted(self._ROUTER_NAMES))}"
-            )
-        exclude: set[str] = {n for n in self._ROUTER_NAMES if n not in include_routers}
-        app.include_router(self._build_router(exclude=exclude))
+        self._warn_missing_email_hooks(mounted)
+
+        if include_routers is None:
+            app.include_router(self.router)
+        else:
+            exclude: set[str] = {n for n in self._ROUTER_NAMES if n not in mounted}
+            app.include_router(self._build_router(exclude=exclude))

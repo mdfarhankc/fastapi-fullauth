@@ -35,7 +35,7 @@ Add a complete authentication and authorization system to your **FastAPI** proje
 
 - **Secure by default**
 
-    Argon2id hashing, refresh-token rotation with reuse detection, and account lockout out of the box.
+    Argon2id hashing, refresh-token rotation with reuse detection, refresh tokens stored as sha256 digests, account lockout, and anti-enumeration and timing-attack defenses - all on out of the box.
 
 - **Pluggable, not prescriptive**
 
@@ -59,6 +59,7 @@ pip install fastapi-fullauth[sqlmodel]
 
 ```python
 from fastapi import FastAPI
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlmodel import Relationship
 
 from fastapi_fullauth import FullAuth, FullAuthConfig
@@ -73,6 +74,9 @@ class RefreshToken(RefreshTokenMixin, table=True):
 class User(UserMixin, table=True):
     refresh_tokens: list[RefreshToken] = Relationship()
 
+
+engine = create_async_engine("sqlite+aiosqlite:///app.db")
+session_maker = async_sessionmaker(engine, expire_on_commit=False)
 
 app = FastAPI()
 fullauth = FullAuth(
@@ -98,7 +102,7 @@ This registers the auth routes under `/api/v1/auth/` automatically. Omit `SECRET
 
 - **Social and passwordless**
 
-    [OAuth2](oauth.md) with Google and GitHub, plus [passkeys](passkeys.md) (WebAuthn) for biometric login.
+    [OAuth2](oauth.md) with Google, GitHub, Discord, and GitLab, plus [passkeys](passkeys.md) (WebAuthn) for biometric login.
 
 - **Authorization**
 

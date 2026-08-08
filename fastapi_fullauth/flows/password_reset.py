@@ -3,7 +3,7 @@ from typing import Literal
 from uuid import UUID
 
 from fastapi_fullauth.adapters.base import AbstractUserAdapter
-from fastapi_fullauth.core.crypto import hash_password
+from fastapi_fullauth.core.crypto import ahash_password
 from fastapi_fullauth.core.tokens import TokenEngine
 from fastapi_fullauth.exceptions import TokenError, UserNotFoundError
 from fastapi_fullauth.types import UserSchema
@@ -64,7 +64,7 @@ async def reset_password(
         logger.warning("Password reset blocked; account deactivated: user_id=%s", user.id)
         raise TokenError("User account is deactivated")
 
-    hashed = hash_password(new_password, algorithm=hash_algorithm)
+    hashed = await ahash_password(new_password, algorithm=hash_algorithm)
     await adapter.set_password(user.id, hashed)
 
     # Blacklist the reset token so it can't be reused, for its remaining lifetime

@@ -44,21 +44,17 @@ class InMemoryTokenBlacklist(TokenBlacklist):
 
 class RedisTokenBlacklist(TokenBlacklist):
     def __init__(self, redis_url: str, default_ttl_seconds: int = 1800) -> None:
-        try:
-            import redis.asyncio as aioredis
-        except ImportError:
-            raise ImportError(
-                "redis package is required for the Redis blacklist backend. "
-                "Install it with: pip install fastapi-fullauth[redis]"
-            ) from None
+        from fastapi_fullauth.core._redis import acquire_redis
 
-        self._redis = aioredis.from_url(redis_url, decode_responses=True)
+        self._redis = acquire_redis(redis_url, feature="the Redis blacklist backend")
+        self._redis_url: str | None = redis_url
         self._default_ttl = default_ttl_seconds
         self._prefix = "fullauth:blacklist:"
 
     async def add(self, jti: str, ttl_seconds: int | None = None) -> None:
-        # `is None` (not falsy): a ttl of 0 would make setex raise, and the old
-        # `or` silently swapped it for the default. Floor a supplied ttl to 1s.
+        # Check `is None`, not falsy: a ttl of 0 means "already expired" and must
+        # floor to a 1s entry, never silently fall back to the default. setex
+        # also rejects a 0 ttl outright.
         ttl = self._default_ttl if ttl_seconds is None else max(1, ttl_seconds)
         await self._redis.setex(f"{self._prefix}{jti}", ttl, "1")
 
@@ -77,4 +73,8 @@ class RedisTokenBlacklist(TokenBlacklist):
             return True
 
     async def aclose(self) -> None:
-        await self._redis.aclose()
+        from fastapi_fullauth.core._redis import release_redis
+
+        if self._redis_url is not None:
+            await release_redis(self._redis_url)
+            self._redis_url = None

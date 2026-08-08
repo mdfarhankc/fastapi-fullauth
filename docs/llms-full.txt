@@ -2,7 +2,7 @@
 
 > Production-grade, async-native authentication and authorization for FastAPI.
 
-FastAPI FullAuth is a pluggable authentication and authorization library for FastAPI. It provides JWT access and refresh tokens with rotation and reuse detection, password hashing (Argon2id or bcrypt), email verification and password reset flows, OAuth2 social login (Google, GitHub), role-based access control with permissions, rate limiting, CSRF protection, and security headers middleware. The library uses a layered architecture: adapters handle database storage (SQLModel, SQLAlchemy, or in-memory), backends handle token extraction, flows implement auth logic, and composable routers expose API endpoints. Configuration is managed through Pydantic Settings with environment variable support. Generic type parameters allow custom user schemas with full IDE support.
+FastAPI FullAuth is a pluggable authentication and authorization library for FastAPI. It provides JWT access and refresh tokens with rotation and reuse detection, password hashing (Argon2id or bcrypt), email verification and password reset flows, OAuth2 social login (Google, GitHub, Discord, GitLab), role-based access control with permissions, rate limiting, CSRF protection, and security headers middleware. The library uses a layered architecture: adapters handle database storage (SQLModel, SQLAlchemy, Tortoise ORM, or Beanie/MongoDB), backends handle token extraction, flows implement auth logic, and composable routers expose API endpoints. Configuration is managed through Pydantic Settings with environment variable support. Generic type parameters allow custom user schemas with full IDE support.
 
 - Documentation: https://mdfarhankc.github.io/fastapi-fullauth/
 - Source: https://github.com/mdfarhankc/fastapi-fullauth
@@ -44,11 +44,11 @@ Add a complete authentication and authorization system to your **FastAPI** proje
 - **Refresh token rotation** with reuse detection; revokes entire session family on replay
 - **Password hashing** via Argon2id (default) or bcrypt, with transparent rehashing
 - **Email verification** and **password reset** flows with event hooks
-- **OAuth2 social login**: Google and GitHub, with multi-redirect-URI support
+- **OAuth2 social login**: Google, GitHub, Discord, and GitLab, with multi-redirect-URI support
 - **Role-based access control**: `current_user`, `require_role()`, `require_permission()`
 - **Rate limiting**: per-route auth limits + global middleware (memory or Redis)
 - **CSRF protection** and **security headers** middleware
-- **Pluggable adapters**: SQLModel or SQLAlchemy
+- **Pluggable adapters**: SQLModel, SQLAlchemy, Tortoise ORM, or Beanie (MongoDB)
 - **Generic type parameters**: define your own schemas with full IDE support and type safety
 - **Composable routers**: include only the route groups you need
 - **Event hooks**: `after_register`, `after_login`, `send_verification_email`, etc.
@@ -114,6 +114,8 @@ app.include_router(fullauth.auth_router, prefix="/api/v1/auth")
 app.include_router(fullauth.profile_router, prefix="/api/v1/auth")
 # middleware is opt-in; import what you need from fastapi_fullauth.middleware
 ```
+
+`bind()` registers no shutdown cleanup (only `init_app()` wraps the lifespan), so on this path call `await fullauth.aclose()` in your shutdown to release pooled Redis connections and OAuth HTTP clients.
 
 | Router | Routes |
 |--------|--------|
@@ -199,19 +201,19 @@ fullauth = FullAuth(
 )
 ```
 
-Full IDE autocompletion and type checking on custom fields:
+Full IDE autocompletion and type checking on custom fields via the typed factories (runtime-identical to `current_user`, but the return type becomes your subclass):
 
 ```python
 from typing import Annotated
 from fastapi import Depends
-from fastapi_fullauth.dependencies import current_user, current_active_verified_user
+from fastapi_fullauth.dependencies import typed_current_user, typed_verified_user
 
-CurrentUser = Annotated[MyUserSchema, Depends(current_user)]
-VerifiedUser = Annotated[MyUserSchema, Depends(current_active_verified_user)]
+CurrentUser = Annotated[MyUserSchema, Depends(typed_current_user(MyUserSchema))]
+VerifiedUser = Annotated[MyUserSchema, Depends(typed_verified_user(MyUserSchema))]
 
 @app.get("/profile")
 async def profile(user: CurrentUser):
-    return {"name": user.display_name}  # IDE knows this field exists
+    return {"name": user.display_name}  # IDE and type checker know this field exists
 ```
 
 ## Protected routes
@@ -302,7 +304,7 @@ fullauth = FullAuth(
         PASSWORD_HASH_ALGORITHM="bcrypt",
         BLACKLIST_BACKEND="redis",
         REDIS_URL="redis://localhost:6379/0",
-        AUTH_TRUSTED_PROXY_HEADERS=["X-Forwarded-For"],
+        TRUSTED_PROXY_HEADERS=["X-Forwarded-For"],
     ),
 )
 ```
@@ -469,6 +471,8 @@ app.include_router(fullauth.profile_router, prefix="/api/v1/auth")
 # middleware is opt-in; import what you need from fastapi_fullauth.middleware
 ```
 
+`bind()` does not register shutdown cleanup (only `init_app()` wraps the lifespan), so on this path call `await fullauth.aclose()` in your lifespan's shutdown to release pooled Redis connections and OAuth HTTP clients.
+
 | Router | Routes |
 |--------|--------|
 | `auth_router` | register, login, logout, refresh |
@@ -545,7 +549,7 @@ See [Protected Routes](auth/dependencies.md) for all dependency types.
 ## Next steps
 
 - [Configuration](configuration.md): all config options
-- [OAuth2 Social Login](oauth.md): add Google/GitHub login
+- [OAuth2 Social Login](oauth.md): add Google, GitHub, Discord, GitLab login
 - [Event Hooks](auth/hooks.md): send emails, log events
 - [Rate Limiting](security/rate-limiting.md): protect your endpoints
 
@@ -648,7 +652,8 @@ Use a different file via `FullAuthConfig(_env_file=".env.production")` or by sub
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `RATE_LIMIT_BACKEND` | `"memory" \| "redis"` | `"memory"` | Rate limiter storage backend. Use `"redis"` in production; `"memory"` is per-process. |
-| `TRUSTED_PROXY_HEADERS` | `list[str]` | `[]` | Headers to read real client IP from (e.g. `["X-Forwarded-For"]`). |
+| `TRUSTED_PROXY_HEADERS` | `list[str]` | `[]` | Headers to read the real client IP from (e.g. `["X-Forwarded-For"]`). Read from the right of the chain; left-most entries are client-supplied and never trusted. |
+| `TRUSTED_PROXY_COUNT` | `int` | `1` | Number of trusted proxy hops in front of the app; the client IP is the entry this many positions from the right. Must be `>= 1`. Setting it above the real proxy depth allows IP spoofing. |
 | `AUTH_RATE_LIMIT_ENABLED` | `bool` | `True` | Enable per-route auth rate limits. |
 | `AUTH_RATE_LIMITS` | `AuthRateLimits` | see desc | Per-route caps: `login=5`, `register=3`, `password_reset=3`, `passkey_auth=10`, `refresh=30`. Override in Python with `AuthRateLimits(login=10)` or env JSON `{"login": 10}`. |
 | `AUTH_RATE_LIMIT_WINDOW_SECONDS` | `int` | `60` | Rate limit window in seconds. |
@@ -682,7 +687,7 @@ Cookie attributes are constructor args on `CookieBackend` (opt-in), not config:
 |--------|------|---------|-------------|
 | `OAUTH_STATE_EXPIRE_SECONDS` | `int` | `300` | OAuth state token TTL (5 min). |
 | `OAUTH_AUTO_LINK_BY_EMAIL` | `bool` | `True` | Auto-link OAuth accounts to existing users by email. |
-| `PREVENT_REGISTRATION_ENUMERATION` | `bool` | `False` | When `True`, `/register` returns `202` + generic message regardless of whether the email was already registered. Default stays with `201` + user / `409` conflict. |
+| `PREVENT_REGISTRATION_ENUMERATION` | `bool` | `True` | `/register` returns `202` + generic message regardless of whether the email was already registered. Set `False` for `201` + user / `409` conflict. |
 
 ### Routing
 
@@ -718,11 +723,15 @@ Adapters are the database layer for fastapi-fullauth. They implement `AbstractUs
 |---------|---------|---------|
 | [SQLModel](sqlmodel.md) | Any SQLAlchemy-supported DB | `pip install fastapi-fullauth[sqlmodel]` |
 | [SQLAlchemy](sqlalchemy.md) | Any SQLAlchemy-supported DB | `pip install fastapi-fullauth[sqlalchemy]` |
+| [Tortoise](tortoise.md) | Any Tortoise-supported DB | `pip install fastapi-fullauth[tortoise]` |
+| [Beanie](beanie.md) | MongoDB | `pip install fastapi-fullauth[beanie]` |
 
 ## Choosing an adapter
 
 - **SQLModel**: recommended for most projects. Clean model definitions, good type support. Use SQLite for prototyping.
 - **SQLAlchemy**: use if your project already uses SQLAlchemy's declarative base.
+- **Tortoise**: use if your project already uses Tortoise ORM. Real transaction support, like the SQL adapters.
+- **Beanie**: use for MongoDB. Roles and permissions are embedded on the documents; no replica set required (refresh-token rotation stays atomic via single-document compare-and-swap).
 
 ## Custom adapters
 
@@ -1057,6 +1066,393 @@ If you don't pass custom schemas, the base `UserSchema` and `CreateUserSchema` a
 
 ---
 
+# Tortoise ORM Adapter
+
+# Tortoise ORM Adapter
+
+For projects built on [Tortoise ORM](https://tortoise.github.io/), the async, Django-like ORM.
+
+## Installation
+
+```bash
+pip install fastapi-fullauth[tortoise]
+```
+
+## How it differs from the SQL adapters
+
+- **No `session_maker`.** Tortoise manages its connections through a global registry, so the adapter takes no session factory - it uses the active connection (or the running transaction's connection).
+- **Native many-to-many relations.** Roles and permissions are real Tortoise M2M fields you declare on your `User` / `Role` models, so there is **no** `user_role_model` / `role_permission_model` - Tortoise owns the association tables.
+- **App-label convention.** Name your concrete models `User` / `Role` / `Permission` and register them under the Tortoise app label `models` (the default `modules={"models": [...]}`). The mixins' foreign keys and the relations reference them by that label (`"models.User"`, `"models.Role"`, `"models.Permission"`).
+
+## Setup
+
+### 1. Define your tables
+
+Each mixin is an **abstract** Tortoise model. Subclass it and give the subclass its own `Meta` with a `table` name (Tortoise does not inherit an abstract `Meta`). Only subclass the mixins for features you use.
+
+```python
+from tortoise import fields
+from fastapi_fullauth.models.tortoise import (
+    OAuthAccountMixin,
+    PasskeyMixin,
+    PermissionMixin,
+    RefreshTokenMixin,
+    RoleMixin,
+    UserMixin,
+)
+
+
+class Permission(PermissionMixin):
+    class Meta:
+        table = "fullauth_permissions"
+
+
+class Role(RoleMixin):
+    # opt into permissions: declare the M2M to your Permission model.
+    # related_name="roles" is required - the adapter resolves a role's
+    # permissions through that reverse accessor.
+    permissions = fields.ManyToManyField(
+        "models.Permission", related_name="roles", through="fullauth_role_permissions"
+    )
+
+    class Meta:
+        table = "fullauth_roles"
+
+
+class RefreshToken(RefreshTokenMixin):
+    class Meta:
+        table = "fullauth_refresh_tokens"
+
+
+class OAuthAccount(OAuthAccountMixin):
+    class Meta:
+        table = "fullauth_oauth_accounts"
+        # required: makes concurrent OAuth callbacks for the same identity
+        # collapse to one account instead of duplicating.
+        unique_together = (("provider", "provider_user_id"),)
+
+
+class Passkey(PasskeyMixin):
+    class Meta:
+        table = "fullauth_passkeys"
+
+
+class User(UserMixin):
+    display_name = fields.CharField(max_length=100, default="")
+    # opt into roles: declare the M2M to your Role model.
+    roles = fields.ManyToManyField(
+        "models.Role", related_name="users", through="fullauth_user_roles"
+    )
+
+    class Meta:
+        table = "fullauth_users"
+```
+
+`UserMixin` provides these columns:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | `UUID` (UUID7) | Primary key, auto-generated |
+| `email` | `str` | Unique |
+| `hashed_password` | `str \| None` | Password hash. `NULL` for OAuth-only users. |
+| `is_active` | `bool` | Account active flag |
+| `is_verified` | `bool` | Email verified flag |
+| `is_superuser` | `bool` | Superuser flag |
+| `created_at` | `datetime` | UTC creation timestamp |
+
+A minimal setup needs only `UserMixin` and `RefreshTokenMixin`.
+
+### 2. Create the adapter
+
+```python
+from fastapi_fullauth.adapters import TortoiseAdapter
+
+adapter = TortoiseAdapter(
+    user_model=User,
+    refresh_token_model=RefreshToken,
+    role_model=Role,
+    permission_model=Permission,
+    oauth_account_model=OAuthAccount,
+    passkey_model=Passkey,
+)
+```
+
+Required kwargs: `user_model`, `refresh_token_model`. Optional kwargs (pass the ones for features you use): `role_model`, `permission_model`, `oauth_account_model`, `passkey_model`. Calling a feature method without its model raises `RuntimeError` naming the missing argument. There is no `user_role_model` / `role_permission_model` - those are native M2M relations on your models.
+
+For a multi-database setup, pass `connection_name="..."` to target a non-default Tortoise connection.
+
+### 3. Initialize Tortoise and wire into FullAuth
+
+Initialize Tortoise in your app's lifespan, registering your models under the `models` app label. `init_app()` wraps your lifespan so `fullauth.aclose()` runs on shutdown automatically - you only manage the Tortoise teardown:
+
+```python
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+from tortoise import Tortoise
+
+from fastapi_fullauth import FullAuth, FullAuthConfig
+
+fullauth = FullAuth(adapter=adapter, config=FullAuthConfig(SECRET_KEY="your-secret-key"))
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await Tortoise.init(
+        db_url="sqlite://db.sqlite3",
+        modules={"models": ["yourapp.models"]},  # app label MUST be "models"
+    )
+    await Tortoise.generate_schemas()  # dev only; use migrations in production
+    yield
+    await Tortoise.close_connections()
+
+
+app = FastAPI(lifespan=lifespan)
+fullauth.init_app(app)
+```
+
+## Tables created
+
+Tables are created from the mixins you subclass:
+
+| Group | Tables | Mixins / relations |
+|-------|--------|--------------------|
+| Core (always) | `fullauth_users`, `fullauth_refresh_tokens` | `UserMixin`, `RefreshTokenMixin` |
+| Roles | `fullauth_roles`, `fullauth_user_roles` | `RoleMixin` + `User.roles` M2M |
+| Permissions | `fullauth_permissions`, `fullauth_role_permissions` | `PermissionMixin` + `Role.permissions` M2M |
+| OAuth | `fullauth_oauth_accounts` | `OAuthAccountMixin` |
+| Passkeys | `fullauth_passkeys` | `PasskeyMixin` |
+
+The `fullauth_user_roles` and `fullauth_role_permissions` association tables are created by Tortoise from the M2M fields you declare (via the `through=` names above).
+
+Deleting a user cascades to its refresh tokens, OAuth accounts, passkeys, and role links (the foreign keys use `ON DELETE CASCADE`, and Tortoise enables foreign-key enforcement).
+
+## Custom schemas
+
+Define your own schemas and pass them to the adapter:
+
+```python
+from fastapi_fullauth import UserSchema, CreateUserSchema
+
+class MyUserSchema(UserSchema):
+    display_name: str = ""
+
+class MyCreateSchema(CreateUserSchema):
+    display_name: str = ""
+
+adapter = TortoiseAdapter(
+    user_model=User,
+    refresh_token_model=RefreshToken,
+    user_schema=MyUserSchema,
+    create_user_schema=MyCreateSchema,
+)
+```
+
+If your app uses roles, add `roles` to your custom schema so the login response and `/me` expose them:
+
+```python
+from pydantic import Field
+
+class MyUserSchema(UserSchema):
+    roles: list[str] = Field(default_factory=list)
+```
+
+## Migrations
+
+`Tortoise.generate_schemas()` is convenient for prototyping but does not version your schema. For production, use Tortoise's built-in migration CLI (available in tortoise-orm 1.0+):
+
+```bash
+python -m tortoise makemigrations
+python -m tortoise migrate
+```
+
+See the [Tortoise migrations guide](https://github.com/tortoise/tortoise-orm#migrations) for configuring the CLI against your `models` app.
+
+> **Windows note:** tortoise-orm 1.x uses timezone-aware datetimes via `zoneinfo`, which has no bundled timezone database on Windows. Install [`tzdata`](https://pypi.org/project/tzdata/) (`pip install tzdata`) so timestamp columns resolve their UTC zone.
+
+---
+
+# Beanie (MongoDB) Adapter
+
+# Beanie (MongoDB) Adapter
+
+For projects on [MongoDB](https://www.mongodb.com/) via [Beanie](https://beanie-odm.dev/), the async ODM built on PyMongo's native async driver.
+
+## Installation
+
+```bash
+pip install fastapi-fullauth[beanie]
+```
+
+## How it differs from the SQL adapters
+
+MongoDB has no foreign keys, no join tables, and no multi-document transactions on a standalone server. The adapter is shaped around what a single document can guarantee atomically instead of around joins:
+
+- **No `session_maker`.** Beanie binds each document class to its collection during `init_beanie()`. The adapter just uses those collections - there is no session factory.
+- **Roles and permissions are embedded.** A user's roles are an embedded `roles` array on the user document; a role's granted permissions are an embedded `permissions` array on the role document. There are **no** join collections, so the adapter takes no `user_role_model` / `role_permission_model`.
+- **No replica set required.** Refresh-token reuse detection is a single-document compare-and-swap (`find_one_and_update` flipping not-revoked to revoked), which MongoDB guarantees atomically - the same guarantee the SQL adapters get from a transaction, without a replica set. `transaction()` therefore stays best-effort (see [Atomicity](#atomicity-and-transactions)).
+- **`delete_user` cascades in application code**, removing the user's refresh-token, OAuth, and passkey documents explicitly, since MongoDB will not cascade for you.
+
+## Setup
+
+### 1. Define your documents
+
+Each class in `fastapi_fullauth.models.beanie` is a ready-to-use Beanie `Document`. Use it directly, or subclass it to add your own fields. Only use the documents for features you need - a minimal setup needs only `UserDocument` and `RefreshTokenDocument`.
+
+```python
+from fastapi_fullauth.models.beanie import (
+    OAuthAccountDocument,
+    PasskeyDocument,
+    PermissionDocument,
+    RefreshTokenDocument,
+    RoleDocument,
+    UserDocument,
+)
+
+
+class User(UserDocument):
+    display_name: str = ""
+
+
+class RefreshToken(RefreshTokenDocument):
+    pass
+
+
+class Role(RoleDocument):
+    pass
+
+
+class Permission(PermissionDocument):
+    pass
+
+
+class OAuthAccount(OAuthAccountDocument):
+    pass
+
+
+class Passkey(PasskeyDocument):
+    pass
+```
+
+`UserDocument` provides these fields:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | `UUID` (UUID7) | Document `_id`, auto-generated |
+| `email` | `str` | Unique index |
+| `hashed_password` | `str \| None` | Password hash. `None` for OAuth-only users. |
+| `is_active` | `bool` | Account active flag |
+| `is_verified` | `bool` | Email verified flag |
+| `is_superuser` | `bool` | Superuser flag |
+| `roles` | `list[str]` | Embedded role membership |
+| `created_at` | `datetime` | UTC creation timestamp |
+
+### 2. Create the adapter
+
+```python
+from fastapi_fullauth.adapters import BeanieAdapter
+
+adapter = BeanieAdapter(
+    user_model=User,
+    refresh_token_model=RefreshToken,
+    role_model=Role,
+    permission_model=Permission,
+    oauth_account_model=OAuthAccount,
+    passkey_model=Passkey,
+)
+```
+
+Required kwargs: `user_model`, `refresh_token_model`. Optional kwargs (pass the ones for features you use): `role_model`, `permission_model`, `oauth_account_model`, `passkey_model`. Calling a feature method without its document raises `RuntimeError` naming the missing argument. There is no `user_role_model` / `role_permission_model` - role membership and permission grants are embedded arrays.
+
+### 3. Initialize Beanie and wire into FullAuth
+
+Initialize Beanie in your app's lifespan, registering every document you use. `init_app()` wraps your lifespan so `fullauth.aclose()` runs on shutdown automatically - you only manage the Mongo client teardown:
+
+```python
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+from beanie import init_beanie
+from pymongo import AsyncMongoClient
+
+from fastapi_fullauth import FullAuth, FullAuthConfig
+
+fullauth = FullAuth(adapter=adapter, config=FullAuthConfig(SECRET_KEY="your-secret-key"))
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    client = AsyncMongoClient("mongodb://localhost:27017")
+    await init_beanie(
+        database=client["myapp"],
+        document_models=[User, RefreshToken, Role, Permission, OAuthAccount, Passkey],
+    )
+    yield
+    await client.close()
+
+
+app = FastAPI(lifespan=lifespan)
+fullauth.init_app(app)
+```
+
+## Collections created
+
+Collections are created lazily by MongoDB from the documents you register:
+
+| Group | Collection | Document |
+|-------|------------|----------|
+| Core (always) | `fullauth_users`, `fullauth_refresh_tokens` | `UserDocument`, `RefreshTokenDocument` |
+| Roles | `fullauth_users.roles` (embedded array) | `UserDocument` |
+| Permissions | `fullauth_roles`, `fullauth_permissions` | `RoleDocument`, `PermissionDocument` |
+| OAuth | `fullauth_oauth_accounts` | `OAuthAccountDocument` |
+| Passkeys | `fullauth_passkeys` | `PasskeyDocument` |
+
+`init_beanie()` builds the unique indexes the adapter relies on: `email` on users, `token` on refresh tokens, `name` on roles and permissions, `credential_id` on passkeys, and the compound `(provider, provider_user_id)` on OAuth accounts. The role document carries the authoritative role-to-permission grants in its embedded `permissions` array; the permission collection is the catalog of known permission names.
+
+Deleting a user removes its refresh tokens, OAuth accounts, and passkeys (the adapter issues those deletes explicitly, since MongoDB has no `ON DELETE CASCADE`). Role membership is embedded on the user document and goes with it.
+
+## Atomicity and transactions
+
+The refresh-token rotation flow revokes the presented token and stores its replacement. Reuse detection - rejecting a refresh token that was already spent - is the security-critical part, and it is a **single-document** compare-and-swap (`find_one_and_update` matching `{token, revoked: false}`). MongoDB guarantees that atomically on any deployment, so this adapter needs no replica set and no multi-document transaction.
+
+`transaction()` is therefore left best-effort (it yields the adapter without wrapping the block): the revoke-old and store-new steps are not a single atomic unit, so a crash in the microsecond between them orphans at most one refresh token, and the user simply logs in again. Reuse detection itself is never weakened by this.
+
+## Custom schemas
+
+Define your own schemas and pass them to the adapter:
+
+```python
+from fastapi_fullauth import UserSchema, CreateUserSchema
+
+class MyUserSchema(UserSchema):
+    display_name: str = ""
+
+class MyCreateSchema(CreateUserSchema):
+    display_name: str = ""
+
+adapter = BeanieAdapter(
+    user_model=User,
+    refresh_token_model=RefreshToken,
+    user_schema=MyUserSchema,
+    create_user_schema=MyCreateSchema,
+)
+```
+
+If your app uses roles, add `roles` to your custom schema so the login response and `/me` expose them:
+
+```python
+from pydantic import Field
+
+class MyUserSchema(UserSchema):
+    roles: list[str] = Field(default_factory=list)
+```
+
+## Migrations
+
+MongoDB is schemaless, so there are no table migrations to run - collections and fields appear as documents are written. `init_beanie()` creates the indexes the adapter needs at startup. If you add fields to a document later, [Beanie's migration tooling](https://beanie-odm.dev/tutorial/migrations/) can backfill existing documents when you need a data migration.
+
+---
+
 # Protected Routes
 
 # Protected Routes
@@ -1199,20 +1595,20 @@ If any step fails, a `401 Unauthorized` or `403 Forbidden` response is returned 
 
 ## Custom user schemas
 
-When using custom schemas with extra fields, annotate with your schema type:
+When using custom schemas with extra fields, use the typed factories (`typed_current_user`, `typed_verified_user`, `typed_superuser`). Runtime behavior is identical, but the dependency's return type becomes your subclass:
 
 ```python
 from typing import Annotated
 from fastapi import Depends
-from fastapi_fullauth.dependencies import current_user
+from fastapi_fullauth.dependencies import typed_current_user
 
 from app.schemas import MyUserSchema
 
-CurrentUser = Annotated[MyUserSchema, Depends(current_user)]
+CurrentUser = Annotated[MyUserSchema, Depends(typed_current_user(MyUserSchema))]
 
 @app.get("/profile")
 async def profile(user: CurrentUser):
-    return {"name": user.display_name}  # IDE knows this field exists
+    return {"name": user.display_name}  # IDE and type checker know this field exists
 ```
 
 ## Writing custom dependencies
@@ -1281,7 +1677,7 @@ roles = await adapter.get_user_roles(user_id)
 
 # Session Management
 
-A session is one refresh-token family: every login starts a new family, and refresh rotation keeps that family alive. The sessions router surfaces those families so a user can see where they're signed in and sign out a specific device without affecting the others.
+A session is one refresh-token family: every login starts a new family, and refresh rotation keeps that family alive. Refresh tokens are stored in the database as sha256 digests, so a leaked database exposes no usable tokens. The sessions router surfaces those families so a user can see where they're signed in and sign out a specific device without affecting the others.
 
 Routes (under the auth prefix, default `/api/v1/auth`):
 
@@ -1718,6 +2114,7 @@ fullauth = FullAuth(
     config=FullAuthConfig(
         SECRET_KEY="...",
         TRUSTED_PROXY_HEADERS=["X-Forwarded-For"],
+        TRUSTED_PROXY_COUNT=1,
     ),
 )
 ```
@@ -1725,7 +2122,7 @@ fullauth = FullAuth(
 !!! warning
     Only list headers you trust. If your server is directly exposed to the internet (no proxy), leave this empty; otherwise users can spoof their IP via the header.
 
-When `X-Forwarded-For` contains a chain (e.g. `1.2.3.4, 10.0.0.1`), the first IP (original client) is used.
+When `X-Forwarded-For` contains a chain, the client IP is read from the right, not the left. Each trusted proxy appends the address it received from, so the right-most entries are set by your infrastructure and the left-most are client-supplied and spoofable. `TRUSTED_PROXY_COUNT` (default `1`) is the number of proxy hops in front of the app; the resolver returns the entry that many positions from the right. Set it to your real proxy depth: a value larger than the number of appending proxies lets an attacker pad the chain and control the resolved IP. When the chain is shorter than the configured count, the direct peer is used.
 
 This setting applies to both auth rate limits and the global rate limit middleware.
 
@@ -1782,6 +2179,7 @@ app.add_middleware(
     window_seconds=60,
     exempt_paths=["/health", "/metrics"],
     trusted_proxy_headers=["X-Forwarded-For"],
+    trusted_proxy_count=1,
 )
 ```
 
@@ -1791,7 +2189,7 @@ app.add_middleware(
 
 # OAuth2 Social Login
 
-Add Google and GitHub login with a few config lines. Users can link multiple providers alongside email/password login.
+Add Google, GitHub, Discord, and GitLab login with a few config lines. Users can link multiple providers alongside email/password login.
 
 ## Installation
 
@@ -1805,6 +2203,8 @@ pip install fastapi-fullauth[oauth]
 from fastapi_fullauth import FullAuth, FullAuthConfig
 from fastapi_fullauth.oauth.google import GoogleOAuthProvider
 from fastapi_fullauth.oauth.github import GitHubOAuthProvider
+from fastapi_fullauth.oauth.discord import DiscordOAuthProvider
+from fastapi_fullauth.oauth.gitlab import GitLabOAuthProvider
 
 fullauth = FullAuth(
     adapter=adapter,
@@ -1821,6 +2221,16 @@ fullauth = FullAuth(
         GitHubOAuthProvider(
             client_id="your-github-client-id",
             client_secret="your-github-secret",
+            redirect_uris=["http://localhost:3000/auth/callback"],
+        ),
+        DiscordOAuthProvider(
+            client_id="your-discord-client-id",
+            client_secret="your-discord-secret",
+            redirect_uris=["http://localhost:3000/auth/callback"],
+        ),
+        GitLabOAuthProvider(
+            client_id="your-gitlab-application-id",
+            client_secret="your-gitlab-secret",
             redirect_uris=["http://localhost:3000/auth/callback"],
         ),
     ],
@@ -1964,6 +2374,28 @@ Default scopes: `openid`, `email`, `profile`
 
 Default scopes: `read:user`, `user:email`
 
+### Discord
+
+1. Go to the [Discord Developer Portal](https://discord.com/developers/applications)
+2. Click **New Application**, name it, and open the app
+3. Under **OAuth2**, add your redirect URI under **Redirects**
+4. Copy the **Client ID** and **Client Secret**
+
+Default scopes: `identify`, `email`. No app review required. The library builds the CDN avatar URL from the returned avatar hash and uses `global_name` (falling back to `username`) as the name.
+
+### GitLab
+
+1. Go to [GitLab > Preferences > Applications](https://gitlab.com/-/profile/applications)
+2. Set the **Redirect URI** to your callback URL
+3. Select the `openid`, `email`, and `profile` scopes
+4. Save and copy the **Application ID** and **Secret**
+
+Default scopes: `openid`, `email`, `profile`. Defaults target `gitlab.com`; for a self-hosted GitLab, subclass `GitLabOAuthProvider` and override `authorization_endpoint`, `token_endpoint`, and `userinfo_endpoint`.
+
+## Adding your own provider
+
+For a provider that follows the standard OAuth2 authorization-code wire format, subclass `StandardOAuthProvider` (`from fastapi_fullauth.oauth import StandardOAuthProvider`): set `name`, `display_name`, the three endpoints (`authorization_endpoint`, `token_endpoint`, `userinfo_endpoint`), `default_scopes`, and implement `parse_user_info(data, headers) -> OAuthUserInfo`. PKCE, code exchange, and error handling come from the base. Wire-format quirks go in the `_authorize_params` / `_token_request_body` hooks or `extra_authorize_params`. Providers that deviate entirely subclass the bare `OAuthProvider` ABC and implement `get_authorization_url`, `exchange_code`, and `get_user_info`.
+
 ---
 
 # Database Migrations
@@ -2077,7 +2509,7 @@ fullauth = FullAuth(
 | Method | Description |
 |--------|-------------|
 | `init_app(app, *, include_routers=None)` | Bind FullAuth and mount routers. `include_routers=None` mounts every available router; pass a list (e.g. `["auth", "profile"]`) to opt in selectively. Middleware is not wired automatically. |
-| `bind(app)` | Bind FullAuth to a FastAPI app (sets `app.state.fullauth`). Required when using composable routers without `init_app()`. |
+| `bind(app)` | Bind FullAuth to a FastAPI app (sets `app.state.fullauth`). Required when using composable routers without `init_app()`. Registers no shutdown cleanup - call `await fullauth.aclose()` yourself. |
 | `hooks.on(event, callback)` | Register an event hook |
 
 ### Properties
@@ -2273,7 +2705,7 @@ Both must pass before submitting a PR. CI enforces this.
 
 - Bug fixes
 - New OAuth providers (Apple, Discord, Microsoft, etc.)
-- Adapter implementations (MongoDB, Tortoise ORM, etc.)
+- Adapter implementations for other data stores
 - Documentation improvements
 - Test coverage improvements
 - Performance improvements

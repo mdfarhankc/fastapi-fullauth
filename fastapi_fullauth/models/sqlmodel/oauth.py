@@ -21,7 +21,7 @@ class OAuthAccountMixin(SQLModel):
     id: UUID = Field(default_factory=uuid7, primary_key=True)
     provider: str = Field(max_length=50)
     provider_user_id: str = Field(max_length=320)
-    user_id: UUID = Field(foreign_key="fullauth_users.id")
+    user_id: UUID = Field(foreign_key="fullauth_users.id", ondelete="CASCADE")
     provider_email: str | None = Field(default=None, max_length=320)
     # Text, not the default VARCHAR(255): provider access/refresh tokens
     # (opaque or JWT-shaped) routinely exceed 255 chars and would silently
