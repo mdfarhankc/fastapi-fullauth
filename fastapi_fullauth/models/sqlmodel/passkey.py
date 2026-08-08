@@ -17,7 +17,9 @@ class PasskeyMixin(SQLModel):
 
     id: UUID = Field(default_factory=uuid7, primary_key=True)
     user_id: UUID = Field(foreign_key="fullauth_users.id", ondelete="CASCADE", index=True)
-    credential_id: str = Field(sa_column=Column(Text, unique=True, index=True, nullable=False))
+    # VARCHAR(512), not Text: MySQL can't build a unique index on a TEXT column
+    # (matches the refresh-token column and the SQLAlchemy mixin).
+    credential_id: str = Field(unique=True, index=True, max_length=512)
     public_key: str = Field(sa_column=Column(Text, nullable=False))
     sign_count: int = Field(default=0)
     device_name: str = Field(default="", max_length=200)

@@ -1,6 +1,7 @@
 import logging
 
 from fastapi_fullauth.adapters.base import AbstractUserAdapter
+from fastapi_fullauth.core.crypto import hash_refresh_token
 from fastapi_fullauth.core.tokens import TokenEngine
 from fastapi_fullauth.types import TokenPayload
 
@@ -25,7 +26,7 @@ async def logout(
         # Fallback for access tokens minted before family_id was carried: revoke
         # via the supplied refresh token, but only when it belongs to the caller;
         # otherwise a valid access token could be used to nuke someone else's family.
-        stored = await adapter.get_refresh_token(refresh_token)
+        stored = await adapter.get_refresh_token(hash_refresh_token(refresh_token))
         if stored and str(stored.user_id) == token_payload.sub:
             await adapter.revoke_refresh_token_family(stored.family_id)
         elif stored:

@@ -1,11 +1,23 @@
+import hashlib
 from typing import Any, Literal
 
+from anyio import to_thread
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
 
 from fastapi_fullauth.exceptions import InvalidPasswordError
 
 _argon2_hasher = PasswordHasher()
+
+
+def hash_refresh_token(token: str) -> str:
+    """Deterministic digest for storing refresh tokens at rest.
+
+    Refresh tokens are high-entropy, so an unsalted sha256 is sufficient (there
+    is no dictionary to attack) and keeps lookups an exact-match query. A leaked
+    database then exposes only digests, which cannot be replayed as tokens.
+    """
+    return hashlib.sha256(token.encode()).hexdigest()
 
 _BCRYPT_MAX_BYTES = 72
 # bcrypt hashes from other implementations or older versions use $2a$/$2y$;
@@ -61,3 +73,21 @@ def password_needs_rehash(
     if hashed.startswith(_BCRYPT_PREFIXES):
         return algorithm != "bcrypt"
     return _argon2_hasher.check_needs_rehash(hashed)
+
+
+async def ahash_password(
+    password: str, algorithm: Literal["argon2id", "bcrypt"] = "argon2id"
+) -> str:
+    """Async wrapper around :func:`hash_password`.
+
+    Argon2id and bcrypt are CPU-bound and take tens to hundreds of milliseconds;
+    running them inline would block the event loop and serialize every
+    concurrent request. This offloads the work to a worker thread.
+    """
+    return await to_thread.run_sync(hash_password, password, algorithm)
+
+
+async def averify_password(plain: str, hashed: str) -> bool:
+    """Async wrapper around :func:`verify_password` that offloads the CPU-bound
+    verification to a worker thread, keeping the event loop responsive."""
+    return await to_thread.run_sync(verify_password, plain, hashed)

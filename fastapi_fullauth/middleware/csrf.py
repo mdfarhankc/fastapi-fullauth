@@ -5,10 +5,10 @@ import secrets
 from typing import Literal
 from urllib.parse import urlparse
 
-from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
+from starlette.datastructures import MutableHeaders
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
-from starlette.types import ASGIApp
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 logger = logging.getLogger("fastapi_fullauth.csrf")
 
@@ -34,8 +34,8 @@ def _verify_csrf_value(value: str, secret: str) -> bool:
     return hmac.compare_digest(sig, expected)
 
 
-class CSRFMiddleware(BaseHTTPMiddleware):
-    """Double-submit cookie CSRF protection.
+class CSRFMiddleware:
+    """Double-submit cookie CSRF protection (pure ASGI middleware).
 
     Sets a signed CSRF cookie on safe requests. State-changing requests
     must include an X-CSRF-Token header matching the cookie value.
@@ -61,8 +61,6 @@ class CSRFMiddleware(BaseHTTPMiddleware):
         header_name: str = "X-CSRF-Token",
         trusted_origins: list[str] | None = None,
     ) -> None:
-        super().__init__(app)
-
         if not secret or len(secret) < 32:
             raise ValueError(
                 "CSRFMiddleware requires a `secret` of at least 32 characters. "
@@ -75,6 +73,7 @@ class CSRFMiddleware(BaseHTTPMiddleware):
                 "browsers reject a SameSite=None cookie that is not also Secure."
             )
 
+        self.app = app
         self.secret = secret
         self.cookie_name = cookie_name
         self.exempt_paths: list[str] = exempt_paths or []
@@ -100,65 +99,89 @@ class CSRFMiddleware(BaseHTTPMiddleware):
         origin = request.headers.get("origin")
         if origin is None:
             referer = request.headers.get("referer")
-            if referer:
+            if referer is not None:
                 parsed = urlparse(referer)
-                if parsed.scheme and parsed.netloc:
-                    origin = f"{parsed.scheme}://{parsed.netloc}"
+                if not (parsed.scheme and parsed.netloc):
+                    # A present but unparseable Referer must not silently fall back
+                    # to the token-only path; treat it as a failed origin check.
+                    return False
+                origin = f"{parsed.scheme}://{parsed.netloc}"
         if origin is None:
             return True
         return origin.rstrip("/") in self.trusted_origins
 
-    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
+    def _cookie_header(self) -> str:
+        # Reuse Starlette's cookie serialization so attribute formatting matches
+        # what set_cookie would have produced.
+        response = Response()
+        response.set_cookie(
+            key=self.cookie_name,
+            value=_make_csrf_value(self.secret),
+            httponly=self.cookie_httponly,
+            secure=self.cookie_secure,
+            samesite=self.cookie_samesite,
+            domain=self.cookie_domain,
+            path="/",
+        )
+        return response.headers["set-cookie"]
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        request = Request(scope)
         method = request.method.upper()
         path = request.url.path
 
         if self._is_exempt(path):
-            return await call_next(request)
+            await self.app(scope, receive, send)
+            return
 
         if method in SAFE_METHODS:
-            response = await call_next(request)
-            if self.cookie_name not in request.cookies:
-                csrf_value = _make_csrf_value(self.secret)
-                response.set_cookie(
-                    key=self.cookie_name,
-                    value=csrf_value,
-                    httponly=self.cookie_httponly,
-                    secure=self.cookie_secure,
-                    samesite=self.cookie_samesite,
-                    domain=self.cookie_domain,
-                    path="/",
-                )
-            return response
+            if self.cookie_name in request.cookies:
+                await self.app(scope, receive, send)
+                return
+
+            set_cookie = self._cookie_header()
+
+            async def send_with_cookie(message: Message) -> None:
+                if message["type"] == "http.response.start":
+                    MutableHeaders(scope=message).append("Set-Cookie", set_cookie)
+                await send(message)
+
+            await self.app(scope, receive, send_with_cookie)
+            return
 
         if not self._origin_allowed(request):
             logger.warning("CSRF origin not allowed: %s %s", method, path)
-            return JSONResponse(
-                {"detail": "CSRF origin check failed."},
-                status_code=403,
+            await JSONResponse({"detail": "CSRF origin check failed."}, status_code=403)(
+                scope, receive, send
             )
+            return
 
         cookie_value = request.cookies.get(self.cookie_name)
         header_value = request.headers.get(self.header_name)
 
         if not cookie_value or not header_value:
             logger.warning("CSRF token missing: %s %s", method, path)
-            return JSONResponse(
-                {"detail": "CSRF token missing."},
-                status_code=403,
+            await JSONResponse({"detail": "CSRF token missing."}, status_code=403)(
+                scope, receive, send
             )
+            return
 
         if not _verify_csrf_value(cookie_value, self.secret):
             logger.warning("CSRF cookie signature invalid: %s %s", method, path)
-            return JSONResponse(
-                {"detail": "CSRF cookie signature invalid."},
-                status_code=403,
+            await JSONResponse({"detail": "CSRF cookie signature invalid."}, status_code=403)(
+                scope, receive, send
             )
+            return
 
         if not hmac.compare_digest(cookie_value, header_value):
             logger.warning("CSRF token mismatch: %s %s", method, path)
-            return JSONResponse(
-                {"detail": "CSRF token mismatch."},
-                status_code=403,
+            await JSONResponse({"detail": "CSRF token mismatch."}, status_code=403)(
+                scope, receive, send
             )
+            return
 
-        return await call_next(request)
+        await self.app(scope, receive, send)

@@ -14,21 +14,22 @@ Key behaviors:
 
 ## Registering hooks
 
+The recommended way is to use `on()` as a decorator - it registers the callback and returns it unchanged, keeping the registration next to the function:
+
 ```python
 fullauth = FullAuth(adapter=adapter, config=FullAuthConfig(SECRET_KEY="..."))
 
-async def on_register(user):
-    print(f"New user: {user.email}")
-
-fullauth.hooks.on("after_register", on_register)
-```
-
-You can also use `on()` as a decorator, which registers the callback and returns it unchanged:
-
-```python
 @fullauth.hooks.on("after_register")
 async def on_register(user):
     print(f"New user: {user.email}")
+```
+
+The decorator needs `fullauth` to exist first, so define it before the decorated functions.
+
+Equivalently, you can pass the callback directly - useful when registering a function defined elsewhere:
+
+```python
+fullauth.hooks.on("after_register", on_register)
 ```
 
 !!! tip "Mistakes surface at registration"
@@ -56,6 +57,7 @@ async def on_register(user):
 The library generates verification and reset tokens but does not send emails itself. Register hooks to deliver them:
 
 ```python
+@fullauth.hooks.on("send_verification_email")
 async def send_verification_email(email: str, token: str):
     verify_url = f"https://myapp.com/verify?token={token}"
     await my_email_service.send(
@@ -64,6 +66,7 @@ async def send_verification_email(email: str, token: str):
         body=f"Click here to verify: {verify_url}",
     )
 
+@fullauth.hooks.on("send_password_reset_email")
 async def send_password_reset_email(email: str, token: str):
     reset_url = f"https://myapp.com/reset-password?token={token}"
     await my_email_service.send(
@@ -71,9 +74,6 @@ async def send_password_reset_email(email: str, token: str):
         subject="Reset your password",
         body=f"Click here to reset: {reset_url}",
     )
-
-fullauth.hooks.on("send_verification_email", send_verification_email)
-fullauth.hooks.on("send_password_reset_email", send_password_reset_email)
 ```
 
 !!! note
@@ -86,14 +86,13 @@ import logging
 
 audit_log = logging.getLogger("audit")
 
+@fullauth.hooks.on("after_login")
 async def log_login(user):
     audit_log.info("Login: email=%s id=%s", user.email, user.id)
 
+@fullauth.hooks.on("after_logout")
 async def log_logout(user_id):
     audit_log.info("Logout: user_id=%s", user_id)
-
-fullauth.hooks.on("after_login", log_login)
-fullauth.hooks.on("after_logout", log_logout)
 ```
 
 ### Post-registration setup
@@ -101,23 +100,21 @@ fullauth.hooks.on("after_logout", log_logout)
 Create default resources for new users:
 
 ```python
+@fullauth.hooks.on("after_register")
 async def create_defaults(user):
     await create_workspace(owner_id=user.id, name="My Workspace")
     await create_user_profile(user_id=user.id)
-
-fullauth.hooks.on("after_register", create_defaults)
 ```
 
 ### OAuth login tracking
 
 ```python
+@fullauth.hooks.on("after_oauth_login")
 async def track_oauth(user, provider, is_new_user):
     if is_new_user:
         await analytics.track("signup", {"provider": provider, "email": user.email})
     else:
         await analytics.track("login", {"provider": provider, "email": user.email})
-
-fullauth.hooks.on("after_oauth_login", track_oauth)
 ```
 
 ## Multiple hooks per event

@@ -40,9 +40,10 @@ Rate limit and lockout are keyed on client IP (`utils.get_client_ip`). Behind a 
 
 ```bash
 FULLAUTH_TRUSTED_PROXY_HEADERS=["X-Forwarded-For"]
+FULLAUTH_TRUSTED_PROXY_COUNT=1   # number of trusted proxy hops in front of the app
 ```
 
-Only set this if you actually trust the upstream to rewrite the header. A public-facing deployment without a reverse proxy should leave this empty; otherwise clients can spoof their IP by sending `X-Forwarded-For` themselves.
+Only set the headers if you actually trust the upstream to append to them. A public-facing deployment without a reverse proxy should leave this empty; otherwise clients can spoof their IP by sending `X-Forwarded-For` themselves. The client IP is read `TRUSTED_PROXY_COUNT` entries from the right of the chain (each trusted proxy appends the address it received from; left-most entries are client-supplied), so set the count to your real proxy depth - an incorrect value is what enables spoofing.
 
 ## 4. Cookie flags
 
@@ -156,23 +157,26 @@ Events worth alerting on:
 
 ## 12. Resource cleanup on shutdown
 
-`FullAuth.aclose()` closes pooled resources: Redis connections (blacklist, lockout, rate limiter, challenge store) and the OAuth HTTP client. `init_app()` registers it on the app's shutdown event automatically.
-
-If you pass your own `lifespan` to FastAPI, Starlette does not run those shutdown handlers, so call it yourself:
+`FullAuth.aclose()` closes pooled resources: Redis connections (blacklist, lockout, rate limiter, challenge store) and the OAuth HTTP client. `init_app()` runs it on shutdown automatically by wrapping the app's `lifespan_context`, so it fires even when you pass your own `lifespan` to FastAPI - no manual call needed:
 
 ```python
 from contextlib import asynccontextmanager
 
 @asynccontextmanager
 async def lifespan(app):
-    fullauth.init_app(app)
+    # your startup
     yield
-    await fullauth.aclose()
+    # your teardown; fullauth.aclose() runs after this, wired by init_app()
+
+app = FastAPI(lifespan=lifespan)
+fullauth.init_app(app)  # call after FastAPI(lifespan=...) so it wraps your lifespan
 ```
+
+Call `aclose()` yourself only when you manage FullAuth without `init_app()`.
 
 ## 13. OAuth state and PKCE
 
-PKCE (S256) is on by default for Google and GitHub via `OAUTH_PKCE_ENABLED`. The `code_verifier` is derived from the signed state token's nonce keyed by `SECRET_KEY`, so it never travels through the browser. Treat it as defense-in-depth for a confidential client that already sends a `client_secret`, not as a replacement for binding the OAuth state to the browser session.
+PKCE (S256) is on by default for Google, GitHub, Discord, and GitLab via `OAUTH_PKCE_ENABLED`. The `code_verifier` is derived from the signed state token's nonce keyed by `SECRET_KEY`, so it never travels through the browser. Treat it as defense-in-depth for a confidential client that already sends a `client_secret`, not as a replacement for binding the OAuth state to the browser session.
 
 The OAuth `state` token is signed but not bound to the browser session, so on its own it does not prevent login-CSRF / account fixation. Put the OAuth routes behind your own CSRF protection if that matters. State is replayable within `OAUTH_STATE_EXPIRE_SECONDS` (the authorization code itself is single-use at the provider).
 
@@ -181,7 +185,8 @@ The OAuth `state` token is signed but not bound to the browser session, so on it
 - [ ] `FULLAUTH_SECRET_KEY` set, long, not in version control
 - [ ] All four `*_BACKEND` settings set to `redis` (or whichever custom backend you registered)
 - [ ] `REDIS_URL` reachable from every worker
-- [ ] `TRUSTED_PROXY_HEADERS` set iff you have a trusted reverse proxy
+- [ ] `TRUSTED_PROXY_HEADERS` set iff you have a trusted reverse proxy, and `TRUSTED_PROXY_COUNT` matches your proxy depth
+- [ ] Upgrading to 0.15: stored refresh tokens are sha256 digests; deploy invalidates existing sessions unless you backfill the `token` column with digests
 - [ ] Passkey `RP_ID` and `ORIGINS` are the right domain, not localhost
 - [ ] Alembic migration for the OAuth composite unique constraint (if upgrading from ≤ 0.7.0 with OAuth in use)
 - [ ] Startup logs show no `UserWarning` about in-memory backends or missing SECRET_KEY

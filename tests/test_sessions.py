@@ -6,8 +6,14 @@ from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
 from fastapi_fullauth import FullAuth
+from fastapi_fullauth.core.crypto import hash_refresh_token
 
 SESSIONS = "/api/v1/auth/sessions"
+
+
+async def _stored(fullauth, raw_refresh_token):
+    """Fetch the stored row for a raw refresh token (stored as its digest)."""
+    return await fullauth.adapter.get_refresh_token(hash_refresh_token(raw_refresh_token))
 
 
 async def _login(client, *, user_agent="pytest-agent", email="user@test.com"):
@@ -28,7 +34,7 @@ def _bearer(tokens):
 async def test_access_token_carries_family_id(client, fullauth, registered_user):
     tokens = await _login(client)
     payload = await fullauth.token_engine.decode_token(tokens["access_token"])
-    stored = await fullauth.adapter.get_refresh_token(tokens["refresh_token"])
+    stored = await _stored(fullauth, tokens["refresh_token"])
     assert payload.family_id is not None
     assert payload.family_id == stored.family_id
 
@@ -36,7 +42,7 @@ async def test_access_token_carries_family_id(client, fullauth, registered_user)
 @pytest.mark.asyncio
 async def test_login_records_device_and_ip(client, fullauth, registered_user):
     tokens = await _login(client, user_agent="my-browser/1.0")
-    stored = await fullauth.adapter.get_refresh_token(tokens["refresh_token"])
+    stored = await _stored(fullauth, tokens["refresh_token"])
     assert stored.user_agent == "my-browser/1.0"
     assert isinstance(stored.ip_address, str)
 
@@ -69,7 +75,7 @@ async def test_multiple_sessions_one_current(client, registered_user):
 async def test_revoke_one_session(client, fullauth, registered_user):
     keep = await _login(client, user_agent="keep")
     drop = await _login(client, user_agent="drop")
-    drop_family = (await fullauth.adapter.get_refresh_token(drop["refresh_token"])).family_id
+    drop_family = (await _stored(fullauth, drop["refresh_token"])).family_id
 
     r = await client.delete(f"{SESSIONS}/{drop_family}", headers=_bearer(keep))
     assert r.status_code == 204
@@ -95,7 +101,7 @@ async def test_revoke_unknown_session_404(client, registered_user):
 @pytest.mark.asyncio
 async def test_cannot_revoke_another_users_session(client, fullauth, registered_user):
     victim = await _login(client)
-    victim_family = (await fullauth.adapter.get_refresh_token(victim["refresh_token"])).family_id
+    victim_family = (await _stored(fullauth, victim["refresh_token"])).family_id
 
     await client.post(
         "/api/v1/auth/register",

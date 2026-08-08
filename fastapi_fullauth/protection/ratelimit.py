@@ -1,4 +1,5 @@
 import logging
+import math
 import secrets
 import time
 from collections import defaultdict, deque
@@ -39,18 +40,17 @@ class RateLimiter:
         return True
 
     async def remaining(self, key: str) -> int:
-        now = time.monotonic()
-        self._cleanup(key, now)
-        return max(0, self.max_requests - len(self._hits[key]))
+        # Use _cleanup's return, not self._hits[key]: indexing the defaultdict
+        # would re-insert an empty deque for every idle key and leak memory.
+        timestamps = self._cleanup(key, time.monotonic())
+        return max(0, self.max_requests - len(timestamps))
 
     async def reset_time(self, key: str) -> float:
         now = time.monotonic()
-        self._cleanup(key, now)
-        timestamps = self._hits[key]
+        timestamps = self._cleanup(key, now)
         if not timestamps:
             return 0.0
-        oldest = timestamps[0]
-        return max(0.0, self.window_seconds - (now - oldest))
+        return max(0.0, self.window_seconds - (now - timestamps[0]))
 
     def reset(self, key: str) -> None:
         self._hits.pop(key, None)
@@ -68,17 +68,12 @@ class RedisRateLimiter:
         max_requests: int = 60,
         window_seconds: int = 60,
     ) -> None:
-        try:
-            import redis.asyncio as aioredis
-        except ImportError:
-            raise ImportError(
-                "redis package is required for the Redis rate limiter. "
-                "Install it with: pip install fastapi-fullauth[redis]"
-            ) from None
+        from fastapi_fullauth.core._redis import acquire_redis
 
         self.max_requests = max_requests
         self.window_seconds = window_seconds
-        self._redis = aioredis.from_url(redis_url, decode_responses=True)
+        self._redis = acquire_redis(redis_url, feature="the Redis rate limiter")
+        self._redis_url: str | None = redis_url
         self._prefix = "fullauth:ratelimit:"
 
     async def is_allowed(self, key: str) -> bool:
@@ -146,7 +141,11 @@ class RedisRateLimiter:
         await self._redis.delete(f"{self._prefix}{key}")
 
     async def aclose(self) -> None:
-        await self._redis.aclose()
+        from fastapi_fullauth.core._redis import release_redis
+
+        if self._redis_url is not None:
+            await release_redis(self._redis_url)
+            self._redis_url = None
 
 
 _rate_limiter_registry: dict[str, type[RateLimiter] | type[RedisRateLimiter]] = {
@@ -242,7 +241,7 @@ class AuthRateLimiter:
                 headers={
                     "X-RateLimit-Limit": str(limiter.max_requests),
                     "X-RateLimit-Remaining": "0",
-                    "X-RateLimit-Reset": str(int(reset_in)),
-                    "Retry-After": str(int(reset_in)),
+                    "X-RateLimit-Reset": str(math.ceil(reset_in)),
+                    "Retry-After": str(math.ceil(reset_in)),
                 },
             )

@@ -147,7 +147,10 @@ async def test_raising_hook_does_not_break_subsequent_hooks_or_request():
     engine, session_maker = await _make_db()
     adapter = make_test_adapter(session_maker)
     fullauth = FullAuth(
-        config=FullAuthConfig(SECRET_KEY="test-secret-key-that-is-long-enough-32b"),
+        config=FullAuthConfig(
+            SECRET_KEY="test-secret-key-that-is-long-enough-32b",
+            PREVENT_REGISTRATION_ENUMERATION=False,
+        ),
         adapter=adapter,
     )
 

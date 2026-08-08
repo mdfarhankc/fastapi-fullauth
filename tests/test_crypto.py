@@ -1,6 +1,12 @@
 import pytest
 
-from fastapi_fullauth.core.crypto import hash_password, password_needs_rehash, verify_password
+from fastapi_fullauth.core.crypto import (
+    ahash_password,
+    averify_password,
+    hash_password,
+    password_needs_rehash,
+    verify_password,
+)
 
 
 def test_hash_and_verify():
@@ -34,3 +40,17 @@ def test_bcrypt_legacy_prefixes_verify():
         assert not verify_password("wrong-pw", legacy)
         assert not password_needs_rehash(legacy, algorithm="bcrypt")
         assert password_needs_rehash(legacy, algorithm="argon2id")
+
+
+async def test_async_hash_and_verify_roundtrip():
+    hashed = await ahash_password("mypassword")
+    assert hashed != "mypassword"
+    assert await averify_password("mypassword", hashed)
+    assert not await averify_password("wrongpassword", hashed)
+
+
+async def test_async_hash_is_interoperable_with_sync():
+    # The offloaded wrappers must produce/accept the same hashes as the sync API.
+    hashed = await ahash_password("interop")
+    assert verify_password("interop", hashed)
+    assert await averify_password("interop", hash_password("interop"))

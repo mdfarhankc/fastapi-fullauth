@@ -4,18 +4,24 @@ fastapi-fullauth provides FastAPI dependency functions to protect your routes. B
 
 ## Setting up dependencies
 
-Create your typed dependencies once (e.g. in `deps.py`):
+If you use the default `UserSchema`, import the ready-made annotated types:
+
+```python
+from fastapi_fullauth.dependencies import CurrentUser, VerifiedUser, SuperUser
+```
+
+With a custom user schema, build them once (e.g. in `deps.py`) from the typed factories so your extra fields type-check:
 
 ```python
 from typing import Annotated
 from fastapi import Depends
-from fastapi_fullauth.dependencies import current_user, current_active_verified_user, current_superuser
+from fastapi_fullauth.dependencies import typed_current_user, typed_verified_user, typed_superuser
 
-from app.schemas import UserSchema  # your user schema
+from app.schemas import MyUserSchema  # your user schema
 
-CurrentUser = Annotated[UserSchema, Depends(current_user)]
-VerifiedUser = Annotated[UserSchema, Depends(current_active_verified_user)]
-SuperUser = Annotated[UserSchema, Depends(current_superuser)]
+CurrentUser = Annotated[MyUserSchema, Depends(typed_current_user(MyUserSchema))]
+VerifiedUser = Annotated[MyUserSchema, Depends(typed_verified_user(MyUserSchema))]
+SuperUser = Annotated[MyUserSchema, Depends(typed_superuser(MyUserSchema))]
 ```
 
 Then use them in your routes:
@@ -150,20 +156,20 @@ If any step fails, a `401 Unauthorized` or `403 Forbidden` response is returned 
 
 ## Custom user schemas
 
-When using custom schemas with extra fields, annotate with your schema type. The dependency returns whatever your adapter produces at runtime, so the extra fields are always there:
+When using custom schemas with extra fields, use `typed_current_user(...)` (and the matching `typed_verified_user` / `typed_superuser`). Runtime behavior is identical to `current_user` - the adapter already returns instances of the schema it was built with - but the dependency's declared return type becomes your subclass, so the extra fields type-check without casts:
 
 ```python
 from typing import Annotated
 from fastapi import Depends
-from fastapi_fullauth.dependencies import current_user
+from fastapi_fullauth.dependencies import typed_current_user
 
 from app.schemas import MyUserSchema
 
-CurrentUser = Annotated[MyUserSchema, Depends(current_user)]
+CurrentUser = Annotated[MyUserSchema, Depends(typed_current_user(MyUserSchema))]
 
 @app.get("/profile")
 async def profile(user: CurrentUser):
-    return {"name": user.display_name}  # IDE knows this field exists
+    return {"name": user.display_name}  # IDE and type checker know this field exists
 ```
 
 ## Writing custom dependencies

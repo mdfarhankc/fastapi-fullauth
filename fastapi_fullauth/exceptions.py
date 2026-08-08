@@ -25,66 +25,68 @@ __all__ = [
 
 
 class FullAuthError(Exception):
-    pass
+    """Base class for every exception this library raises."""
 
 
 class AuthenticationError(FullAuthError):
-    pass
+    """Credentials are wrong, the user is unknown, or the account is inactive."""
 
 
 class AuthorizationError(FullAuthError):
-    pass
+    """The authenticated user lacks the required role or permission."""
 
 
 class TokenError(FullAuthError):
-    pass
+    """A token failed validation (bad signature, wrong type or purpose)."""
 
 
 class UserAlreadyExistsError(FullAuthError):
-    pass
+    """Registration hit an existing account for the same login field."""
 
 
 class UserNotFoundError(FullAuthError):
-    pass
+    """No user matches the given id or lookup field."""
 
 
 class InvalidPasswordError(FullAuthError):
-    pass
+    """The password fails the configured validation rules or algorithm limits."""
 
 
 class AccountLockedError(FullAuthError):
-    pass
+    """Login blocked because the lockout threshold was reached."""
 
 
 class TokenBlacklistedError(TokenError):
-    pass
+    """The token was revoked (logout or explicit blacklisting)."""
 
 
 class TokenExpiredError(TokenError):
-    pass
+    """The token's ``exp`` claim is in the past."""
 
 
 class RefreshTokenReuseError(TokenError):
-    pass
+    """An already-rotated refresh token was presented; its family is revoked."""
 
 
 class OAuthError(FullAuthError):
-    pass
+    """Base class for OAuth flow failures."""
 
 
 class OAuthProviderError(OAuthError):
-    pass
+    """The identity provider rejected a request or answered unusably."""
 
 
 class OAuthAccountAlreadyLinkedError(OAuthError):
-    pass
+    """The provider identity is already linked to a different user."""
 
 
 class NoValidFieldsError(FullAuthError):
-    pass
+    """A profile update contained no updatable fields."""
 
 
 class UnknownFieldsError(FullAuthError):
+    """A profile update named fields that don't exist on the user schema."""
+
     def __init__(self, fields: set[str]) -> None:
         self.fields = fields
         super().__init__(f"Unknown fields: {', '.join(sorted(fields))}")

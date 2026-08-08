@@ -1,5 +1,8 @@
+import asyncio
 import logging
 import warnings
+from collections.abc import AsyncIterator, Coroutine
+from contextlib import asynccontextmanager
 from typing import Any, Generic
 
 from fastapi import APIRouter, FastAPI, Request
@@ -93,7 +96,7 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
         self._router: APIRouter | None = None
 
     _RESERVED_CLAIM_KEYS = frozenset(
-        {"sub", "exp", "iat", "jti", "type", "roles", "extra", "family_id"}
+        {"sub", "exp", "iat", "jti", "type", "roles", "extra", "family_id", "purpose"}
     )
 
     @staticmethod
@@ -144,6 +147,15 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
                 UserWarning,
                 stacklevel=3,
             )
+        if self.oauth_providers and not self.config.BLACKLIST_ENABLED:
+            warnings.warn(
+                "OAuth providers are configured but BLACKLIST_ENABLED is False, so "
+                "OAuth state tokens can't be burned after use; a captured (code, "
+                "state) pair is replayable within the state TTL. Enable the token "
+                "blacklist in production.",
+                UserWarning,
+                stacklevel=3,
+            )
 
     def _log_effective_config(self, config: FullAuthConfig) -> None:
         # One line showing the resolved state, since BACKEND/PASSKEY_ENABLED are
@@ -181,22 +193,27 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
             stacklevel=3,
         )
 
-    def _warn_custom_lifespan_aclose(self, app: FastAPI) -> None:
-        # Starlette only runs add_event_handler("shutdown", ...) through its
-        # default lifespan. When the app is built with a custom lifespan, the
-        # aclose handler init_app() just registered never fires, leaking pooled
-        # Redis connections and OAuth HTTP clients. Detect it by the context
-        # type name to stay resilient across Starlette versions.
-        if type(app.router.lifespan_context).__name__ == "_DefaultLifespan":
+    def _register_aclose(self, app: FastAPI) -> None:
+        # add_event_handler("shutdown", ...) only fires under Starlette's default
+        # lifespan; an app built with a custom lifespan= would silently leak
+        # pooled Redis connections and OAuth HTTP clients. Wrap the existing
+        # lifespan_context instead so cleanup composes with any lifespan: the
+        # existing context becomes the inner one, and aclose() runs after its
+        # teardown. The sentinel keeps an accidental double-wrap a no-op.
+        existing = app.router.lifespan_context
+        if getattr(existing, "_fullauth_aclose_wrapped", False):
             return
-        warnings.warn(
-            "init_app() registered fullauth.aclose() on app shutdown, but this app "
-            "uses a custom lifespan, so Starlette will not run it. Call "
-            "'await fullauth.aclose()' in your lifespan's shutdown section to release "
-            "pooled Redis connections and OAuth HTTP clients.",
-            UserWarning,
-            stacklevel=3,
-        )
+
+        @asynccontextmanager
+        async def wrapped(app: FastAPI) -> AsyncIterator[Any]:
+            try:
+                async with existing(app) as state:
+                    yield state
+            finally:
+                await self.aclose()
+
+        wrapped._fullauth_aclose_wrapped = True  # type: ignore[attr-defined]
+        app.router.lifespan_context = wrapped
 
     def _warn_missing_email_hooks(self, mounted: set[str]) -> None:
         # The verify router exposes email verification and password reset, which
@@ -241,24 +258,39 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
 
     async def enforce_rate_limit(self, request: Request, route_name: str) -> None:
         """Resolve the client IP and apply the auth rate limit for ``route_name``."""
-        client_ip = get_client_ip(request, self.config.TRUSTED_PROXY_HEADERS)
+        client_ip = get_client_ip(
+            request, self.config.TRUSTED_PROXY_HEADERS, self.config.TRUSTED_PROXY_COUNT
+        )
         await self.check_auth_rate_limit(route_name, client_ip)
 
     async def aclose(self) -> None:
         """Close pooled resources: Redis connections and OAuth HTTP clients.
 
-        Idempotent. ``init_app()`` registers this on app shutdown. Call it
-        yourself if you pass a custom ``lifespan`` to FastAPI, since Starlette
-        ignores shutdown event handlers when a lifespan is provided.
+        Idempotent. ``init_app()`` runs this on app shutdown by wrapping the
+        app's lifespan, so it fires even under a custom ``lifespan``. You only
+        need to call it yourself when managing FullAuth without ``init_app()``.
+
+        Each resource is closed independently: a failure closing one (for
+        example a Redis socket error during shutdown) is logged and does not
+        prevent the others from closing, so nothing leaks.
         """
-        await self.token_engine.blacklist.aclose()
+        closers: list[tuple[str, Coroutine[Any, Any, Any]]] = [
+            ("token blacklist", self.token_engine.blacklist.aclose()),
+        ]
         if self.lockout is not None:
-            await self.lockout.aclose()
-        await self.auth_rate_limiter.aclose()
+            closers.append(("lockout store", self.lockout.aclose()))
+        closers.append(("auth rate limiter", self.auth_rate_limiter.aclose()))
         if self.challenge_store is not None:
-            await self.challenge_store.aclose()
-        for provider in self.oauth_providers.values():
-            await provider.aclose()
+            closers.append(("passkey challenge store", self.challenge_store.aclose()))
+        for name, provider in self.oauth_providers.items():
+            closers.append((f"oauth provider '{name}'", provider.aclose()))
+
+        results = await asyncio.gather(*(coro for _, coro in closers), return_exceptions=True)
+        for (label, _), result in zip(closers, results, strict=True):
+            if isinstance(result, Exception):
+                logger.warning(
+                    "Error closing %s during shutdown: %s", label, result, exc_info=result
+                )
 
     # ── composable routers ──────────────────────────────────────────
 
@@ -389,6 +421,10 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
         Required when using composable routers without init_app().
         Sets app.state.fullauth so dependencies can resolve.
         Called automatically by init_app().
+
+        Unlike init_app(), this registers no shutdown cleanup: call
+        ``await fullauth.aclose()`` in your own shutdown to release pooled
+        Redis connections and OAuth HTTP clients.
         """
         app.state.fullauth = self
 
@@ -404,8 +440,9 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
         ``fastapi_fullauth.middleware`` and call ``app.add_middleware(...)``
         yourself.
 
-        Registers ``aclose()`` on app shutdown to release pooled resources. If
-        you use a custom ``lifespan``, call ``await fullauth.aclose()`` yourself.
+        Registers ``aclose()`` on app shutdown to release pooled resources. This
+        composes with a custom ``lifespan`` (the existing lifespan is wrapped),
+        so you do not need to call ``aclose()`` yourself.
 
         Args:
             app: The FastAPI application.
@@ -424,9 +461,8 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
         app.state._fullauth_app_wired = True
 
         self.bind(app)
-        app.router.add_event_handler("shutdown", self.aclose)
+        self._register_aclose(app)
         self._warn_cookie_backend_without_csrf(app)
-        self._warn_custom_lifespan_aclose(app)
 
         if include_routers is None:
             mounted: set[str] = set(self._ROUTER_NAMES)

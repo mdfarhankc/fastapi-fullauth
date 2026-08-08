@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlmodel import SQLModel
 
 from fastapi_fullauth import AuthRateLimits, FullAuth, FullAuthConfig
+from fastapi_fullauth.core.crypto import hash_refresh_token
 from fastapi_fullauth.dependencies import current_token_payload, current_user
 from tests.conftest import make_test_adapter
 
@@ -62,10 +63,22 @@ async def test_register_duplicate(client, registered_user):
 
 
 @pytest.mark.asyncio
+async def test_refresh_tokens_are_hashed_at_rest(adapter, login_tokens):
+    """The database stores only the sha256 digest of a refresh token, so a
+    leaked database cannot hand out live sessions. Lookups hash the presented
+    token; the raw token must not match a stored row."""
+    raw = login_tokens["refresh_token"]
+    assert await adapter.get_refresh_token(raw) is None
+    stored = await adapter.get_refresh_token(hash_refresh_token(raw))
+    assert stored is not None
+    assert stored.token != raw
+
+
+@pytest.mark.asyncio
 async def test_register_anti_enumeration_same_response_for_new_and_existing():
-    """Opt-in PREVENT_REGISTRATION_ENUMERATION=True: new and duplicate emails
-    produce identical 202 responses so the endpoint can't be used to probe
-    whether an email is registered."""
+    """With PREVENT_REGISTRATION_ENUMERATION (the default): new and duplicate
+    emails produce identical 202 responses so the endpoint can't be used to
+    probe whether an email is registered."""
     engine, session_maker = await _make_db()
     adapter = make_test_adapter(session_maker)
     fullauth = FullAuth(
@@ -232,6 +245,39 @@ async def test_me_invalid_token(client):
 
 
 @pytest.mark.asyncio
+async def test_logout_rejects_purpose_scoped_token(client, fullauth, registered_user):
+    # A password-reset / email-verify token is access-typed but purpose-scoped;
+    # it must not be accepted as a session credential at /logout.
+    token = fullauth.token_engine.create_access_token(
+        user_id=registered_user["id"],
+        extra={"purpose": "password_reset"},
+    )
+    r = await client.post(
+        "/api/v1/auth/logout",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_custom_claims_reject_reserved_purpose_key(adapter):
+    from uuid import uuid4
+
+    from fastapi_fullauth import FullAuth, FullAuthConfig, UserSchema
+
+    async def add_claims(user):
+        return {"purpose": "password_reset"}
+
+    fullauth = FullAuth(
+        config=FullAuthConfig(SECRET_KEY="test-secret-key-that-is-long-enough-32b"),
+        adapter=adapter,
+        on_create_token_claims=add_claims,
+    )
+    with pytest.raises(ValueError, match="reserved"):
+        await fullauth.get_custom_claims(UserSchema(id=uuid4(), email="x@test.com"))
+
+
+@pytest.mark.asyncio
 async def test_logout(client, auth_headers, login_tokens):
     r = await client.post("/api/v1/auth/logout", headers=auth_headers)
     assert r.status_code == 204
@@ -283,7 +329,7 @@ async def test_refresh_rotation_is_atomic_on_store_failure(client, login_tokens)
     old_refresh = login_tokens["refresh_token"]
 
     with (
-        patch("fastapi_fullauth.routers.auth.issue_token_pair", _boom),
+        patch("fastapi_fullauth.flows.refresh.issue_token_pair", _boom),
         pytest.raises(RuntimeError),
     ):
         await client.post(
@@ -373,8 +419,8 @@ async def test_login_persists_refresh_token():
         )
         refresh_token = r.json()["refresh_token"]
 
-        # refresh token should be stored in adapter
-        stored = await adapter.get_refresh_token(refresh_token)
+        # refresh token should be stored in adapter (as its digest)
+        stored = await adapter.get_refresh_token(hash_refresh_token(refresh_token))
         assert stored is not None
         assert stored.user_id is not None
         assert stored.family_id is not None
@@ -407,12 +453,12 @@ async def test_refresh_persists_new_token_and_revokes_old():
         assert new_refresh != old_refresh
 
         # old token should be revoked
-        old_stored = await adapter.get_refresh_token(old_refresh)
+        old_stored = await adapter.get_refresh_token(hash_refresh_token(old_refresh))
         assert old_stored is not None
         assert old_stored.revoked is True
 
         # new token should be stored
-        new_stored = await adapter.get_refresh_token(new_refresh)
+        new_stored = await adapter.get_refresh_token(hash_refresh_token(new_refresh))
         assert new_stored is not None
         assert new_stored.revoked is False
 
@@ -491,7 +537,7 @@ async def test_refresh_reuse_revokes_family_when_blacklist_lost():
         assert r.status_code == 401
 
         # the new token's family should also be revoked
-        new_stored = await adapter.get_refresh_token(new_refresh)
+        new_stored = await adapter.get_refresh_token(hash_refresh_token(new_refresh))
         assert new_stored is not None
         assert new_stored.revoked is True
 
@@ -614,7 +660,7 @@ async def test_logout_revokes_refresh_family():
         assert r.status_code == 204
 
         # refresh token family should be revoked
-        stored = await adapter.get_refresh_token(tokens["refresh_token"])
+        stored = await adapter.get_refresh_token(hash_refresh_token(tokens["refresh_token"]))
         assert stored is not None
         assert stored.revoked is True
 
@@ -671,7 +717,7 @@ async def test_logout_without_refresh_token_ends_the_session():
         assert r.status_code == 204
 
         # The refresh-token family is revoked...
-        stored = await adapter.get_refresh_token(tokens["refresh_token"])
+        stored = await adapter.get_refresh_token(hash_refresh_token(tokens["refresh_token"]))
         assert stored is not None
         assert stored.revoked is True
 

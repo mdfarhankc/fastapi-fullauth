@@ -1,7 +1,6 @@
-from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
+from starlette.datastructures import MutableHeaders
 from starlette.requests import Request
-from starlette.responses import Response
-from starlette.types import ASGIApp
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 # X-XSS-Protection is intentionally "0": the legacy auditor it enables is
 # deprecated and "1; mode=block" can introduce cross-site leak oracles. Modern
@@ -17,7 +16,9 @@ DEFAULT_SECURITY_HEADERS: dict[str, str] = {
 DEFAULT_HSTS_VALUE = "max-age=31536000; includeSubDomains"
 
 
-class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+class SecurityHeadersMiddleware:
+    """Standard security response headers (pure ASGI middleware)."""
+
     def __init__(
         self,
         app: ASGIApp,
@@ -25,7 +26,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         hsts: bool = True,
         hsts_value: str = DEFAULT_HSTS_VALUE,
     ) -> None:
-        super().__init__(app)
+        self.app = app
         self.headers = {**DEFAULT_SECURITY_HEADERS}
         if custom_headers:
             self.headers.update(custom_headers)
@@ -40,10 +41,20 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             return True
         return request.headers.get("x-forwarded-proto", "").split(",")[0].strip() == "https"
 
-    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
-        response = await call_next(request)
-        for key, value in self.headers.items():
-            response.headers[key] = value
-        if self.hsts and self._is_https(request):
-            response.headers["Strict-Transport-Security"] = self.hsts_value
-        return response
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        add_hsts = self.hsts and self._is_https(Request(scope))
+
+        async def send_with_headers(message: Message) -> None:
+            if message["type"] == "http.response.start":
+                headers = MutableHeaders(scope=message)
+                for key, value in self.headers.items():
+                    headers[key] = value
+                if add_hsts:
+                    headers["Strict-Transport-Security"] = self.hsts_value
+            await send(message)
+
+        await self.app(scope, receive, send_with_headers)

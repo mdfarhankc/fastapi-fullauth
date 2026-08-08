@@ -19,7 +19,9 @@ class PasskeyMixin:
     user_id: Mapped[UUID] = mapped_column(
         Uuid, ForeignKey("fullauth_users.id", ondelete="CASCADE"), index=True, nullable=False
     )
-    credential_id: Mapped[str] = mapped_column(Text, unique=True, index=True, nullable=False)
+    # String(512), not Text: MySQL (and Tortoise) cannot build a unique index on
+    # a TEXT column. 512 matches the refresh-token column width.
+    credential_id: Mapped[str] = mapped_column(String(512), unique=True, index=True, nullable=False)
     public_key: Mapped[str] = mapped_column(Text, nullable=False)
     sign_count: Mapped[int] = mapped_column(Integer, default=0)
     device_name: Mapped[str] = mapped_column(String(200), default="")

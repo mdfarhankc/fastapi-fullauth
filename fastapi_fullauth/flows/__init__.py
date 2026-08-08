@@ -9,6 +9,7 @@ from fastapi_fullauth.flows.oauth import (
 )
 from fastapi_fullauth.flows.password_reset import request_password_reset, reset_password
 from fastapi_fullauth.flows.profile import validate_profile_updates
+from fastapi_fullauth.flows.refresh import refresh
 from fastapi_fullauth.flows.register import register
 
 __all__ = [
@@ -19,6 +20,7 @@ __all__ = [
     "link_or_create_user",
     "login",
     "logout",
+    "refresh",
     "register",
     "request_password_reset",
     "reset_password",

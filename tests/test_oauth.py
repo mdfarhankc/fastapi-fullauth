@@ -624,3 +624,167 @@ async def test_github_userinfo_rejects_token_response_without_access_token():
     )
     with pytest.raises(OAuthProviderError, match="token exchange failed"):
         await provider.get_user_info({})  # no access_token, must not KeyError
+
+
+# ── Discord provider ─────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_discord_authorization_url_includes_pkce_and_scopes(config):
+    from fastapi_fullauth.core.tokens import TokenEngine
+    from fastapi_fullauth.flows.oauth import build_authorization_url
+    from fastapi_fullauth.oauth.discord import DiscordOAuthProvider
+
+    engine = TokenEngine(config=config)
+    provider = DiscordOAuthProvider(
+        client_id="id", client_secret="secret", redirect_uris=["http://localhost/cb"]
+    )
+    url = build_authorization_url(engine, provider, "http://localhost/cb")
+    assert url.startswith("https://discord.com/oauth2/authorize?")
+    assert "code_challenge=" in url
+    assert "code_challenge_method=S256" in url
+    assert "scope=identify+email" in url
+    await provider.aclose()
+
+
+@pytest.mark.asyncio
+async def test_discord_userinfo_rejects_token_response_without_access_token():
+    from fastapi_fullauth.exceptions import OAuthProviderError
+    from fastapi_fullauth.oauth.discord import DiscordOAuthProvider
+
+    provider = DiscordOAuthProvider(
+        client_id="id", client_secret="secret", redirect_uris=["http://localhost/cb"]
+    )
+    with pytest.raises(OAuthProviderError, match="token exchange failed"):
+        await provider.get_user_info({})  # no access_token, must not KeyError
+    await provider.aclose()
+
+
+@pytest.mark.asyncio
+async def test_discord_userinfo_maps_fields():
+    import httpx
+
+    from fastapi_fullauth.oauth.discord import DiscordOAuthProvider
+
+    payload = {
+        "id": "80351110224678912",
+        "username": "nelly",
+        "global_name": "Nelly",
+        "avatar": "8342729096ea3675442027381ff50dfe",
+        "email": "nelly@discord.com",
+        "verified": True,
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert str(request.url) == "https://discord.com/api/users/@me"
+        assert request.headers["Authorization"] == "Bearer tok"
+        return httpx.Response(200, json=payload)
+
+    provider = DiscordOAuthProvider(
+        client_id="id", client_secret="secret", redirect_uris=["http://localhost/cb"]
+    )
+    provider._http_client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+
+    info = await provider.get_user_info({"access_token": "tok"})
+    assert info.provider == "discord"
+    assert info.provider_user_id == "80351110224678912"
+    assert info.email == "nelly@discord.com"
+    assert info.email_verified is True
+    assert info.name == "Nelly"
+    assert info.picture == (
+        "https://cdn.discordapp.com/avatars/80351110224678912/8342729096ea3675442027381ff50dfe.png"
+    )
+    await provider.aclose()
+
+
+@pytest.mark.asyncio
+async def test_discord_userinfo_falls_back_to_username_and_null_avatar():
+    import httpx
+
+    from fastapi_fullauth.oauth.discord import DiscordOAuthProvider
+
+    # No global_name and no avatar: name falls back to username, picture is None.
+    payload = {"id": "42", "username": "legacy_user", "avatar": None, "email": "x@y.z"}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=payload)
+
+    provider = DiscordOAuthProvider(
+        client_id="id", client_secret="secret", redirect_uris=["http://localhost/cb"]
+    )
+    provider._http_client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+
+    info = await provider.get_user_info({"access_token": "tok"})
+    assert info.name == "legacy_user"
+    assert info.picture is None
+    assert info.email_verified is False  # `verified` absent -> False
+    await provider.aclose()
+
+
+# ── GitLab provider ──────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_gitlab_authorization_url_includes_pkce_and_scopes(config):
+    from fastapi_fullauth.core.tokens import TokenEngine
+    from fastapi_fullauth.flows.oauth import build_authorization_url
+    from fastapi_fullauth.oauth.gitlab import GitLabOAuthProvider
+
+    engine = TokenEngine(config=config)
+    provider = GitLabOAuthProvider(
+        client_id="id", client_secret="secret", redirect_uris=["http://localhost/cb"]
+    )
+    url = build_authorization_url(engine, provider, "http://localhost/cb")
+    assert url.startswith("https://gitlab.com/oauth/authorize?")
+    assert "code_challenge=" in url
+    assert "code_challenge_method=S256" in url
+    assert "scope=openid+email+profile" in url
+    await provider.aclose()
+
+
+@pytest.mark.asyncio
+async def test_gitlab_userinfo_rejects_token_response_without_access_token():
+    from fastapi_fullauth.exceptions import OAuthProviderError
+    from fastapi_fullauth.oauth.gitlab import GitLabOAuthProvider
+
+    provider = GitLabOAuthProvider(
+        client_id="id", client_secret="secret", redirect_uris=["http://localhost/cb"]
+    )
+    with pytest.raises(OAuthProviderError, match="token exchange failed"):
+        await provider.get_user_info({})  # no access_token, must not KeyError
+    await provider.aclose()
+
+
+@pytest.mark.asyncio
+async def test_gitlab_userinfo_maps_fields():
+    import httpx
+
+    from fastapi_fullauth.oauth.gitlab import GitLabOAuthProvider
+
+    # GitLab OIDC userinfo (sub can arrive as an int; it must be stringified).
+    payload = {
+        "sub": 12345,
+        "name": "Ada Lovelace",
+        "email": "ada@gitlab.com",
+        "email_verified": True,
+        "picture": "https://gitlab.com/uploads/avatar.png",
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert str(request.url) == "https://gitlab.com/oauth/userinfo"
+        assert request.headers["Authorization"] == "Bearer tok"
+        return httpx.Response(200, json=payload)
+
+    provider = GitLabOAuthProvider(
+        client_id="id", client_secret="secret", redirect_uris=["http://localhost/cb"]
+    )
+    provider._http_client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+
+    info = await provider.get_user_info({"access_token": "tok"})
+    assert info.provider == "gitlab"
+    assert info.provider_user_id == "12345"  # stringified
+    assert info.email == "ada@gitlab.com"
+    assert info.email_verified is True
+    assert info.name == "Ada Lovelace"
+    assert info.picture == "https://gitlab.com/uploads/avatar.png"
+    await provider.aclose()

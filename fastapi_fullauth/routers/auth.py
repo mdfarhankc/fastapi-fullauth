@@ -18,8 +18,8 @@ from fastapi_fullauth.exceptions import (
 )
 from fastapi_fullauth.flows.login import login
 from fastapi_fullauth.flows.logout import logout
+from fastapi_fullauth.flows.refresh import refresh
 from fastapi_fullauth.flows.register import register
-from fastapi_fullauth.flows.tokens import issue_token_pair
 from fastapi_fullauth.routers._schemas import (
     LoginResponse,
     LogoutRequest,
@@ -60,10 +60,10 @@ def create_auth_router(
         status_code=201,
         response_model=user_schema | message_response_schema,
         description=(
-            "Create a new user account. Returns 201 + user by default. "
-            "Setting `PREVENT_REGISTRATION_ENUMERATION=True` makes it always "
-            "return 202 + a generic message so attackers can't probe whether "
-            "an email is registered."
+            "Create a new user account. Returns 202 + a generic message by "
+            "default (`PREVENT_REGISTRATION_ENUMERATION=True`) so attackers "
+            "can't probe whether an email is registered. Set it to `False` "
+            "for 201 + the created user, and 409 on a duplicate email."
         ),
     )
     async def register_route(
@@ -123,9 +123,8 @@ def create_auth_router(
         identifier: str = fields[login_field]
         password: str = fields["password"]
         user = await fullauth.adapter.get_user_by_field(login_field, identifier)
-        extra_claims = await fullauth.get_custom_claims(user) if user else {}
         user_agent, ip_address = request_session_metadata(
-            request, fullauth.config.TRUSTED_PROXY_HEADERS
+            request, fullauth.config.TRUSTED_PROXY_HEADERS, fullauth.config.TRUSTED_PROXY_COUNT
         )
 
         try:
@@ -136,7 +135,7 @@ def create_auth_router(
                 password=password,
                 login_field=login_field,
                 lockout=fullauth.lockout,
-                extra_claims=extra_claims,
+                extra_claims_provider=fullauth.get_custom_claims,
                 user=user,
                 hash_algorithm=fullauth.config.PASSWORD_HASH_ALGORITHM,
                 prevent_timing_attacks=fullauth.config.PREVENT_LOGIN_TIMING_ATTACKS,
@@ -181,89 +180,22 @@ def create_auth_router(
         if refresh_token is None:
             raise CREDENTIALS_EXCEPTION
 
-        try:
-            payload = await fullauth.token_engine.decode_token(
-                refresh_token, expected_type="refresh"
-            )
-        except TokenError:
-            raise CREDENTIALS_EXCEPTION
+        user_agent, ip_address = request_session_metadata(
+            request, fullauth.config.TRUSTED_PROXY_HEADERS, fullauth.config.TRUSTED_PROXY_COUNT
+        )
 
         try:
-            user_id = UUID(payload.sub)
-        except ValueError:
-            raise CREDENTIALS_EXCEPTION
-
-        user = await fullauth.adapter.get_user_by_id(user_id)
-        if user is None or not user.is_active:
-            raise CREDENTIALS_EXCEPTION
-
-        stored = await fullauth.adapter.get_refresh_token(refresh_token)
-        # Defence in depth: the refresh JWT may decode cleanly (valid signature,
-        # unexpired) and still not correspond to a stored session; e.g. an old
-        # row pruned, or a token issued before the row was deleted. Reject so
-        # signed-but-unbacked tokens can't mint new access tokens.
-        if stored is None:
-            raise CREDENTIALS_EXCEPTION
-
-        roles = await fullauth.adapter.get_user_roles(user.id)
-        extra_claims = await fullauth.get_custom_claims(user)
-        uid = str(user.id)
-
-        if fullauth.config.REFRESH_TOKEN_ROTATION:
-            user_agent, ip_address = request_session_metadata(
-                request, fullauth.config.TRUSTED_PROXY_HEADERS
+            tokens = await refresh(
+                fullauth.adapter,
+                fullauth.token_engine,
+                refresh_token,
+                extra_claims_provider=fullauth.get_custom_claims,
+                user_agent=user_agent,
+                ip_address=ip_address,
             )
-            # Revoking the old token and storing its replacement must be atomic:
-            # a crash between them would revoke the family's only live token and
-            # persist no successor, silently orphaning the session. Run both in
-            # one transaction; the compare-and-swap still picks the winner via the
-            # UPDATE rowcount (a flush inside the transaction exposes it).
-            won = False
-            tokens: TokenPair | None = None
-            async with fullauth.adapter.transaction() as tx:
-                # Exactly one concurrent caller flips the token not-revoked →
-                # revoked. The loser sees rowcount=0 - reuse attack or lost race -
-                # and burns the family below.
-                won = await tx.revoke_refresh_token(refresh_token)
-                if won:
-                    tokens = await issue_token_pair(
-                        tx,
-                        fullauth.token_engine,
-                        user,
-                        extra_claims=extra_claims,
-                        family_id=payload.family_id,
-                        roles=roles,
-                        user_agent=user_agent,
-                        ip_address=ip_address,
-                    )
-
-            if not won or tokens is None:
-                logger.error(
-                    "refresh token reuse/concurrent use; revoking family: %s",
-                    stored.family_id,
-                )
-                await fullauth.adapter.revoke_refresh_token_family(stored.family_id)
-                raise CREDENTIALS_EXCEPTION
-
-            await fullauth.token_engine.blacklist_token(
-                payload.jti,
-                ttl_seconds=fullauth.config.REFRESH_TOKEN_EXPIRE_DAYS * 86400,
-            )
-            return await write_tokens(response, fullauth, tokens)
-
-        if stored.revoked:
+        except (TokenError, AuthenticationError):
             raise CREDENTIALS_EXCEPTION
-        access = fullauth.token_engine.create_access_token(
-            user_id=uid,
-            roles=roles,
-            extra=extra_claims,
-            family_id=payload.family_id,
-        )
-        tokens = TokenPair(
-            access_token=access,
-            refresh_token=refresh_token,
-            expires_in=fullauth.config.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
-        )
+
         return await write_tokens(response, fullauth, tokens)
 
     @router.post(
@@ -280,6 +212,12 @@ def create_auth_router(
         try:
             payload = await fullauth.token_engine.decode_token(token, expected_type="access")
         except TokenError:
+            raise CREDENTIALS_EXCEPTION
+
+        # A session token must not carry a purpose (password-reset / email-verify
+        # tokens are access-typed but purpose-scoped); reject them as the session
+        # dependencies do, so a purpose-scoped token can't be used to log out.
+        if payload.extra.get("purpose"):
             raise CREDENTIALS_EXCEPTION
 
         refresh_token = await resolve_refresh_token(

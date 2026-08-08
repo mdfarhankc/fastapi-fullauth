@@ -46,7 +46,7 @@ Both must pass before submitting a PR. CI enforces this.
 
 - Bug fixes
 - New OAuth providers (Apple, Discord, Microsoft, etc.)
-- Adapter implementations (MongoDB, Tortoise ORM, etc.)
+- Adapter implementations for other data stores
 - Documentation improvements
 - Test coverage improvements
 - Performance improvements

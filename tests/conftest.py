@@ -88,6 +88,11 @@ async def db():
 def config():
     return FullAuthConfig(
         SECRET_KEY="test-secret-key-that-is-long-enough-32b",
+        # Both default to True (secure by default). Tests opt out so register
+        # returns the created user and failed logins skip the dummy hash;
+        # dedicated tests in test_auth.py cover the enabled behavior.
+        PREVENT_REGISTRATION_ENUMERATION=False,
+        PREVENT_LOGIN_TIMING_ATTACKS=False,
     )
 
 

@@ -151,17 +151,14 @@ async def test_something(client, token_for, adapter):
     assert r.status_code == 200
 ```
 
-## Testing opt-in anti-enumeration
+## Testing anti-enumeration
 
-The default for `PREVENT_REGISTRATION_ENUMERATION` is `False`. Flip it in a local config to test the anti-enum path:
+`PREVENT_REGISTRATION_ENUMERATION` defaults to `True`: register always answers 202 + a generic message. Tests that want the created user back should set it to `False` in their config; the anti-enum path itself tests like this:
 
 ```python
 async def test_register_hides_existence():
     fullauth = FullAuth(
-        config=FullAuthConfig(
-            SECRET_KEY="...",
-            PREVENT_REGISTRATION_ENUMERATION=True,
-        ),
+        config=FullAuthConfig(SECRET_KEY="..."),
         adapter=adapter,
     )
     # ... wire up app + client ...

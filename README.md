@@ -10,6 +10,7 @@
 
 <p align="center">
   <a href="https://pypi.org/project/fastapi-fullauth/"><img src="https://img.shields.io/pypi/v/fastapi-fullauth?color=009688&label=pypi" alt="PyPI"></a>
+  <a href="https://pepy.tech/project/fastapi-fullauth"><img src="https://img.shields.io/pepy/dt/fastapi-fullauth?color=009688&label=downloads" alt="Downloads"></a>
   <a href="https://pypi.org/project/fastapi-fullauth/"><img src="https://img.shields.io/pypi/pyversions/fastapi-fullauth?color=009688" alt="Python"></a>
   <a href="https://github.com/mdfarhankc/fastapi-fullauth/actions/workflows/ci.yml"><img src="https://github.com/mdfarhankc/fastapi-fullauth/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/license-MIT-009688" alt="License"></a>
@@ -24,22 +25,23 @@
 
 ---
 
-A complete, async-native authentication and authorization system for **FastAPI** - production-ready and pluggable. JWT access/refresh tokens with rotation, Argon2 password hashing, email verification, OAuth2 social login, passkeys, session management, and role-based access control, all out of the box. Bring your own database with the SQLModel or SQLAlchemy adapter, and opt into only the features you need.
+A complete, async-native authentication and authorization system for **FastAPI** - production-ready and pluggable. JWT access/refresh tokens with rotation, Argon2 password hashing, email verification, OAuth2 social login, passkeys, session management, and role-based access control, all out of the box. Bring your own database with the SQLModel, SQLAlchemy, Tortoise ORM, or Beanie (MongoDB) adapter, and opt into only the features you need.
 
 ## Features
 
 - **JWT access + refresh tokens** with configurable expiry
-- **Refresh token rotation** with reuse detection; revokes entire session family on replay
+- **Refresh token rotation** with reuse detection; revokes entire session family on replay. Tokens are stored as sha256 digests, so a leaked database exposes no usable sessions
+- **Secure by default**: registration anti-enumeration, login timing-attack defense, account lockout, and spoof-resistant client IP resolution are all on out of the box
 - **Session management**: list active sessions (device, IP, last used), revoke one device, or sign out everywhere else
-- **Password hashing** via Argon2id (default) or bcrypt, with transparent rehashing
+- **Password hashing** via Argon2id (default) or bcrypt, offloaded to a worker thread, with transparent rehashing
 - **Email verification** and **password reset** flows with event hooks
 - **Passkey (WebAuthn)**: passwordless login with fingerprint, Face ID, security keys
-- **OAuth2 social login**: Google and GitHub, with multi-redirect-URI support
-- **Role-based access control**: `current_user`, `require_role()`, `require_permission()`
+- **OAuth2 social login**: Google, GitHub, Discord, and GitLab built in; add your own provider by subclassing `StandardOAuthProvider`
+- **Role-based access control**: `current_user`, `require_role()`, `require_permission()`, and typed dependencies for custom user schemas
 - **Rate limiting**: per-route auth limits + global middleware (memory or Redis)
 - **CSRF protection** and **security headers** middleware
 - **Bearer or cookie transport**: opt into HttpOnly cookies that carry both access and refresh tokens, out of JavaScript's reach; bearer is the default
-- **Pluggable adapters**: SQLModel, SQLAlchemy, or [write your own](https://mdfarhankc.github.io/fastapi-fullauth/adapters/custom/) for any data store
+- **Pluggable adapters**: SQLModel, SQLAlchemy, Tortoise ORM, Beanie (MongoDB), or [write your own](https://mdfarhankc.github.io/fastapi-fullauth/adapters/custom/) for any data store
 - **Generic type parameters**: define your own schemas with full IDE support and type safety
 - **Composable routers**: include only the route groups you need
 - **Event hooks**: `after_register`, `after_login`, `send_verification_email`, etc.
@@ -72,12 +74,14 @@ pip install "fastapi-fullauth[sqlalchemy,oauth,redis]"
 
 | Extra | Adds |
 |-------|------|
-| `sqlmodel` / `sqlalchemy` | ORM adapter + Alembic (pick one) |
+| `sqlmodel` / `sqlalchemy` | SQL ORM adapter + Alembic (pick one) |
+| `tortoise` | Tortoise ORM adapter (async SQL) |
+| `beanie` | Beanie adapter (MongoDB) |
 | `redis` | Redis backends for token blacklist, lockout, rate limiting, passkey challenges |
-| `oauth` | OAuth2 social login (Google, GitHub) |
+| `oauth` | OAuth2 social login (Google, GitHub, Discord, GitLab) |
 | `passkey` | Passkey / WebAuthn support |
 | `bcrypt` | bcrypt password hashing (Argon2id is the default and needs no extra) |
-| `sqlmodel-standard` / `sqlalchemy-standard` | One adapter plus **all** of the above |
+| `sqlmodel-standard` / `sqlalchemy-standard` / `tortoise-standard` / `beanie-standard` | One adapter plus **all** of the above |
 
 > Quotes around the package spec keep shells like zsh from globbing the `[extras]`.
 
@@ -139,6 +143,8 @@ fullauth.bind(app)  # required for dependencies to work
 app.include_router(fullauth.auth_router, prefix="/api/v1/auth")
 app.include_router(fullauth.profile_router, prefix="/api/v1/auth")
 ```
+
+`bind()` registers no shutdown cleanup (only `init_app()` wraps the lifespan), so on this path call `await fullauth.aclose()` in your shutdown to release pooled Redis connections and OAuth HTTP clients.
 
 | Router | Routes |
 |--------|--------|
@@ -339,14 +345,13 @@ Requires `httpx`: `pip install "fastapi-fullauth[oauth]"`
 ## Event hooks
 
 ```python
+@fullauth.hooks.on("after_register")
 async def welcome(user):
     await send_email(user.email, "Welcome!")
 
+@fullauth.hooks.on("send_verification_email")
 async def send_verify(email, token):
     await send_email(email, f"Verify: https://myapp.com/verify?token={token}")
-
-fullauth.hooks.on("after_register", welcome)
-fullauth.hooks.on("send_verification_email", send_verify)
 ```
 
 Events: `after_register`, `after_login`, `after_logout`, `after_password_change`, `after_password_reset`, `after_email_verify`, `send_verification_email`, `send_password_reset_email`, `after_oauth_login`, `after_oauth_register`

@@ -94,11 +94,18 @@ from fastapi_fullauth.dependencies import (
     current_user,                   # any authenticated user
     current_active_verified_user,   # verified email required
     current_superuser,              # superuser required
+    current_token_payload,          # decoded access-token payload, no DB hit
     get_fullauth,                   # access FullAuth instance in a dependency
     require_role,                   # require_role("admin")
     require_permission,             # require_permission("posts:create")
+    CurrentUser, VerifiedUser, SuperUser,  # ready-made Annotated types (default UserSchema)
+    typed_current_user,             # current_user typed as your UserSchema subclass
+    typed_verified_user,
+    typed_superuser,
 )
 ```
+
+With a custom user schema: `CurrentUser = Annotated[MyUser, Depends(typed_current_user(MyUser))]` - runtime-identical to `current_user`, but custom fields type-check.
 
 Usage:
 
@@ -202,6 +209,9 @@ from fastapi_fullauth.protection.challenges import (
 ```python
 from fastapi_fullauth.core.tokens import TokenEngine, create_blacklist
 from fastapi_fullauth.core.crypto import hash_password, verify_password, password_needs_rehash
+# Async wrappers offload the CPU-bound hashing to a worker thread so it does not
+# block the event loop; use these in async code (all built-in flows do):
+from fastapi_fullauth.core.crypto import ahash_password, averify_password
 from fastapi_fullauth.core.blacklist import (
     TokenBlacklist,
     InMemoryTokenBlacklist,
@@ -307,7 +317,7 @@ Grouped for readability. All read from env with `FULLAUTH_` prefix.
 
 ### Login
 - `LOGIN_FIELD: str = "email"`
-- `PREVENT_LOGIN_TIMING_ATTACKS: bool = False`  (dummy argon2 verify on unknown-user path)
+- `PREVENT_LOGIN_TIMING_ATTACKS: bool = True`  (dummy verify on unknown-user path, matches configured algorithm)
 
 ### Lockout
 - `LOCKOUT_ENABLED: bool = True`
@@ -343,7 +353,7 @@ Grouped for readability. All read from env with `FULLAUTH_` prefix.
 - `OAUTH_PKCE_ENABLED: bool = True`
 
 ### Registration hardening
-- `PREVENT_REGISTRATION_ENUMERATION: bool = False`
+- `PREVENT_REGISTRATION_ENUMERATION: bool = True`  (register always answers 202 + generic message)
 
 ### Passkeys
 - `PASSKEY_ENABLED: bool = False`

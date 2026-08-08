@@ -26,9 +26,9 @@ fullauth = FullAuth(
 | Method | Description |
 |--------|-------------|
 | `init_app(app, *, include_routers=None)` | Bind FullAuth to a FastAPI app and mount routes. `include_routers=None` (default) registers every available router; pass a list (e.g. `["auth", "profile"]`) to register only those. Does **not** wire middleware. |
-| `bind(app)` | Bind FullAuth to a FastAPI app (sets `app.state.fullauth`). Required when using composable routers without `init_app()`. |
+| `bind(app)` | Bind FullAuth to a FastAPI app (sets `app.state.fullauth`). Required when using composable routers without `init_app()`. Registers no shutdown cleanup - call `await fullauth.aclose()` yourself. |
 | `enforce_rate_limit(request, route_name)` | Resolve the client IP and apply the auth rate limit for `route_name`. |
-| `aclose()` | Release pooled resources (Redis connections, OAuth HTTP clients). Registered on app shutdown by `init_app()`; call it yourself under a custom `lifespan`. Idempotent. |
+| `aclose()` | Release pooled resources (Redis connections, OAuth HTTP clients). Run on app shutdown by `init_app()` (which wraps your `lifespan`), so it fires even under a custom `lifespan`. Idempotent. |
 | `hooks.on(event, callback)` | Register an event hook |
 
 ### Properties
@@ -138,9 +138,16 @@ from fastapi_fullauth.dependencies import (
     current_user,                   # any authenticated user
     current_active_verified_user,   # verified email required
     current_superuser,              # superuser required
+    current_token_payload,          # decoded access-token payload, no DB hit
     get_fullauth,                   # access the FullAuth instance in a dependency
     require_role,                   # require_role("admin", "editor")
     require_permission,             # require_permission("posts:edit", "posts:delete")
+    CurrentUser,                    # Annotated[UserSchema, Depends(current_user)]
+    VerifiedUser,                   # Annotated aliases for the default UserSchema
+    SuperUser,
+    typed_current_user,             # current_user typed as your UserSchema subclass
+    typed_verified_user,            # same for current_active_verified_user
+    typed_superuser,                # same for current_superuser
 )
 ```
 

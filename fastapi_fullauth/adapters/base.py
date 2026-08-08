@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import Any, Generic, Protocol, cast
+from typing import Any, Generic, Literal, Protocol, cast
 
 from fastapi_fullauth.types import (
     CreateUserSchemaType,
@@ -12,6 +12,8 @@ from fastapi_fullauth.types import (
     UserID,
     UserSchemaType,
 )
+
+AdapterFeature = Literal["role", "permission", "oauth", "passkey", "session"]
 
 
 class _SupportsUserRoles(Protocol):
@@ -103,11 +105,10 @@ class AbstractUserAdapter(ABC, Generic[UserSchemaType, CreateUserSchemaType]):
         """Get user's roles. Returns [] by default. Override or use RoleAdapterMixin."""
         return []
 
-    def supports_feature(self, feature: str) -> bool:
+    def supports_feature(self, feature: AdapterFeature) -> bool:
         """Whether this adapter can actually serve ``feature``.
 
-        ``feature`` is one of ``"role"``, ``"permission"``, ``"oauth"``,
-        ``"passkey"``, ``"session"``. FullAuth uses this to decide which routers
+        FullAuth uses this to decide which routers
         to register and to warn at startup about features configured against an
         adapter that can't serve them.
 

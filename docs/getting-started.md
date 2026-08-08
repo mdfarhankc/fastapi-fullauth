@@ -98,14 +98,13 @@ async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         await conn.run_sync(SQLModel.metadata.create_all)
     yield
-    await fullauth.aclose()
     await engine.dispose()
 
 app = FastAPI(lifespan=lifespan)
 fullauth.init_app(app)
 ```
 
-`init_app()`'s shutdown handler does not run under a custom `lifespan`, so call `await fullauth.aclose()` yourself to release pooled Redis connections and OAuth HTTP clients.
+`init_app()` wraps your `lifespan` so `fullauth.aclose()` runs on shutdown automatically, releasing pooled Redis connections and OAuth HTTP clients - no manual call needed.
 
 That's it. Start the server and you have a full auth system:
 
@@ -131,6 +130,8 @@ fullauth.bind(app)  # required for dependencies to work
 app.include_router(fullauth.auth_router, prefix="/api/v1/auth")
 app.include_router(fullauth.profile_router, prefix="/api/v1/auth")
 ```
+
+`bind()` does not register shutdown cleanup (only `init_app()` wraps the lifespan), so on this path call `await fullauth.aclose()` in your lifespan's shutdown to release pooled Redis connections and OAuth HTTP clients.
 
 ### Middleware
 
@@ -167,6 +168,8 @@ curl -X POST http://localhost:8000/api/v1/auth/register \
   -H "Content-Type: application/json" \
   -d '{"email": "user@example.com", "password": "securepass123"}'
 ```
+
+This answers `202` with a generic message whether or not the email was already registered (anti-enumeration, on by default); the account is created when the email is new. Set `PREVENT_REGISTRATION_ENUMERATION=False` to get `201` + the created user instead.
 
 **Login:**
 
@@ -227,7 +230,7 @@ See [Protected Routes](auth/dependencies.md) for all dependency types.
 
 - **[Architecture](architecture.md)**: understand how the library works (tokens, adapters, protection layers)
 - **[Configuration](configuration.md)**: all config options with production examples
-- **[OAuth2 Social Login](oauth.md)**: add Google/GitHub login
+- **[OAuth2 Social Login](oauth.md)**: add Google, GitHub, Discord, GitLab login
 - **[Passkeys](passkeys.md)**: passwordless login with biometrics
 - **[Event Hooks](auth/hooks.md)**: send emails, log events, sync external systems
 - **[Rate Limiting](security/rate-limiting.md)**: protect your endpoints

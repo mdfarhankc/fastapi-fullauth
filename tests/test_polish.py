@@ -224,3 +224,133 @@ def test_adapter_rejects_permission_without_role():
             permission_model=Permission,
             role_permission_model=RolePermission,
         )
+
+
+# ── Redis backends share one client per URL ─────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_redis_backends_share_one_client_per_url():
+    """Backends built for the same URL must reuse one client/pool; the client
+    closes only when the last holder releases it, and double-close is safe."""
+    from fastapi_fullauth.core._redis import _clients
+    from fastapi_fullauth.core.blacklist import RedisTokenBlacklist
+    from fastapi_fullauth.protection.lockout import RedisLockoutManager
+
+    url = "redis://shared-client-test:6379/0"
+    blacklist = RedisTokenBlacklist(url)
+    lockout = RedisLockoutManager(url)
+    assert blacklist._redis is lockout._redis
+
+    await blacklist.aclose()
+    assert url in _clients  # still held by the lockout manager
+
+    await lockout.aclose()
+    assert url not in _clients
+
+    await lockout.aclose()  # double-close must not raise or disturb the registry
+    assert url not in _clients
+
+
+# ── init_app composes aclose() with a custom lifespan ───────────────
+
+
+def _memory_fullauth() -> FullAuth:
+    adapter = SQLModelAdapter(
+        session_maker=None,  # type: ignore[arg-type]
+        user_model=User,
+        refresh_token_model=RefreshToken,
+    )
+    return FullAuth(
+        config=FullAuthConfig(SECRET_KEY="test-secret-key-that-is-long-enough-32b"),
+        adapter=adapter,
+    )
+
+
+@pytest.mark.asyncio
+async def test_init_app_runs_aclose_after_custom_lifespan_teardown():
+    """A custom lifespan must not bypass aclose(): init_app wraps it, and
+    aclose() runs after the user's lifespan teardown (fullauth is the outer
+    context)."""
+    from contextlib import asynccontextmanager
+
+    events: list[str] = []
+    fullauth = _memory_fullauth()
+
+    original_aclose = fullauth.aclose
+
+    async def tracking_aclose() -> None:
+        events.append("aclose")
+        await original_aclose()
+
+    fullauth.aclose = tracking_aclose  # type: ignore[method-assign]
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        events.append("startup")
+        yield
+        events.append("shutdown")
+
+    app = FastAPI(lifespan=lifespan)
+    fullauth.init_app(app)
+
+    async with app.router.lifespan_context(app):
+        events.append("serving")
+
+    assert events == ["startup", "serving", "shutdown", "aclose"]
+
+
+@pytest.mark.asyncio
+async def test_init_app_runs_aclose_with_default_lifespan():
+    """The wrap also works when the app has no custom lifespan."""
+    events: list[str] = []
+    fullauth = _memory_fullauth()
+
+    original_aclose = fullauth.aclose
+
+    async def tracking_aclose() -> None:
+        events.append("aclose")
+        await original_aclose()
+
+    fullauth.aclose = tracking_aclose  # type: ignore[method-assign]
+
+    app = FastAPI()
+    fullauth.init_app(app)
+
+    async with app.router.lifespan_context(app):
+        pass
+
+    assert events == ["aclose"]
+
+
+@pytest.mark.asyncio
+async def test_aclose_isolates_a_failing_resource(caplog):
+    """One resource failing to close must not leak the others: every remaining
+    resource is still closed and the error is logged, not raised."""
+    import logging
+
+    fullauth = _memory_fullauth()
+    closed: list[str] = []
+
+    async def boom() -> None:
+        raise RuntimeError("redis down")
+
+    def spy(name: str):
+        async def _aclose() -> None:
+            closed.append(name)
+
+        return _aclose
+
+    # The first resource closed fails; the others must still close.
+    fullauth.token_engine.blacklist.aclose = boom  # type: ignore[method-assign]
+    fullauth.auth_rate_limiter.aclose = spy("rate_limiter")  # type: ignore[method-assign]
+    if fullauth.lockout is not None:
+        fullauth.lockout.aclose = spy("lockout")  # type: ignore[method-assign]
+
+    with caplog.at_level(logging.WARNING, logger="fastapi_fullauth"):
+        await fullauth.aclose()  # must not raise
+
+    assert "rate_limiter" in closed
+    if fullauth.lockout is not None:
+        assert "lockout" in closed
+    assert any("token blacklist" in record.message for record in caplog.records)

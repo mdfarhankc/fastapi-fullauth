@@ -1,6 +1,6 @@
 # OAuth2 Social Login
 
-Add Google and GitHub login with a few config lines. Users can link multiple providers alongside email/password login.
+Add Google, GitHub, Discord, and GitLab login with a few config lines. Users can link multiple providers alongside email/password login.
 
 ## Installation
 
@@ -14,6 +14,8 @@ pip install fastapi-fullauth[oauth]
 from fastapi_fullauth import FullAuth, FullAuthConfig
 from fastapi_fullauth.oauth.google import GoogleOAuthProvider
 from fastapi_fullauth.oauth.github import GitHubOAuthProvider
+from fastapi_fullauth.oauth.discord import DiscordOAuthProvider
+from fastapi_fullauth.oauth.gitlab import GitLabOAuthProvider
 
 fullauth = FullAuth(
     adapter=adapter,
@@ -30,6 +32,16 @@ fullauth = FullAuth(
         GitHubOAuthProvider(
             client_id="your-github-client-id",
             client_secret="your-github-secret",
+            redirect_uris=["http://localhost:3000/auth/callback"],
+        ),
+        DiscordOAuthProvider(
+            client_id="your-discord-client-id",
+            client_secret="your-discord-secret",
+            redirect_uris=["http://localhost:3000/auth/callback"],
+        ),
+        GitLabOAuthProvider(
+            client_id="your-gitlab-application-id",
+            client_secret="your-gitlab-secret",
             redirect_uris=["http://localhost:3000/auth/callback"],
         ),
     ],
@@ -133,7 +145,7 @@ config = FullAuthConfig(
 
 **Token storage**: provider access and refresh tokens are stored in the `oauth_accounts` table and updated on each login.
 
-**PKCE**: PKCE (S256) is enabled by default for providers that support it (Google, GitHub) via the `OAUTH_PKCE_ENABLED` setting. The flow stays stateless: the `code_verifier` is derived from the signed state token's nonce keyed by `SECRET_KEY`, so it never travels through the browser. Treat this as defense-in-depth for a confidential client that already sends a `client_secret`, not as a replacement for binding the OAuth state to the browser session. A custom provider opts in by setting `supports_pkce = True` and accepting the `code_challenge`/`code_verifier` keyword arguments.
+**PKCE**: PKCE (S256) is enabled by default for providers that support it (Google, GitHub, Discord, GitLab) via the `OAUTH_PKCE_ENABLED` setting. The flow stays stateless: the `code_verifier` is derived from the signed state token's nonce keyed by `SECRET_KEY`, so it never travels through the browser. Treat this as defense-in-depth for a confidential client that already sends a `client_secret`, not as a replacement for binding the OAuth state to the browser session. A custom provider opts in by setting `supports_pkce = True` and accepting the `code_challenge`/`code_verifier` keyword arguments.
 
 ### Known limitations
 
@@ -158,41 +170,40 @@ This is blocked if the OAuth account is the user's only login method (no passwor
 
 ## Adding your own provider
 
-Subclass `OAuthProvider` and implement three methods:
+Most identity providers follow the standard OAuth2 authorization-code wire format. For those, subclass `StandardOAuthProvider`: set the three endpoints, and implement only the userinfo mapping. You get the authorize URL, PKCE, code exchange, and uniform error handling for free.
 
 ```python
-from fastapi_fullauth.oauth.base import OAuthProvider, OAuthUserInfo
+from fastapi_fullauth.oauth import StandardOAuthProvider
+from fastapi_fullauth.types import OAuthUserInfo
 
-class MyProvider(OAuthProvider):
+class MyProvider(StandardOAuthProvider):
     name = "myprovider"
+    display_name = "MyProvider"  # used in log and error messages
+    authorization_endpoint = "https://auth.example.com/oauth/authorize"
+    token_endpoint = "https://auth.example.com/oauth/token"
+    userinfo_endpoint = "https://auth.example.com/oauth/userinfo"
 
     @property
     def default_scopes(self) -> list[str]:
         return ["openid", "email"]
 
-    def get_authorization_url(self, state: str, redirect_uri: str) -> str:
-        # build and return the provider's authorization URL
-        ...
-
-    async def exchange_code(self, code: str, redirect_uri: str) -> dict:
-        # POST the code to the provider's token endpoint
-        # return {"access_token": "...", "refresh_token": "...", ...}
-        ...
-
-    async def get_user_info(self, tokens: dict) -> OAuthUserInfo:
-        # fetch user info from the provider using the access token
+    async def parse_user_info(self, data: dict, headers: dict) -> OAuthUserInfo:
+        if not data.get("sub"):
+            raise self._invalid_user_info("sub")
         return OAuthUserInfo(
             provider=self.name,
-            provider_user_id="...",
-            email="user@example.com",
-            email_verified=True,
-            name="User Name",
-            picture=None,
-            raw={},  # full provider response
+            provider_user_id=str(data["sub"]),
+            email=data.get("email"),
+            email_verified=bool(data.get("email_verified", False)),
+            name=data.get("name"),
+            picture=data.get("picture"),
+            raw=data,
         )
 ```
 
-See `GoogleOAuthProvider` and `GitHubOAuthProvider` in the source for complete examples.
+Providers with wire-format quirks override the small `_authorize_params` / `_token_request_body` hooks; see `GitHubOAuthProvider` in the source (GitHub's endpoints take neither `response_type` nor `grant_type`). `GoogleOAuthProvider` shows adding extra authorize params via `extra_authorize_params`.
+
+If your provider deviates from the standard flow entirely, subclass the bare `OAuthProvider` ABC instead and implement `get_authorization_url`, `exchange_code`, and `get_user_info` yourself.
 
 ## Event hooks
 
@@ -201,20 +212,18 @@ Two hooks fire during OAuth flows:
 - `after_oauth_login` fires on every OAuth login (new and returning users):
 
 ```python
+@fullauth.hooks.on("after_oauth_login")
 async def on_oauth_login(user, provider, is_new_user):
     if is_new_user:
         print(f"New user via {provider}: {user.email}")
-
-fullauth.hooks.on("after_oauth_login", on_oauth_login)
 ```
 
 - `after_oauth_register` fires only when a new user is created via OAuth, and includes the provider's user info:
 
 ```python
+@fullauth.hooks.on("after_oauth_register")
 async def on_oauth_register(user, user_info):
     print(f"New OAuth user: {user.email}, provider data: {user_info.raw}")
-
-fullauth.hooks.on("after_oauth_register", on_oauth_register)
 ```
 
 The `after_register` hook also fires for new OAuth users.
@@ -243,3 +252,27 @@ Default scopes: `read:user`, `user:email`
 
 !!! note
     GitHub requires a separate API call to fetch the user's verified primary email. The library handles this automatically.
+
+### Discord
+
+1. Go to the [Discord Developer Portal](https://discord.com/developers/applications)
+2. Click **New Application**, name it, and open the app
+3. Under **OAuth2**, add your redirect URI under **Redirects**
+4. Copy the **Client ID** and **Client Secret** from the OAuth2 page
+
+Default scopes: `identify`, `email`
+
+!!! note
+    Discord returns the display name as `global_name` (falling back to `username`) and the avatar as a hash; the library builds the CDN avatar URL for you. No app review is required.
+
+### GitLab
+
+1. Go to [GitLab > Preferences > Applications](https://gitlab.com/-/profile/applications) (or a group/instance application for org-wide use)
+2. Set the **Redirect URI** to your callback URL
+3. Select the **`openid`**, **`email`**, and **`profile`** scopes
+4. Save and copy the **Application ID** and **Secret**
+
+Default scopes: `openid`, `email`, `profile`
+
+!!! note
+    These defaults target `gitlab.com`. For a self-hosted GitLab, subclass `GitLabOAuthProvider` and override `authorization_endpoint`, `token_endpoint`, and `userinfo_endpoint` with your instance URL.
