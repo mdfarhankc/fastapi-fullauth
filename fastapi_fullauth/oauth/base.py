@@ -169,9 +169,7 @@ class StandardOAuthProvider(OAuthProvider):
         }
         resp = await self._client().get(self.userinfo_endpoint, headers=headers)
         if resp.status_code != 200:
-            self._logger.error(
-                "%s userinfo failed (HTTP %s)", self.display_name, resp.status_code
-            )
+            self._logger.error("%s userinfo failed (HTTP %s)", self.display_name, resp.status_code)
             raise OAuthProviderError(f"Failed to fetch user info from {self.display_name}")
         return await self.parse_user_info(resp.json(), headers)
 
@@ -180,9 +178,7 @@ class StandardOAuthProvider(OAuthProvider):
         return OAuthProviderError(f"Failed to fetch user info from {self.display_name}")
 
     @abstractmethod
-    async def parse_user_info(
-        self, data: dict[str, Any], headers: dict[str, str]
-    ) -> OAuthUserInfo:
+    async def parse_user_info(self, data: dict[str, Any], headers: dict[str, str]) -> OAuthUserInfo:
         """Map the provider's userinfo payload to :class:`OAuthUserInfo`.
 
         ``headers`` carries the authenticated headers used for the userinfo

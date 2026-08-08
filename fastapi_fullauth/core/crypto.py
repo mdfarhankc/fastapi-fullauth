@@ -19,6 +19,7 @@ def hash_refresh_token(token: str) -> str:
     """
     return hashlib.sha256(token.encode()).hexdigest()
 
+
 _BCRYPT_MAX_BYTES = 72
 # bcrypt hashes from other implementations or older versions use $2a$/$2y$;
 # recognize all of them so imported password stores keep verifying

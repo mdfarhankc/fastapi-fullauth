@@ -321,6 +321,7 @@ async def test_refresh_rotation_is_atomic_on_store_failure(client, login_tokens)
     """If persisting the new refresh token fails mid-rotation, the whole rotation
     must roll back so the old token isn't left revoked-with-no-successor (a
     silently orphaned session). The old token must remain usable."""
+    import importlib
     from unittest.mock import patch
 
     async def _boom(*args, **kwargs):
@@ -328,8 +329,11 @@ async def test_refresh_rotation_is_atomic_on_store_failure(client, login_tokens)
 
     old_refresh = login_tokens["refresh_token"]
 
+    # Patch via the module: the re-exported `refresh` function shadows its module name.
+    refresh_flow = importlib.import_module("fastapi_fullauth.flows.refresh")
+
     with (
-        patch("fastapi_fullauth.flows.refresh.issue_token_pair", _boom),
+        patch.object(refresh_flow, "issue_token_pair", _boom),
         pytest.raises(RuntimeError),
     ):
         await client.post(

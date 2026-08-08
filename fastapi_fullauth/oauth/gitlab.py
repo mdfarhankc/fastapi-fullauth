@@ -17,9 +17,7 @@ class GitLabOAuthProvider(StandardOAuthProvider):
     def default_scopes(self) -> list[str]:
         return ["openid", "email", "profile"]
 
-    async def parse_user_info(
-        self, data: dict[str, Any], headers: dict[str, str]
-    ) -> OAuthUserInfo:
+    async def parse_user_info(self, data: dict[str, Any], headers: dict[str, str]) -> OAuthUserInfo:
         if not data.get("sub"):
             raise self._invalid_user_info("sub")
 

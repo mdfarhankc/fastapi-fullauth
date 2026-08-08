@@ -30,9 +30,7 @@ class GitHubOAuthProvider(StandardOAuthProvider):
             "code": code,
         }
 
-    async def parse_user_info(
-        self, data: dict[str, Any], headers: dict[str, str]
-    ) -> OAuthUserInfo:
+    async def parse_user_info(self, data: dict[str, Any], headers: dict[str, str]) -> OAuthUserInfo:
         # GitHub needs a separate call for the verified primary email
         email = data.get("email")
         email_verified = False

@@ -16,9 +16,7 @@ class DiscordOAuthProvider(StandardOAuthProvider):
     def default_scopes(self) -> list[str]:
         return ["identify", "email"]
 
-    async def parse_user_info(
-        self, data: dict[str, Any], headers: dict[str, str]
-    ) -> OAuthUserInfo:
+    async def parse_user_info(self, data: dict[str, Any], headers: dict[str, str]) -> OAuthUserInfo:
         user_id = data.get("id")
         if not user_id:
             raise self._invalid_user_info("id")
