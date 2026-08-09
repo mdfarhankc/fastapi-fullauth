@@ -129,6 +129,8 @@ asyncio_mode = "auto"
 
 [tool.ruff]
 line-length = 100
+# Keep the formatter off Python snippets embedded in Markdown.
+extend-exclude = ["*.md"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "UP", "B", "SIM"]
