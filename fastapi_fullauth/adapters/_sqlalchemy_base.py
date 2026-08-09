@@ -106,6 +106,18 @@ class _BaseSQLAlchemyAdapter(
         self._passkey_model = passkey_model
         self._user_schema = user_schema
         self._create_user_schema = create_user_schema
+        self.validate_user_id_type()
+
+    def model_user_id_type(self) -> Any | None:
+        columns = list(self._user_model.__table__.primary_key.columns)
+        if len(columns) != 1:
+            return None
+        try:
+            return columns[0].type.python_type
+        except NotImplementedError:
+            # Custom column types need not expose a Python type; skip the check
+            # rather than reject a setup that may be perfectly valid.
+            return None
 
     # feature label -> the constructor kwargs that feature needs. Used to make
     # _require() and supports_feature() name the exact missing argument(s).

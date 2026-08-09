@@ -43,6 +43,7 @@ A complete, async-native authentication and authorization system for **FastAPI**
 - **Bearer or cookie transport**: opt into HttpOnly cookies that carry both access and refresh tokens, out of JavaScript's reach; bearer is the default
 - **Pluggable adapters**: SQLModel, SQLAlchemy, Tortoise ORM, Beanie (MongoDB), or [write your own](https://mdfarhankc.github.io/fastapi-fullauth/adapters/custom/) for any data store
 - **Generic type parameters**: define your own schemas with full IDE support and type safety
+- **Any primary key type**: UUID by default, or `UserSchema[int]` for integer and sequence keys, `UserSchema[str]` for string keys
 - **Composable routers**: include only the route groups you need
 - **Event hooks**: `after_register`, `after_login`, `send_verification_email`, etc.
 - **Custom JWT claims**: embed app-specific data in tokens

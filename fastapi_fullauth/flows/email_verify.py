@@ -1,5 +1,6 @@
 import logging
-from uuid import UUID
+
+from pydantic import ValidationError
 
 from fastapi_fullauth.adapters.base import AbstractUserAdapter
 from fastapi_fullauth.core.tokens import TokenEngine
@@ -38,8 +39,8 @@ async def verify_email(
     )
 
     try:
-        user_id = UUID(payload.sub)
-    except ValueError:
+        user_id = adapter.parse_user_id(payload.sub)
+    except (ValueError, ValidationError):
         raise TokenError("Invalid email verification token")
 
     user = await adapter.get_user_by_id(user_id)

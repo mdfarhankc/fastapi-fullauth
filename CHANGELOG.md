@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **Pluggable user id types.** The user primary key no longer has to be a UUID: `UserSchema` is now generic over its key type, so `class MyUser(UserSchema[int])` gives you integer or sequence keys and `UserSchema[str]` gives you string keys. Everything else is unchanged - `class MyUser(UserSchema)` still means UUID, so existing applications need no edits at all. Adapters gain `parse_user_id()`, which converts a token subject back to the declared key type using the user schema you already pass in, so there is nothing extra to configure. Integer keys are enumerable in a way UUIDv7 keys are not, so choose deliberately if you expose ids.
+- **Fail-fast guard for mismatched key types.** Declaring `UserSchema[int]` over a UUID table used to parse fine, miss every lookup, and return 401 on every request with nothing to point at the cause. Adapters now compare the schema's `id` type against the user model's primary key at construction and raise a `ValueError` naming both sides. Storage whose key type cannot be read reliably skips the check rather than guessing.
+
+### Changed
+
+- **`UserID` widened from `UUID` to `UUID | int | str`.** Runtime behaviour is unchanged, but this is a typing change for anyone who annotated with `UserID` - most notably custom adapter authors, since UUID-specific access such as `user_id.hex` no longer type-checks. Either parameterise on your concrete key type or narrow at the point of use; adapters that only pass `user_id` through to a query need no change.
+
 ## 0.15.0
 
 ### Added

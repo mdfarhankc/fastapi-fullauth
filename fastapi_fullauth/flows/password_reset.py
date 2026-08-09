@@ -1,6 +1,7 @@
 import logging
 from typing import Literal
-from uuid import UUID
+
+from pydantic import ValidationError
 
 from fastapi_fullauth.adapters.base import AbstractUserAdapter
 from fastapi_fullauth.core.crypto import ahash_password
@@ -48,8 +49,8 @@ async def reset_password(
         password_validator.validate(new_password)
 
     try:
-        user_id = UUID(payload.sub)
-    except ValueError:
+        user_id = adapter.parse_user_id(payload.sub)
+    except (ValueError, ValidationError):
         raise TokenError("Invalid password reset token")
 
     user = await adapter.get_user_by_id(user_id)
