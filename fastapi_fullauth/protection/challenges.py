@@ -10,7 +10,7 @@ import asyncio
 import logging
 import time
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     from fastapi_fullauth.config import FullAuthConfig
@@ -71,8 +71,8 @@ class RedisChallengeStore(ChallengeStore):
 
     async def pop(self, key: str) -> str | None:
         redis_key = f"{self._prefix}{key}"
-        challenge: str | None = await self._redis.getdel(redis_key)
-        return challenge
+        # decode_responses=True, so the bytes branch of the hint can't occur.
+        return cast("str | None", await self._redis.getdel(redis_key))
 
     async def aclose(self) -> None:
         from fastapi_fullauth.core._redis import release_redis

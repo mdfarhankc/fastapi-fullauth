@@ -134,7 +134,7 @@ class RedisRateLimiter:
         oldest = await self._redis.zrange(redis_key, 0, 0, withscores=True)
         if not oldest:
             return 0.0
-        oldest_score: float = oldest[0][1]
+        oldest_score = float(oldest[0][1])
         return max(0.0, self.window_seconds - (now - oldest_score))
 
     async def reset(self, key: str) -> None:
