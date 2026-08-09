@@ -91,6 +91,30 @@ adapter = SQLModelAdapter(
 )
 ```
 
+## Choosing a primary key type
+
+User ids are UUIDs by default. To use integer, sequence, or string keys instead, parameterise `UserSchema` with the type your table stores:
+
+```python
+class MyUserSchema(UserSchema[int]):   # integer or sequence keys
+    display_name: str = ""
+
+class MyUserSchema(UserSchema[str]):   # string keys
+    display_name: str = ""
+```
+
+That is the only wiring needed. The adapter reads the key type off the schema and converts token subjects back to it, so login, refresh, sessions, verification, and password reset all work unchanged. Writing `class MyUserSchema(UserSchema)` keeps UUID keys, which is why existing projects need no edits.
+
+The schema and your table have to agree. If they disagree the adapter raises at construction, naming both types, rather than letting every request fail as a confusing 401:
+
+```
+User id type mismatch: the user schema (MyUserSchema) declares id: int,
+but the user model (User) stores UUID.
+```
+
+!!! warning
+    Sequential integer keys are guessable, so anywhere you expose a user id becomes enumerable. UUIDv7 keys avoid that while staying index-friendly. Prefer integers when an existing schema requires them, not by default.
+
 The `UserSchema` base class defines `PROTECTED_FIELDS` - a set of fields that can't be updated via `PATCH /me`. By default this includes `id`, `email`, `hashed_password`, `is_active`, `is_verified`, `is_superuser`, `roles`, `password`, `created_at`, and `refresh_tokens`. If your custom schema adds fields that should also be protected from profile updates, extend this set.
 
 If your app uses roles, add `roles` to your custom schema:

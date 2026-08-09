@@ -1,10 +1,9 @@
 import contextlib
 import logging
 from typing import TYPE_CHECKING, cast
-from uuid import UUID
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from fastapi_fullauth.dependencies.current_user import _extract_token, get_fullauth
 from fastapi_fullauth.exceptions import (
@@ -229,8 +228,10 @@ def create_auth_router(
             adapter=fullauth.adapter,
             refresh_token=refresh_token,
         )
-        with contextlib.suppress(ValueError):
-            await fullauth.hooks.emit("after_logout", user_id=UUID(payload.sub))
+        with contextlib.suppress(ValueError, ValidationError):
+            await fullauth.hooks.emit(
+                "after_logout", user_id=fullauth.adapter.parse_user_id(payload.sub)
+            )
 
         response = Response(status_code=204)
         for backend in fullauth.backends:

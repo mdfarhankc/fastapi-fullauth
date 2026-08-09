@@ -1,7 +1,11 @@
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import Any, Generic, Literal, Protocol, cast
+from functools import cache
+from typing import Any, Generic, Literal, Protocol, TypeVar, cast
+from uuid import UUID
+
+from pydantic import TypeAdapter
 
 from fastapi_fullauth.types import (
     CreateUserSchemaType,
@@ -14,6 +18,16 @@ from fastapi_fullauth.types import (
 )
 
 AdapterFeature = Literal["role", "permission", "oauth", "passkey", "session"]
+
+
+@cache
+def _id_type_adapter(annotation: Any) -> TypeAdapter[Any]:
+    """Validator for a user id type, cached because it is built per request."""
+    return TypeAdapter(annotation)
+
+
+def _type_name(annotation: Any) -> str:
+    return getattr(annotation, "__name__", str(annotation))
 
 
 class _SupportsUserRoles(Protocol):
@@ -104,6 +118,75 @@ class AbstractUserAdapter(ABC, Generic[UserSchemaType, CreateUserSchemaType]):
     async def get_user_roles(self, user_id: UserID) -> list[str]:
         """Get user's roles. Returns [] by default. Override or use RoleAdapterMixin."""
         return []
+
+    # ── User id typing ───────────────────────────────────────────────
+
+    def user_id_annotation(self) -> Any:
+        """The primary key type declared on the configured user schema.
+
+        A schema that does not parameterise ``UserSchema`` reports the type
+        variable itself rather than its default, so resolve that back to the
+        default here.
+        """
+        schema = getattr(self, "_user_schema", None)
+        if schema is None:
+            return UUID
+        field = schema.model_fields.get("id")
+        annotation = None if field is None else field.annotation
+        if annotation is None:
+            return UUID
+        if isinstance(annotation, TypeVar):
+            default = getattr(annotation, "__default__", None)
+            return default if isinstance(default, type) else UUID
+        return annotation
+
+    def parse_user_id(self, raw: str) -> UserID:
+        """Convert a token subject back into this adapter's user id type.
+
+        Tokens carry the subject as text, so it has to be converted back before
+        a lookup. The user schema you pass to the adapter is what decides the
+        target type, which is why ``UserSchema[int]`` needs no extra wiring.
+        Raises ``pydantic.ValidationError`` when the subject cannot be converted;
+        callers turn that into a 401.
+        """
+        return cast(UserID, _id_type_adapter(self.user_id_annotation()).validate_python(raw))
+
+    def model_user_id_type(self) -> Any | None:
+        """The primary key type of the user model, or None when unknown.
+
+        Adapters override this so a schema/database mismatch can be caught at
+        construction. Returning None disables the check for storage whose key
+        type cannot be read reliably.
+        """
+        return None
+
+    def validate_user_id_type(self) -> None:
+        """Raise when the user schema and the user model disagree on key type.
+
+        Without this the mismatch is silent and miserable to debug: the subject
+        parses, every lookup misses, and each request fails as a 401. Adapters
+        call this once their model and schema are set.
+        """
+        model_type = self.model_user_id_type()
+        if model_type is None:
+            return
+        schema_type = self.user_id_annotation()
+        if schema_type is model_type:
+            return
+        if (
+            isinstance(schema_type, type)
+            and isinstance(model_type, type)
+            and (issubclass(schema_type, model_type) or issubclass(model_type, schema_type))
+        ):
+            return
+        raise ValueError(
+            f"User id type mismatch: the user schema "
+            f"({getattr(self, '_user_schema', type(None)).__name__}) declares "
+            f"id: {_type_name(schema_type)}, but the user model "
+            f"({getattr(self, '_user_model', type(None)).__name__}) stores "
+            f"{_type_name(model_type)}. Parameterise the schema to match, for "
+            f"example class MyUser(UserSchema[{_type_name(model_type)}])."
+        )
 
     def supports_feature(self, feature: AdapterFeature) -> bool:
         """Whether this adapter can actually serve ``feature``.

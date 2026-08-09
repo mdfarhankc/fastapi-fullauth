@@ -1,16 +1,23 @@
 from collections.abc import Awaitable, Callable
 from datetime import datetime
-from typing import Any, ClassVar, Literal, NamedTuple
+from typing import Any, ClassVar, Generic, Literal, NamedTuple
 from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, Field
 from typing_extensions import TypeVar
 
-UserID = UUID
+# Every key type the library supports, used wherever a user id is carried but
+# not parameterised (adapter signatures, refresh-token and OAuth records).
+UserID = UUID | int | str
+
+# Parameterises UserSchema on its primary key type. Defaulting to UUID keeps
+# `class MyUser(UserSchema)` working exactly as before; write
+# `class MyUser(UserSchema[int])` for integer or sequence keys.
+UserIDType = TypeVar("UserIDType", bound=UserID, default=UUID)
 
 
-class UserSchema(BaseModel):
-    id: UserID
+class UserSchema(BaseModel, Generic[UserIDType]):
+    id: UserIDType
     email: EmailStr
     is_active: bool = True
     is_verified: bool = False
@@ -60,7 +67,7 @@ class RefreshTokenMeta(NamedTuple):
 
 class RefreshToken(BaseModel):
     token: str
-    user_id: UUID
+    user_id: UserID
     expires_at: datetime
     family_id: str
     revoked: bool = False
@@ -71,7 +78,7 @@ class RefreshToken(BaseModel):
 class OAuthAccount(BaseModel):
     provider: str
     provider_user_id: str
-    user_id: UUID
+    user_id: UserID
     provider_email: str | None = None
     access_token: str | None = None
     refresh_token: str | None = None
@@ -103,7 +110,7 @@ class TokenPayload(BaseModel):
 
 class PasskeyCredential(BaseModel):
     id: UUID
-    user_id: UUID
+    user_id: UserID
     credential_id: str
     public_key: str
     sign_count: int = 0

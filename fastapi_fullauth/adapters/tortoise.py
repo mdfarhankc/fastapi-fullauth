@@ -106,6 +106,11 @@ class TortoiseAdapter(
         self._user_schema = user_schema
         self._create_user_schema = create_user_schema
         self._connection_name = connection_name
+        self.validate_user_id_type()
+
+    def model_user_id_type(self) -> Any | None:
+        pk = self._user_model._meta.fields_map.get("id")
+        return getattr(pk, "field_type", None)
 
     # feature label -> the constructor kwargs that feature needs. Lets _require()
     # name the exact missing argument(s).

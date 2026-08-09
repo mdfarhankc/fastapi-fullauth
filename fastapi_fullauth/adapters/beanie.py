@@ -105,6 +105,11 @@ class BeanieAdapter(
         self._passkey_model = passkey_model
         self._user_schema = user_schema
         self._create_user_schema = create_user_schema
+        self.validate_user_id_type()
+
+    def model_user_id_type(self) -> Any | None:
+        field = self._user_model.model_fields.get("id")
+        return None if field is None else field.annotation
 
     # feature label -> the constructor kwargs that feature needs. Lets _require()
     # name the exact missing argument(s).

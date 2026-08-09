@@ -1,9 +1,9 @@
 from collections.abc import Callable, Coroutine
 from typing import TYPE_CHECKING, Annotated, Any, cast
-from uuid import UUID
 
 from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from pydantic import ValidationError
 
 from fastapi_fullauth.exceptions import CREDENTIALS_EXCEPTION
 from fastapi_fullauth.types import TokenPayload, UserSchema, UserSchemaType
@@ -72,8 +72,8 @@ async def current_user(
     payload: TokenPayload = Depends(current_token_payload),
 ) -> UserSchema:
     try:
-        user_id = UUID(payload.sub)
-    except ValueError:
+        user_id = fullauth.adapter.parse_user_id(payload.sub)
+    except (ValueError, ValidationError):
         raise CREDENTIALS_EXCEPTION
 
     user = await fullauth.adapter.get_user_by_id(user_id)
