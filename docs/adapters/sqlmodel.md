@@ -52,6 +52,8 @@ class User(UserMixin, table=True):
 | `is_superuser` | `bool` | Superuser flag |
 | `created_at` | `datetime` | UTC creation timestamp |
 
+For integer or string user keys, see [Choosing a primary key type](index.md#choosing-a-primary-key-type).
+
 ### 2. Create the adapter
 
 ```python

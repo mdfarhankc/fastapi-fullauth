@@ -12,13 +12,16 @@ import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from pydantic import ValidationError
-from sqlalchemy import UniqueConstraint, event
+from sqlalchemy import ForeignKey, UniqueConstraint, event
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlmodel import Field, SQLModel
 from uuid_utils import uuid7
 
 from fastapi_fullauth import CreateUserSchema, FullAuth, FullAuthConfig, UserSchema
+from fastapi_fullauth.adapters.sqlalchemy import SQLAlchemyAdapter
 from fastapi_fullauth.adapters.sqlmodel import SQLModelAdapter
+from fastapi_fullauth.models import sqlalchemy as sa_mixins
 from tests.adapter_conformance import AdapterConformance
 
 SECRET = "test-secret-key-that-is-long-enough-32b"
@@ -112,6 +115,50 @@ class IntUserSchema(UserSchema[int]):
 
 class StrUserSchema(UserSchema[str]):
     pass
+
+
+# ── The bundled mixins, re-keyed to int the way the docs describe ───
+#
+# Each set gets its own DeclarativeBase and keeps the default table names,
+# exactly as an application would. (The SQLModel mixins can back only one
+# concrete table per process, and conftest already uses them.)
+
+
+class SAIntBase(DeclarativeBase):
+    pass
+
+
+class SAIntRole(sa_mixins.RoleMixin, SAIntBase):
+    pass
+
+
+class SAIntUserRole(sa_mixins.UserRoleMixin, SAIntBase):
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("fullauth_users.id", ondelete="CASCADE"), primary_key=True
+    )
+
+
+class SAIntRefreshToken(sa_mixins.RefreshTokenMixin, SAIntBase):
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("fullauth_users.id", ondelete="CASCADE"), index=True
+    )
+
+
+class SAIntUser(sa_mixins.UserMixin, SAIntBase):
+    id: Mapped[int] = mapped_column(primary_key=True)
+    roles: Mapped[list[SAIntRole]] = relationship(secondary="fullauth_user_roles", lazy="selectin")
+
+
+class SAGuardBase(DeclarativeBase):
+    pass
+
+
+class SAGuardUser(sa_mixins.UserMixin, SAGuardBase):
+    id: Mapped[int] = mapped_column(primary_key=True)
+
+
+class SAGuardRefreshToken(sa_mixins.RefreshTokenMixin, SAGuardBase):
+    """Left on the mixin's UUID user_id: the mistake the guard must catch."""
 
 
 async def _make_app(user_model, refresh_model, user_schema):
@@ -400,7 +447,164 @@ async def test_password_reset_round_trip_with_int_keys():
     await engine.dispose()
 
 
+# ── Admin role routes on integer keys ───────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_admin_role_routes_accept_integer_user_ids():
+    """The admin body types user_id from the schema, so int ids are not a 422."""
+    engine = create_async_engine("sqlite+aiosqlite://", echo=False)
+    session_maker = async_sessionmaker(engine, expire_on_commit=False)
+    async with engine.begin() as conn:
+        await conn.run_sync(SAIntBase.metadata.create_all)
+
+    adapter = SQLAlchemyAdapter(
+        session_maker,
+        user_model=SAIntUser,
+        refresh_token_model=SAIntRefreshToken,
+        role_model=SAIntRole,
+        user_role_model=SAIntUserRole,
+        user_schema=IntUserSchema,
+    )
+    fullauth = FullAuth(
+        config=FullAuthConfig(SECRET_KEY=SECRET, PREVENT_REGISTRATION_ENUMERATION=False),
+        adapter=adapter,
+    )
+    app = FastAPI()
+    fullauth.init_app(app)
+
+    props = app.openapi()["components"]["schemas"]["RoleAssignment"]["properties"]
+    assert props["user_id"]["type"] == "integer"
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        ids = {}
+        for email in ("admin@test.com", "target@test.com"):
+            r = await client.post(
+                "/api/v1/auth/register", json={"email": email, "password": "securepass123"}
+            )
+            assert r.status_code == 201, r.text
+            ids[email] = r.json()["id"]
+
+        await adapter.update_user(ids["admin@test.com"], {"is_superuser": True})
+        r = await client.post(
+            "/api/v1/auth/login",
+            json={"email": "admin@test.com", "password": "securepass123"},
+        )
+        headers = {"Authorization": f"Bearer {r.json()['access_token']}"}
+        target_id = ids["target@test.com"]
+        assert isinstance(target_id, int)
+
+        r = await client.post(
+            "/api/v1/auth/admin/assign-role",
+            json={"user_id": target_id, "role": "editor"},
+            headers=headers,
+        )
+        assert r.status_code == 200, r.text
+        assert await adapter.get_user_roles(target_id) == ["editor"]
+
+        r = await client.post(
+            "/api/v1/auth/admin/assign-role",
+            json={"user_id": "not-an-int", "role": "editor"},
+            headers=headers,
+        )
+        assert r.status_code == 422
+
+        r = await client.post(
+            "/api/v1/auth/admin/assign-role",
+            json={"user_id": 999_999, "role": "editor"},
+            headers=headers,
+        )
+        assert r.status_code == 404
+
+        r = await client.post(
+            "/api/v1/auth/admin/remove-role",
+            json={"user_id": target_id, "role": "editor"},
+            headers=headers,
+        )
+        assert r.status_code == 200, r.text
+        assert await adapter.get_user_roles(target_id) == []
+
+    await engine.dispose()
+
+
 # ── Schema/model mismatch guard ─────────────────────────────────────
+
+
+def test_related_model_left_on_uuid_user_id_raises():
+    """An int user with a related table still on the mixin's UUID user_id must
+    fail at construction; SQLite would otherwise accept it silently."""
+    with pytest.raises(ValueError, match="SAGuardRefreshToken.user_id stores UUID"):
+        SQLAlchemyAdapter(
+            None,  # type: ignore[arg-type]
+            user_model=SAGuardUser,
+            refresh_token_model=SAGuardRefreshToken,
+            user_schema=IntUserSchema,
+        )
+
+
+def test_related_models_overridden_to_int_construct_cleanly():
+    SQLAlchemyAdapter(
+        None,  # type: ignore[arg-type]
+        user_model=SAIntUser,
+        refresh_token_model=SAIntRefreshToken,
+        role_model=SAIntRole,
+        user_role_model=SAIntUserRole,
+        user_schema=IntUserSchema,
+    )
+
+
+def test_beanie_related_document_key_type_is_checked():
+    from fastapi_fullauth.adapters.beanie import BeanieAdapter
+    from fastapi_fullauth.models.beanie import RefreshTokenDocument, UserDocument
+
+    class IntUserDocument(UserDocument):
+        id: int  # type: ignore[assignment]
+
+    class IntRefreshTokenDocument(RefreshTokenDocument):
+        user_id: int  # type: ignore[assignment]
+
+    with pytest.raises(ValueError, match="RefreshTokenDocument.user_id stores UUID"):
+        BeanieAdapter(
+            user_model=IntUserDocument,
+            refresh_token_model=RefreshTokenDocument,
+            user_schema=IntUserSchema,
+        )
+
+    BeanieAdapter(
+        user_model=IntUserDocument,
+        refresh_token_model=IntRefreshTokenDocument,
+        user_schema=IntUserSchema,
+    )
+
+
+def test_optional_key_annotations_are_not_a_mismatch():
+    """``id: int | None`` stores int; the guard must not false-alarm on it, and a
+    real mismatch must name plain types rather than ``Union``."""
+    from fastapi_fullauth.adapters.beanie import BeanieAdapter
+    from fastapi_fullauth.models.beanie import RefreshTokenDocument, UserDocument
+
+    class OptionalIntUserDocument(UserDocument):
+        id: int | None = None  # type: ignore[assignment]
+
+    class OptionalIntRefreshTokenDocument(RefreshTokenDocument):
+        user_id: int | None  # type: ignore[assignment]
+
+    BeanieAdapter(
+        user_model=OptionalIntUserDocument,
+        refresh_token_model=OptionalIntRefreshTokenDocument,
+        user_schema=IntUserSchema,
+    )
+
+    with pytest.raises(ValueError) as exc:
+        BeanieAdapter(
+            user_model=OptionalIntUserDocument,
+            refresh_token_model=OptionalIntRefreshTokenDocument,
+            user_schema=StrUserSchema,
+        )
+    message = str(exc.value)
+    assert "stores int" in message and "UserSchema[int]" in message
+    assert "Union" not in message and "None" not in message
 
 
 def test_mismatched_id_types_raise_at_construction():

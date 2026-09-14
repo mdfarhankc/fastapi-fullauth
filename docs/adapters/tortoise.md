@@ -90,7 +90,7 @@ class User(UserMixin):
 | `is_superuser` | `bool` | Superuser flag |
 | `created_at` | `datetime` | UTC creation timestamp |
 
-A minimal setup needs only `UserMixin` and `RefreshTokenMixin`.
+A minimal setup needs only `UserMixin` and `RefreshTokenMixin`. For integer or string user keys, see [Choosing a primary key type](index.md#choosing-a-primary-key-type).
 
 ### 2. Create the adapter
 

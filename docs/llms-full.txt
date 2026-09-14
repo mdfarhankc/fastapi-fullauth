@@ -2,7 +2,7 @@
 
 > Production-grade, async-native authentication and authorization for FastAPI.
 
-FastAPI FullAuth is a pluggable authentication and authorization library for FastAPI. It provides JWT access and refresh tokens with rotation and reuse detection, password hashing (Argon2id or bcrypt), email verification and password reset flows, OAuth2 social login (Google, GitHub, Discord, GitLab), role-based access control with permissions, rate limiting, CSRF protection, and security headers middleware. The library uses a layered architecture: adapters handle database storage (SQLModel, SQLAlchemy, Tortoise ORM, or Beanie/MongoDB), backends handle token extraction, flows implement auth logic, and composable routers expose API endpoints. Configuration is managed through Pydantic Settings with environment variable support. Generic type parameters allow custom user schemas with full IDE support.
+FastAPI FullAuth is a pluggable authentication and authorization library for FastAPI. It provides JWT access and refresh tokens with rotation and reuse detection, password hashing (Argon2id or bcrypt), email verification and password reset flows, OAuth2 social login (Google, GitHub, Discord, GitLab), role-based access control with permissions, rate limiting, CSRF protection, and security headers middleware. The library uses a layered architecture: adapters handle database storage (SQLModel, SQLAlchemy, Tortoise ORM, or Beanie/MongoDB), backends handle token extraction, flows implement auth logic, and composable routers expose API endpoints. Configuration is managed through Pydantic Settings with environment variable support. Generic type parameters allow custom user schemas with full IDE support, including the user primary key type: UUID by default, with UserSchema[int] for integer or sequence keys and UserSchema[str] for string keys.
 
 - Documentation: https://mdfarhankc.github.io/fastapi-fullauth/
 - Source: https://github.com/mdfarhankc/fastapi-fullauth
@@ -794,6 +794,37 @@ If your app uses roles, add `roles` to your custom schema:
 class MyUserSchema(UserSchema):
     roles: list[str] = Field(default_factory=list)
 ```
+
+## Choosing a primary key type
+
+User ids are UUIDs by default. For integer, sequence, or string keys:
+
+1. Parameterise the schema: `class MyUserSchema(UserSchema[int])` or `UserSchema[str]`. The adapter reads the key type off the schema and converts token subjects back to it, so every flow and the admin role endpoints work unchanged.
+2. Match the key type in your models. The bundled mixins use UUID keys, so override `id` on the user model and `user_id` on every model that references a user (refresh tokens, and user roles, OAuth accounts, and passkeys when used):
+
+```python
+# SQLAlchemy (the mixins annotate these as UUID, hence the type: ignore)
+class User(UserMixin, Base):
+    id: Mapped[int] = mapped_column(primary_key=True)  # type: ignore[assignment]
+
+class RefreshToken(RefreshTokenMixin, Base):
+    user_id: Mapped[int] = mapped_column(  # type: ignore[assignment]
+        ForeignKey("fullauth_users.id", ondelete="CASCADE"), index=True
+    )
+
+# SQLModel
+class User(UserMixin, table=True):
+    id: int | None = Field(default=None, primary_key=True)  # type: ignore[assignment]
+
+class RefreshToken(RefreshTokenMixin, table=True):
+    user_id: int = Field(  # type: ignore[assignment]
+        foreign_key="fullauth_users.id", ondelete="CASCADE", index=True
+    )
+```
+
+Tortoise only needs `id = fields.IntField(primary_key=True)` on the user model; foreign keys, including the role many-to-many table, follow the target's type. Beanie needs `id` and `user_id` overridden, with a `default_factory` on `id` because MongoDB does not generate integer or string keys. The passkey table must keep its UUID primary key because the library generates passkey ids; other tables' own primary keys can be any type.
+
+The adapter compares the schema, the user model, and each related model's `user_id` at construction and raises `ValueError` naming the mismatch, so a forgotten override fails at startup instead of on insert. Sequential integer keys are enumerable; prefer UUIDv7 unless an existing schema requires integers.
 
 ---
 
@@ -1618,8 +1649,6 @@ You can write your own dependency functions for full control over the auth flow.
 Using `get_fullauth` (useful when your dependency is in a separate module):
 
 ```python
-from uuid import UUID
-
 from fastapi import Depends
 from fastapi_fullauth.dependencies import current_token_payload, get_fullauth
 from fastapi_fullauth.types import TokenPayload
@@ -1628,7 +1657,8 @@ async def my_current_user(
     fullauth=Depends(get_fullauth),
     payload: TokenPayload = Depends(current_token_payload),
 ):
-    user = await fullauth.adapter.get_user_by_id(UUID(payload.sub))
+    # parse_user_id converts the subject to your schema's key type (UUID, int, or str)
+    user = await fullauth.adapter.get_user_by_id(fullauth.adapter.parse_user_id(payload.sub))
     # your custom logic
     return user
 ```
@@ -2551,8 +2581,8 @@ from fastapi_fullauth.types import (
 ### UserSchema
 
 ```python
-class UserSchema(BaseModel):
-    id: UUID
+class UserSchema(BaseModel, Generic[UserIDType]):
+    id: UserIDType  # UUID unless parameterised: UserSchema[int], UserSchema[str]
     email: EmailStr
     is_active: bool = True
     is_verified: bool = False

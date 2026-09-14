@@ -71,6 +71,8 @@ class Passkey(PasskeyDocument):
 | `roles` | `list[str]` | Embedded role membership |
 | `created_at` | `datetime` | UTC creation timestamp |
 
+For integer or string user keys, see [Choosing a primary key type](index.md#choosing-a-primary-key-type).
+
 ### 2. Create the adapter
 
 ```python

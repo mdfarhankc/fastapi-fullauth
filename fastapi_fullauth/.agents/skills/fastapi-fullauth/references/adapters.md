@@ -218,6 +218,12 @@ adapter = SQLModelAdapter(
 )
 ```
 
+## User primary key types
+
+UUID is the default. For integer or string keys, parameterise the schema (`class MyUser(UserSchema[int])`) and match the type in the models: the bundled mixins default to UUID, so override `id` on the user model and `user_id` on every related model (refresh token, user role, OAuth account, passkey). Tortoise only needs the user `id` override because foreign keys follow the target type; Beanie needs both, plus a `default_factory` on `id`.
+
+Convert a token subject with `adapter.parse_user_id(payload.sub)`, never `UUID(payload.sub)`. Adapters compare the schema, user model, and each related model's `user_id` at construction; custom adapters opt in by overriding `model_user_id_type()` and `related_user_id_types()`, and type `user_id` parameters as `UserID` (`UUID | int | str`). Passkey ids stay `UUID`.
+
 ## Performance notes
 
 - `PermissionAdapterMixin.get_permissions_for_roles` is batched: a single JOIN instead of N+1. The default override loops per-role; the built-in adapters override it with one query. Do the same for custom adapters when you can.

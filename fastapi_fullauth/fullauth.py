@@ -334,7 +334,7 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
         if self._admin_router is None:
             from fastapi_fullauth.routers.admin import create_admin_router
 
-            self._admin_router = create_admin_router()
+            self._admin_router = create_admin_router(user_id_type=self.adapter.user_id_annotation())
         return self._admin_router
 
     @property

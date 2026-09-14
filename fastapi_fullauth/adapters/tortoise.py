@@ -17,6 +17,7 @@ from contextlib import asynccontextmanager
 from copy import copy
 from datetime import datetime, timezone
 from typing import Any, TypeVar
+from uuid import UUID
 
 from tortoise.exceptions import IntegrityError
 from tortoise.transactions import in_transaction
@@ -523,6 +524,6 @@ class TortoiseAdapter(
             return False
         return True
 
-    async def delete_passkey(self, passkey_id: UserID) -> None:
+    async def delete_passkey(self, passkey_id: UUID) -> None:
         passkey_model = self._require(self._passkey_model, "Passkeys")
         await passkey_model.filter(id=passkey_id).delete()

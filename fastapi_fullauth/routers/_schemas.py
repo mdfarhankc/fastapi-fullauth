@@ -90,9 +90,19 @@ class ChangePasswordRequest(BaseModel):
     current_password: str | None = None
 
 
-class RoleAssignment(BaseModel):
-    user_id: UUID
-    role: str
+def build_role_assignment_model(user_id_type: Any = UUID) -> type[BaseModel]:
+    """Build the admin role-assignment body with ``user_id`` typed to the user key.
+
+    Typing the field from the adapter's declared key type means integer and
+    string keys validate (and document in OpenAPI) as themselves, and a
+    malformed id is a 422 at parse time rather than a failed lookup.
+    """
+    from pydantic import create_model
+
+    model: type[BaseModel] = create_model(
+        "RoleAssignment", user_id=(user_id_type, ...), role=(str, ...)
+    )
+    return model
 
 
 class PermissionAssignment(BaseModel):

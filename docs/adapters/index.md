@@ -91,9 +91,20 @@ adapter = SQLModelAdapter(
 )
 ```
 
+The `UserSchema` base class defines `PROTECTED_FIELDS` - a set of fields that can't be updated via `PATCH /me`. By default this includes `id`, `email`, `hashed_password`, `is_active`, `is_verified`, `is_superuser`, `roles`, `password`, `created_at`, and `refresh_tokens`. If your custom schema adds fields that should also be protected from profile updates, extend this set.
+
+If your app uses roles, add `roles` to your custom schema:
+
+```python
+class MyUserSchema(UserSchema):
+    roles: list[str] = Field(default_factory=list)
+```
+
 ## Choosing a primary key type
 
-User ids are UUIDs by default. To use integer, sequence, or string keys instead, parameterise `UserSchema` with the type your table stores:
+User ids are UUIDs by default. Integer, sequence, and string keys take two steps: declare the key type on the schema, and use the same type in your user model and every model that references a user.
+
+### 1. Parameterise the schema
 
 ```python
 class MyUserSchema(UserSchema[int]):   # integer or sequence keys
@@ -103,23 +114,98 @@ class MyUserSchema(UserSchema[str]):   # string keys
     display_name: str = ""
 ```
 
-That is the only wiring needed. The adapter reads the key type off the schema and converts token subjects back to it, so login, refresh, sessions, verification, and password reset all work unchanged. Writing `class MyUserSchema(UserSchema)` keeps UUID keys, which is why existing projects need no edits.
+The adapter reads the key type off the schema and converts token subjects back to it, so login, refresh, sessions, verification, password reset, and the admin role endpoints work unchanged. `class MyUserSchema(UserSchema)` keeps UUID keys, so existing projects need no edits.
 
-The schema and your table have to agree. If they disagree the adapter raises at construction, naming both types, rather than letting every request fail as a confusing 401:
+### 2. Match the key type in your models
+
+The bundled mixins use UUID keys. Override `id` on the user model, and `user_id` on each model that references a user: refresh tokens always, plus user roles, OAuth accounts, and passkeys when you use them. The mixins annotate these fields as `UUID`, so type checkers flag the override; the `# type: ignore[assignment]` comments below silence exactly that.
+
+=== "SQLAlchemy"
+
+    ```python
+    from sqlalchemy import ForeignKey
+    from sqlalchemy.orm import Mapped, mapped_column
+
+    class User(UserMixin, Base):
+        id: Mapped[int] = mapped_column(primary_key=True)  # type: ignore[assignment]
+
+    class RefreshToken(RefreshTokenMixin, Base):
+        user_id: Mapped[int] = mapped_column(  # type: ignore[assignment]
+            ForeignKey("fullauth_users.id", ondelete="CASCADE"), index=True
+        )
+
+    class UserRole(UserRoleMixin, Base):
+        user_id: Mapped[int] = mapped_column(  # type: ignore[assignment]
+            ForeignKey("fullauth_users.id", ondelete="CASCADE"), primary_key=True
+        )
+
+    # OAuthAccount and Passkey: same user_id override as RefreshToken
+    ```
+
+=== "SQLModel"
+
+    ```python
+    from sqlmodel import Field
+
+    class User(UserMixin, table=True):
+        id: int | None = Field(default=None, primary_key=True)  # type: ignore[assignment]
+
+    class RefreshToken(RefreshTokenMixin, table=True):
+        user_id: int = Field(  # type: ignore[assignment]
+            foreign_key="fullauth_users.id", ondelete="CASCADE", index=True
+        )
+
+    class UserRole(UserRoleMixin, table=True):
+        user_id: int = Field(  # type: ignore[assignment]
+            foreign_key="fullauth_users.id", ondelete="CASCADE", primary_key=True
+        )
+
+    # OAuthAccount and Passkey: same user_id override as RefreshToken
+    ```
+
+=== "Tortoise"
+
+    ```python
+    from tortoise import fields
+
+    class User(UserMixin):
+        id = fields.IntField(primary_key=True)
+
+        class Meta:
+            table = "fullauth_users"
+    ```
+
+    Only the user model changes. Tortoise derives each foreign key's column type from the model it points at, so the related mixins follow automatically.
+
+=== "Beanie"
+
+    ```python
+    from bson import ObjectId
+    from pydantic import Field
+
+    class User(UserDocument):
+        id: str = Field(default_factory=lambda: str(ObjectId()))  # type: ignore[assignment]
+
+    class RefreshToken(RefreshTokenDocument):
+        user_id: str  # type: ignore[assignment]
+
+    # OAuthAccount and Passkey: same user_id override as RefreshToken
+    ```
+
+    MongoDB does not generate integer or string keys for you, so give `id` a `default_factory`.
+
+The passkey table must keep its UUID primary key, because the library generates passkey ids itself. The primary keys of the other tables (refresh tokens, OAuth accounts, roles) are never read or set by the library, so they can be any type.
+
+### Mismatches fail at startup
+
+The schema, the user model, and the related models have to agree. When they don't, the adapter raises at construction instead of letting every request fail as a confusing 401, or letting a forgotten override slip through SQLite and break inserts on PostgreSQL:
 
 ```
 User id type mismatch: the user schema (MyUserSchema) declares id: int,
 but the user model (User) stores UUID.
+
+User id type mismatch: RefreshToken.user_id stores UUID, but user ids are int.
 ```
 
 !!! warning
     Sequential integer keys are guessable, so anywhere you expose a user id becomes enumerable. UUIDv7 keys avoid that while staying index-friendly. Prefer integers when an existing schema requires them, not by default.
-
-The `UserSchema` base class defines `PROTECTED_FIELDS` - a set of fields that can't be updated via `PATCH /me`. By default this includes `id`, `email`, `hashed_password`, `is_active`, `is_verified`, `is_superuser`, `roles`, `password`, `created_at`, and `refresh_tokens`. If your custom schema adds fields that should also be protected from profile updates, extend this set.
-
-If your app uses roles, add `roles` to your custom schema:
-
-```python
-class MyUserSchema(UserSchema):
-    roles: list[str] = Field(default_factory=list)
-```
