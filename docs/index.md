@@ -152,8 +152,8 @@ npx skills add mdfarhankc/fastapi-fullauth
 
 For tools that take a docs URL instead:
 
-- [llms.txt](llms.txt): concise overview with links to all doc pages
-- [llms-full.txt](llms-full.txt): full documentation in a single file
+- [llms.txt](https://mdfarhankc.github.io/fastapi-fullauth/llms.txt): concise overview with links to all doc pages
+- [llms-full.txt](https://mdfarhankc.github.io/fastapi-fullauth/llms-full.txt): full documentation in a single file
 
 ## License
 

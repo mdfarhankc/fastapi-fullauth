@@ -6,6 +6,7 @@ on:
     paths:
       - "docs/**"
       - "mkdocs.yml"
+      - "scripts/llmstxt_preprocess.py"
   workflow_dispatch:
 
 permissions:
@@ -21,6 +22,6 @@ jobs:
         with:
           python-version: "3.12"
 
-      - run: pip install mkdocs-material
+      - run: pip install mkdocs-material mkdocs-llmstxt
 
       - run: mkdocs gh-deploy --force

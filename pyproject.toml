@@ -83,6 +83,7 @@ dev = [
   "beanie>=2.0",
   "fakeredis>=2.35.1",
   "httpx>=0.28.1",
+  "mkdocs-llmstxt>=0.5.0",
   "mkdocs-material>=9.7.6",
   "mongomock-motor>=0.0.36",
   "mypy>=2.1.0",
