@@ -144,7 +144,13 @@ The combined router mounts under `/api/v1/auth` by default. Admin, OAuth, and pa
 
 ## AI-friendly docs
 
-Point your AI coding assistant at the LLM-optimized docs:
+Install the fastapi-fullauth [Agent Skill](https://agentskills.io/) so your coding agent (Claude Code, Codex, Cursor, GitHub Copilot, Gemini CLI, and others) knows the library's APIs, contracts, and pitfalls:
+
+```bash
+npx skills add mdfarhankc/fastapi-fullauth
+```
+
+For tools that take a docs URL instead:
 
 - [llms.txt](llms.txt): concise overview with links to all doc pages
 - [llms-full.txt](llms-full.txt): full documentation in a single file

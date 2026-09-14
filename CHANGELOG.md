@@ -9,6 +9,7 @@
 
 ### Changed
 
+- **The Agent Skill moved out of the wheel to `skills/fastapi-fullauth/` in the repository.** It previously shipped inside the package at `fastapi_fullauth/.agents/skills/`, where no agent looks for skills. Install it with `npx skills add mdfarhankc/fastapi-fullauth`, which places it where your agent loads skills from. Its frontmatter also dropped the non-standard `triggers` field (the keywords now live in `description`), so it validates against the [Agent Skills specification](https://agentskills.io/specification).
 - **`UserID` widened from `UUID` to `UUID | int | str`.** Runtime behaviour is unchanged, but this is a typing change for anyone who annotated with `UserID` - most notably custom adapter authors, since UUID-specific access such as `user_id.hex` no longer type-checks. Either parameterise on your concrete key type or narrow at the point of use; adapters that only pass `user_id` through to a query need no change.
 
 ## 0.15.0
