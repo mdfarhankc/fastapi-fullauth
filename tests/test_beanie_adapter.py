@@ -13,10 +13,12 @@ unique indexes, ``$addToSet`` / ``$pull``, ``$lt`` conditional updates) is real
 mongomock behaviour.
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import mongomock
 import pytest
+from beanie import init_beanie
+from bson import ObjectId
 from mongomock_motor import AsyncMongoMockClient
 from pydantic import Field
 
@@ -87,8 +89,6 @@ _DOCUMENTS = [User, RefreshTokenModel, Role, Permission, OAuthAccountModel, Pass
 
 @pytest.fixture
 async def beanie_db():
-    from beanie import init_beanie
-
     client = AsyncMongoMockClient()
     await init_beanie(database=client["fullauth_test"], document_models=_DOCUMENTS)
     yield
@@ -189,3 +189,56 @@ def test_permission_requires_role_model():
             refresh_token_model=RefreshTokenModel,
             permission_model=Permission,
         )
+
+
+# --- String user keys --------------------------------------------------
+
+
+class StrUser(UserDocument):
+    # MongoDB does not generate string keys, so the id needs a default_factory.
+    id: str = Field(default_factory=lambda: str(ObjectId()))  # type: ignore[assignment]
+
+    class Settings:
+        name = "strkey_users"
+
+
+class StrRefreshToken(RefreshTokenDocument):
+    user_id: str  # type: ignore[assignment]
+
+    class Settings:
+        name = "strkey_refresh_tokens"
+
+
+class StrUserSchema(UserSchema[str]):
+    pass
+
+
+async def test_string_user_keys_round_trip():
+    client = AsyncMongoMockClient()
+    await init_beanie(
+        database=client["fullauth_strkeys"], document_models=[StrUser, StrRefreshToken]
+    )
+    adapter = BeanieAdapter(
+        user_model=StrUser, refresh_token_model=StrRefreshToken, user_schema=StrUserSchema
+    )
+
+    user = await adapter.create_user(
+        CreateUserSchema(email="s@test.com", password="securepass123"), hashed_password="x"
+    )
+    assert isinstance(user.id, str)
+    assert await adapter.get_user_by_id(adapter.parse_user_id(user.id)) == user
+
+    await adapter.store_refresh_token(
+        RefreshToken(
+            token="digest",
+            user_id=user.id,
+            expires_at=datetime.now(timezone.utc) + timedelta(days=1),
+            family_id="family",
+        )
+    )
+    assert [s.family_id for s in await adapter.list_user_sessions(user.id)] == ["family"]
+    assert await adapter.revoke_refresh_token("digest") is True
+
+    await adapter.delete_user(user.id)
+    assert await adapter.get_user_by_id(user.id) is None
+    assert await adapter.get_refresh_token("digest") is None

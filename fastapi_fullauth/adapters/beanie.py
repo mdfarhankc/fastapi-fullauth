@@ -22,6 +22,7 @@ atomically rather than around joins:
 
 from datetime import datetime, timezone
 from typing import Any, TypeVar
+from uuid import UUID
 
 from pymongo.errors import DuplicateKeyError
 
@@ -110,6 +111,16 @@ class BeanieAdapter(
     def model_user_id_type(self) -> Any | None:
         field = self._user_model.model_fields.get("id")
         return None if field is None else field.annotation
+
+    def related_user_id_types(self) -> dict[str, Any]:
+        types: dict[str, Any] = {}
+        for model in (self._refresh_token_model, self._oauth_account_model, self._passkey_model):
+            if model is None:
+                continue
+            field = model.model_fields.get("user_id")
+            if field is not None and field.annotation is not None:
+                types[model.__name__] = field.annotation
+        return types
 
     # feature label -> the constructor kwargs that feature needs. Lets _require()
     # name the exact missing argument(s).
@@ -538,7 +549,7 @@ class BeanieAdapter(
             return False
         return True
 
-    async def delete_passkey(self, passkey_id: UserID) -> None:
+    async def delete_passkey(self, passkey_id: UUID) -> None:
         passkey_model = self._require(self._passkey_model, "Passkeys")
         doc = await passkey_model.get(passkey_id)
         if doc is not None:

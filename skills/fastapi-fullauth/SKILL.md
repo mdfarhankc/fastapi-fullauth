@@ -1,13 +1,7 @@
 ---
 name: fastapi-fullauth
-description: Authoritative guidance for integrating fastapi-fullauth, an async auth library for FastAPI (JWT, OAuth2, passkeys/WebAuthn, RBAC, rate limiting, CSRF). Load when the user imports `fastapi_fullauth`, works with `FullAuth`/`FullAuthConfig`, or asks about auth, login, OAuth, passkeys, roles/permissions, or refresh-token flows in a FastAPI project.
-triggers:
-  - fastapi-fullauth
-  - fastapi_fullauth
-  - FullAuth
-  - FullAuthConfig
-  - PasskeyAdapterMixin
-  - from fastapi_fullauth
+description: Authoritative guidance for integrating fastapi-fullauth, an async auth library for FastAPI (JWT, OAuth2, passkeys/WebAuthn, RBAC, rate limiting, CSRF). Load when the user imports `fastapi_fullauth`, works with `FullAuth`/`FullAuthConfig`, adapters or mixins such as `PasskeyAdapterMixin`, or asks about auth, login, OAuth, passkeys, roles/permissions, or refresh-token flows in a FastAPI project.
+license: MIT
 ---
 
 # fastapi-fullauth

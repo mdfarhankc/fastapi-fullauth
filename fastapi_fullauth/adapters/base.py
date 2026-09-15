@@ -2,7 +2,8 @@ from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from functools import cache
-from typing import Any, Generic, Literal, Protocol, TypeVar, cast
+from types import UnionType
+from typing import Any, Generic, Literal, Protocol, TypeVar, Union, cast, get_args, get_origin
 from uuid import UUID
 
 from pydantic import TypeAdapter
@@ -27,7 +28,26 @@ def _id_type_adapter(annotation: Any) -> TypeAdapter[Any]:
 
 
 def _type_name(annotation: Any) -> str:
-    return getattr(annotation, "__name__", str(annotation))
+    return annotation.__name__ if isinstance(annotation, type) else str(annotation)
+
+
+def _without_none(annotation: Any) -> Any:
+    """``X | None`` -> ``X``. Optional keys are common (``id: int | None`` on
+    SQLModel and Beanie models) and store the same type as ``X``."""
+    if get_origin(annotation) not in (Union, UnionType):
+        return annotation
+    members = [arg for arg in get_args(annotation) if arg is not type(None)]
+    return members[0] if len(members) == 1 else annotation
+
+
+def _key_types_match(first: Any, second: Any) -> bool:
+    if first is second:
+        return True
+    return (
+        isinstance(first, type)
+        and isinstance(second, type)
+        and (issubclass(first, second) or issubclass(second, first))
+    )
 
 
 class _SupportsUserRoles(Protocol):
@@ -160,33 +180,45 @@ class AbstractUserAdapter(ABC, Generic[UserSchemaType, CreateUserSchemaType]):
         """
         return None
 
+    def related_user_id_types(self) -> dict[str, Any]:
+        """The ``user_id`` type each related model stores, keyed by model name.
+
+        The bundled mixins default ``user_id`` to UUID, so an integer-keyed app
+        that forgets to override it on one related model would only fail on
+        insert, and not at all on SQLite. Adapters override this so the
+        construction-time check covers those models too; models whose key type
+        cannot be read reliably are left out.
+        """
+        return {}
+
     def validate_user_id_type(self) -> None:
-        """Raise when the user schema and the user model disagree on key type.
+        """Raise when the schema, user model, and related models disagree on key type.
 
         Without this the mismatch is silent and miserable to debug: the subject
         parses, every lookup misses, and each request fails as a 401. Adapters
-        call this once their model and schema are set.
+        call this once their models and schema are set.
         """
-        model_type = self.model_user_id_type()
-        if model_type is None:
-            return
-        schema_type = self.user_id_annotation()
-        if schema_type is model_type:
-            return
-        if (
-            isinstance(schema_type, type)
-            and isinstance(model_type, type)
-            and (issubclass(schema_type, model_type) or issubclass(model_type, schema_type))
-        ):
-            return
-        raise ValueError(
-            f"User id type mismatch: the user schema "
-            f"({getattr(self, '_user_schema', type(None)).__name__}) declares "
-            f"id: {_type_name(schema_type)}, but the user model "
-            f"({getattr(self, '_user_model', type(None)).__name__}) stores "
-            f"{_type_name(model_type)}. Parameterise the schema to match, for "
-            f"example class MyUser(UserSchema[{_type_name(model_type)}])."
-        )
+        schema_type = _without_none(self.user_id_annotation())
+        model_type = _without_none(self.model_user_id_type())
+        if model_type is not None and not _key_types_match(schema_type, model_type):
+            raise ValueError(
+                f"User id type mismatch: the user schema "
+                f"({getattr(self, '_user_schema', type(None)).__name__}) declares "
+                f"id: {_type_name(schema_type)}, but the user model "
+                f"({getattr(self, '_user_model', type(None)).__name__}) stores "
+                f"{_type_name(model_type)}. Parameterise the schema to match, for "
+                f"example class MyUser(UserSchema[{_type_name(model_type)}])."
+            )
+
+        for model_name, related_annotation in self.related_user_id_types().items():
+            related_type = _without_none(related_annotation)
+            if not _key_types_match(schema_type, related_type):
+                raise ValueError(
+                    f"User id type mismatch: {model_name}.user_id stores "
+                    f"{_type_name(related_type)}, but user ids are "
+                    f"{_type_name(schema_type)}. Override user_id on {model_name} "
+                    f"to use the same type as the user primary key."
+                )
 
     def supports_feature(self, feature: AdapterFeature) -> bool:
         """Whether this adapter can actually serve ``feature``.
@@ -333,7 +365,7 @@ class PasskeyAdapterMixin(ABC):
         ...
 
     @abstractmethod
-    async def delete_passkey(self, passkey_id: UserID) -> None: ...
+    async def delete_passkey(self, passkey_id: UUID) -> None: ...
 
 
 # Maps the feature names used by supports_feature() to the mixin that implements

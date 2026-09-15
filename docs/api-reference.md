@@ -72,8 +72,8 @@ from fastapi_fullauth.types import (
 ### UserSchema
 
 ```python
-class UserSchema(BaseModel):
-    id: UUID
+class UserSchema(BaseModel, Generic[UserIDType]):
+    id: UserIDType  # UUID unless parameterised: UserSchema[int], UserSchema[str]
     email: EmailStr
     is_active: bool = True
     is_verified: bool = False

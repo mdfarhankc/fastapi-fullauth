@@ -181,8 +181,6 @@ You can write your own dependency functions for full control over the auth flow.
 `get_fullauth` is a FastAPI dependency that returns the `FullAuth` instance from `app.state`. It gives you access to the adapter, token engine, config, and everything else:
 
 ```python
-from uuid import UUID
-
 from fastapi import Depends
 from fastapi_fullauth.dependencies import current_token_payload, get_fullauth
 from fastapi_fullauth.types import TokenPayload
@@ -191,7 +189,8 @@ async def my_current_user(
     fullauth=Depends(get_fullauth),
     payload: TokenPayload = Depends(current_token_payload),
 ):
-    user = await fullauth.adapter.get_user_by_id(UUID(payload.sub))
+    # parse_user_id converts the subject to your schema's key type (UUID, int, or str)
+    user = await fullauth.adapter.get_user_by_id(fullauth.adapter.parse_user_id(payload.sub))
     # your custom logic: load relations, check feature flags, etc.
     return user
 ```

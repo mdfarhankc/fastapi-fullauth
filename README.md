@@ -382,12 +382,18 @@ See [Configuration docs](https://mdfarhankc.github.io/fastapi-fullauth/configura
 
 ## AI-friendly docs
 
-Using an AI coding assistant? Point it at our LLM-optimized docs:
+Using an AI coding assistant? Install the fastapi-fullauth [Agent Skill](https://agentskills.io/) so it knows the library's APIs, contracts, and pitfalls:
+
+```bash
+npx skills add mdfarhankc/fastapi-fullauth
+```
+
+It works with any agent that supports the Agent Skills standard, including Claude Code, Codex, Cursor, GitHub Copilot, and Gemini CLI.
+
+For tools that take a docs URL instead:
 
 - **[llms.txt](https://mdfarhankc.github.io/fastapi-fullauth/llms.txt)**: concise overview with links to all doc pages
 - **[llms-full.txt](https://mdfarhankc.github.io/fastapi-fullauth/llms-full.txt)**: full documentation in a single file
-
-Works with Claude, Cursor, Copilot, and any tool that accepts a docs URL.
 
 ## Development
 

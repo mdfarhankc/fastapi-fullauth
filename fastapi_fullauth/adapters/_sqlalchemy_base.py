@@ -14,6 +14,7 @@ from contextlib import asynccontextmanager
 from copy import copy
 from datetime import datetime, timezone
 from typing import Any, TypeVar, cast
+from uuid import UUID
 
 from sqlalchemy import CursorResult, select, update
 from sqlalchemy.exc import IntegrityError
@@ -47,6 +48,15 @@ _T = TypeVar("_T")
 def _as_aware(dt: datetime) -> datetime:
     """Treat a naive datetime (some drivers drop tzinfo on read) as UTC."""
     return dt if dt.tzinfo is not None else dt.replace(tzinfo=timezone.utc)
+
+
+def _column_python_type(column: Any) -> Any | None:
+    try:
+        return column.type.python_type
+    except NotImplementedError:
+        # Custom column types need not expose a Python type; skip the check
+        # rather than reject a setup that may be perfectly valid.
+        return None
 
 
 class _BaseSQLAlchemyAdapter(
@@ -112,12 +122,24 @@ class _BaseSQLAlchemyAdapter(
         columns = list(self._user_model.__table__.primary_key.columns)
         if len(columns) != 1:
             return None
-        try:
-            return columns[0].type.python_type
-        except NotImplementedError:
-            # Custom column types need not expose a Python type; skip the check
-            # rather than reject a setup that may be perfectly valid.
-            return None
+        return _column_python_type(columns[0])
+
+    def related_user_id_types(self) -> dict[str, Any]:
+        related = (
+            self._refresh_token_model,
+            self._user_role_model,
+            self._oauth_account_model,
+            self._passkey_model,
+        )
+        types: dict[str, Any] = {}
+        for model in related:
+            if model is None:
+                continue
+            column = model.__table__.columns.get("user_id")
+            python_type = None if column is None else _column_python_type(column)
+            if python_type is not None:
+                types[model.__name__] = python_type
+        return types
 
     # feature label -> the constructor kwargs that feature needs. Used to make
     # _require() and supports_feature() name the exact missing argument(s).
@@ -798,7 +820,7 @@ class _BaseSQLAlchemyAdapter(
             await self._commit(session)
             return True
 
-    async def delete_passkey(self, passkey_id: UserID) -> None:
+    async def delete_passkey(self, passkey_id: UUID) -> None:
         passkey_model = self._require(self._passkey_model, "Passkeys")
         async with self._begin() as session:
             result = await session.execute(
