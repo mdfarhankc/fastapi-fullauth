@@ -13,6 +13,8 @@ from fastapi_fullauth.oauth.base import OAuthProvider
 from fastapi_fullauth.types import OAuthUserInfo
 from tests.conftest import OAuthAccount, RefreshToken, Role, User, UserRole
 
+BINDING = "client-binding-secret"
+
 # ── Mock provider ────────────────────────────────────────────────────
 
 
@@ -140,8 +142,8 @@ async def test_generate_and_verify_oauth_state(config):
     from fastapi_fullauth.core.tokens import TokenEngine
 
     engine = TokenEngine(config=config)
-    state = generate_oauth_state(engine, ttl_seconds=300)
-    await verify_oauth_state(engine, state)
+    state = generate_oauth_state(engine, ttl_seconds=300, binding=BINDING)
+    await verify_oauth_state(engine, state, binding=BINDING)
 
 
 @pytest.mark.asyncio
@@ -153,7 +155,7 @@ async def test_verify_invalid_state_raises(config):
     # create a regular access token (no purpose)
     token = engine.create_access_token(user_id="test")
     with pytest.raises(OAuthProviderError, match="Invalid OAuth state"):
-        await verify_oauth_state(engine, token)
+        await verify_oauth_state(engine, token, binding=BINDING)
 
 
 @pytest.mark.asyncio
@@ -164,14 +166,14 @@ async def test_oauth_state_ttl_is_applied(config):
 
     engine = TokenEngine(config=config)
     # create state with 1-second TTL
-    state = generate_oauth_state(engine, ttl_seconds=1)
+    state = generate_oauth_state(engine, ttl_seconds=1, binding=BINDING)
 
     import asyncio
 
     await asyncio.sleep(1.1)
 
     with pytest.raises(TokenExpiredError):
-        await verify_oauth_state(engine, state)
+        await verify_oauth_state(engine, state, binding=BINDING)
 
 
 # ── OAuth callback flow tests ────────────────────────────────────────
@@ -183,7 +185,7 @@ async def test_oauth_creates_new_user(adapter, config):
 
     engine = TokenEngine(config=config)
     provider = MockOAuthProvider()
-    state = generate_oauth_state(engine)
+    state = generate_oauth_state(engine, binding=BINDING)
 
     token_pair, user, is_new, info = await oauth_callback(
         adapter=adapter,
@@ -191,6 +193,7 @@ async def test_oauth_creates_new_user(adapter, config):
         provider=provider,
         code="test-code",
         state=state,
+        binding=BINDING,
     )
 
     assert is_new is True
@@ -213,7 +216,7 @@ async def test_oauth_links_existing_user(adapter, config):
     existing = await adapter.create_user(data, hashed_password=hash_password("existing-pass"))
 
     provider = MockOAuthProvider()
-    state = generate_oauth_state(engine)
+    state = generate_oauth_state(engine, binding=BINDING)
 
     token_pair, user, is_new, info = await oauth_callback(
         adapter=adapter,
@@ -221,6 +224,7 @@ async def test_oauth_links_existing_user(adapter, config):
         provider=provider,
         code="test-code",
         state=state,
+        binding=BINDING,
     )
 
     assert is_new is False
@@ -241,7 +245,7 @@ async def test_oauth_state_is_single_use(adapter, config):
 
     engine = TokenEngine(config=config)
     provider = MockOAuthProvider()
-    state = generate_oauth_state(engine)
+    state = generate_oauth_state(engine, binding=BINDING)
 
     # first use succeeds
     await oauth_callback(
@@ -250,6 +254,7 @@ async def test_oauth_state_is_single_use(adapter, config):
         provider=provider,
         code="test-code",
         state=state,
+        binding=BINDING,
     )
 
     # replaying the same state is rejected (it was burned on first use)
@@ -260,7 +265,56 @@ async def test_oauth_state_is_single_use(adapter, config):
             provider=provider,
             code="test-code",
             state=state,
+            binding=BINDING,
         )
+
+
+@pytest.mark.asyncio
+async def test_wrong_binding_is_rejected_without_burning_the_state(adapter, config):
+    """A mismatched binding must fail before the state is consumed, so a forged
+    attempt cannot use up the legitimate client's state."""
+    from fastapi_fullauth.core.tokens import TokenEngine
+    from fastapi_fullauth.exceptions import OAuthProviderError
+
+    engine = TokenEngine(config=config)
+    provider = MockOAuthProvider()
+    state = generate_oauth_state(engine, binding=BINDING)
+
+    with pytest.raises(OAuthProviderError, match="Invalid OAuth state"):
+        await oauth_callback(
+            adapter=adapter,
+            token_engine=engine,
+            provider=provider,
+            code="test-code",
+            state=state,
+            binding="someone-elses-binding",
+        )
+
+    _, user, _, _ = await oauth_callback(
+        adapter=adapter,
+        token_engine=engine,
+        provider=provider,
+        code="test-code",
+        state=state,
+        binding=BINDING,
+    )
+    assert user.email == "oauth@example.com"
+
+
+@pytest.mark.asyncio
+async def test_state_carries_only_a_digest_of_the_binding(config):
+    """The state travels through the browser and the provider; the secret itself
+    must never be readable from it."""
+    import jwt
+
+    from fastapi_fullauth.core.tokens import TokenEngine
+
+    engine = TokenEngine(config=config)
+    state = generate_oauth_state(engine, binding=BINDING)
+    claims = jwt.decode(state, options={"verify_signature": False})
+    assert BINDING not in state
+    assert BINDING not in str(claims)
+    assert claims["extra"]["binding"]
 
 
 @pytest.mark.asyncio
@@ -284,7 +338,7 @@ async def test_oauth_unverified_email_refuses_link_to_existing_account(adapter, 
             name="Attacker",
         )
     )
-    state = generate_oauth_state(engine)
+    state = generate_oauth_state(engine, binding=BINDING)
 
     with pytest.raises(OAuthProviderError):
         await oauth_callback(
@@ -293,6 +347,7 @@ async def test_oauth_unverified_email_refuses_link_to_existing_account(adapter, 
             provider=provider,
             code="c",
             state=state,
+            binding=BINDING,
         )
 
     # no OAuth account created, existing user not hijacked
@@ -307,24 +362,26 @@ async def test_oauth_returning_user(adapter, config):
     provider = MockOAuthProvider()
 
     # first login = creates user
-    state1 = generate_oauth_state(engine)
+    state1 = generate_oauth_state(engine, binding=BINDING)
     _, user1, is_new1, _ = await oauth_callback(
         adapter=adapter,
         token_engine=engine,
         provider=provider,
         code="code1",
         state=state1,
+        binding=BINDING,
     )
     assert is_new1 is True
 
     # second login = returning user
-    state2 = generate_oauth_state(engine)
+    state2 = generate_oauth_state(engine, binding=BINDING)
     _, user2, is_new2, _ = await oauth_callback(
         adapter=adapter,
         token_engine=engine,
         provider=provider,
         code="code2",
         state=state2,
+        binding=BINDING,
     )
     assert is_new2 is False
     assert user1.id == user2.id
@@ -368,12 +425,12 @@ async def test_authorize_unknown_provider(oauth_app):
 @pytest.mark.asyncio
 async def test_callback_creates_user_and_returns_tokens(oauth_app, fullauth_with_oauth):
     transport = ASGITransport(app=oauth_app)
-    state = generate_oauth_state(fullauth_with_oauth.token_engine)
+    state = generate_oauth_state(fullauth_with_oauth.token_engine, binding=BINDING)
 
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         r = await client.post(
             "/api/v1/auth/oauth/mock/callback",
-            json={"code": "test-code", "state": state},
+            json={"code": "test-code", "state": state, "binding": BINDING},
         )
         assert r.status_code == 200
         data = r.json()
@@ -382,12 +439,47 @@ async def test_callback_creates_user_and_returns_tokens(oauth_app, fullauth_with
 
 
 @pytest.mark.asyncio
+async def test_callback_rejects_a_state_issued_to_another_client(oauth_app):
+    """Login CSRF: an attacker starts a login, then makes the victim's browser
+    submit the attacker's code and state, signing the victim into the
+    attacker's account. The state must be bound to the client that requested
+    it, so the victim's own binding cannot redeem the attacker's state."""
+    from urllib.parse import parse_qs, urlparse
+
+    transport = ASGITransport(app=oauth_app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        params = {"redirect_uri": "http://localhost/callback"}
+        attacker = (await client.get("/api/v1/auth/oauth/mock/authorize", params=params)).json()
+        victim = (await client.get("/api/v1/auth/oauth/mock/authorize", params=params)).json()
+        attacker_state = parse_qs(urlparse(attacker["authorization_url"]).query)["state"][0]
+
+        r = await client.post(
+            "/api/v1/auth/oauth/mock/callback",
+            json={"code": "attacker-code", "state": attacker_state, "binding": victim["binding"]},
+        )
+        assert r.status_code == 400
+
+        r = await client.post(
+            "/api/v1/auth/oauth/mock/callback",
+            json={"code": "attacker-code", "state": attacker_state},
+        )
+        assert r.status_code == 422
+
+        # The client that started the flow can still finish it.
+        r = await client.post(
+            "/api/v1/auth/oauth/mock/callback",
+            json={"code": "code", "state": attacker_state, "binding": attacker["binding"]},
+        )
+        assert r.status_code == 200
+
+
+@pytest.mark.asyncio
 async def test_callback_invalid_state(oauth_app):
     transport = ASGITransport(app=oauth_app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         r = await client.post(
             "/api/v1/auth/oauth/mock/callback",
-            json={"code": "test-code", "state": "bad-state"},
+            json={"code": "test-code", "state": "bad-state", "binding": BINDING},
         )
         assert r.status_code == 400
 
@@ -408,7 +500,9 @@ async def test_pkce_challenge_matches_verifier_end_to_end(adapter, config):
     engine = TokenEngine(config=config)
     provider = PkceMockProvider()
 
-    url = build_authorization_url(engine, provider, "http://localhost/callback", pkce_enabled=True)
+    url = build_authorization_url(
+        engine, provider, "http://localhost/callback", pkce_enabled=True, binding=BINDING
+    )
     assert "code_challenge=" in url
     assert provider.seen_challenge is not None
     assert provider.seen_state is not None
@@ -419,6 +513,7 @@ async def test_pkce_challenge_matches_verifier_end_to_end(adapter, config):
         provider=provider,
         code="test-code",
         state=provider.seen_state,
+        binding=BINDING,
         pkce_enabled=True,
     )
 
@@ -441,7 +536,9 @@ async def test_pkce_disabled_sends_no_challenge_or_verifier(adapter):
     engine = TokenEngine(config=config)
     provider = PkceMockProvider()
 
-    build_authorization_url(engine, provider, "http://localhost/callback", pkce_enabled=False)
+    build_authorization_url(
+        engine, provider, "http://localhost/callback", pkce_enabled=False, binding=BINDING
+    )
     assert provider.seen_challenge is None
 
     await oauth_callback(
@@ -450,6 +547,7 @@ async def test_pkce_disabled_sends_no_challenge_or_verifier(adapter):
         provider=provider,
         code="test-code",
         state=provider.seen_state,
+        binding=BINDING,
         pkce_enabled=False,
     )
     assert provider.seen_verifier is None
@@ -463,7 +561,9 @@ async def test_pkce_skipped_for_provider_without_support(adapter, config):
 
     engine = TokenEngine(config=config)
     provider = MockOAuthProvider()  # supports_pkce is False
-    url = build_authorization_url(engine, provider, "http://localhost/callback", pkce_enabled=True)
+    url = build_authorization_url(
+        engine, provider, "http://localhost/callback", pkce_enabled=True, binding=BINDING
+    )
     assert "code_challenge" not in url
 
 
@@ -477,7 +577,7 @@ async def test_google_authorization_url_includes_pkce(config):
     provider = GoogleOAuthProvider(
         client_id="id", client_secret="secret", redirect_uris=["http://localhost/cb"]
     )
-    url = build_authorization_url(engine, provider, "http://localhost/cb")
+    url = build_authorization_url(engine, provider, "http://localhost/cb", binding=BINDING)
     assert "code_challenge=" in url
     assert "code_challenge_method=S256" in url
     await provider.aclose()
@@ -590,7 +690,7 @@ async def test_oauth_login_blocked_for_deactivated_user(adapter, config):
     await adapter.update_user(existing.id, {"is_active": False})
 
     provider = MockOAuthProvider()
-    state = generate_oauth_state(engine)
+    state = generate_oauth_state(engine, binding=BINDING)
 
     with pytest.raises(OAuthProviderError, match="deactivated"):
         await oauth_callback(
@@ -599,6 +699,7 @@ async def test_oauth_login_blocked_for_deactivated_user(adapter, config):
             provider=provider,
             code="test-code",
             state=state,
+            binding=BINDING,
         )
 
 
@@ -639,7 +740,7 @@ async def test_discord_authorization_url_includes_pkce_and_scopes(config):
     provider = DiscordOAuthProvider(
         client_id="id", client_secret="secret", redirect_uris=["http://localhost/cb"]
     )
-    url = build_authorization_url(engine, provider, "http://localhost/cb")
+    url = build_authorization_url(engine, provider, "http://localhost/cb", binding=BINDING)
     assert url.startswith("https://discord.com/oauth2/authorize?")
     assert "code_challenge=" in url
     assert "code_challenge_method=S256" in url
@@ -734,7 +835,7 @@ async def test_gitlab_authorization_url_includes_pkce_and_scopes(config):
     provider = GitLabOAuthProvider(
         client_id="id", client_secret="secret", redirect_uris=["http://localhost/cb"]
     )
-    url = build_authorization_url(engine, provider, "http://localhost/cb")
+    url = build_authorization_url(engine, provider, "http://localhost/cb", binding=BINDING)
     assert url.startswith("https://gitlab.com/oauth/authorize?")
     assert "code_challenge=" in url
     assert "code_challenge_method=S256" in url

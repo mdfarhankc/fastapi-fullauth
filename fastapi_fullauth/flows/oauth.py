@@ -10,7 +10,7 @@ from fastapi_fullauth.core.tokens import TokenEngine
 from fastapi_fullauth.exceptions import OAuthProviderError, UserAlreadyExistsError
 from fastapi_fullauth.flows.tokens import issue_token_pair
 from fastapi_fullauth.oauth.base import OAuthProvider
-from fastapi_fullauth.types import OAuthAccount, OAuthUserInfo, TokenPair, UserSchema
+from fastapi_fullauth.types import OAuthAccount, OAuthUserInfo, TokenPair, TokenPayload, UserSchema
 
 logger = logging.getLogger("fastapi_fullauth.oauth")
 
@@ -36,13 +36,35 @@ def _pkce_code_challenge(verifier: str) -> str:
     return _b64url(hashlib.sha256(verifier.encode("ascii")).digest())
 
 
+def generate_oauth_binding() -> str:
+    """Create the secret that binds an OAuth state to the client that started the flow.
+
+    Return it to the client alongside the authorization URL. The client keeps it
+    (sessionStorage for a SPA) and sends it back with the callback. The state only
+    carries its hash, so a state an attacker obtained for their own login cannot
+    be redeemed by a victim's browser, which never had the attacker's binding.
+    RFC 9700 requires this binding of the ``state`` to the user agent.
+    """
+    return secrets.token_urlsafe(32)
+
+
+def _binding_digest(binding: str) -> str:
+    return _b64url(hashlib.sha256(binding.encode()).digest())
+
+
 def generate_oauth_state(
     token_engine: TokenEngine,
     ttl_seconds: int = 300,
     redirect_uri: str | None = None,
     nonce: str | None = None,
+    *,
+    binding: str,
 ) -> str:
-    extra: dict[str, Any] = {"purpose": "oauth_state", "nonce": nonce or secrets.token_hex(16)}
+    extra: dict[str, Any] = {
+        "purpose": "oauth_state",
+        "nonce": nonce or secrets.token_hex(16),
+        "binding": _binding_digest(binding),
+    }
     if redirect_uri:
         extra["redirect_uri"] = redirect_uri
     return token_engine.create_access_token(
@@ -56,15 +78,22 @@ def build_authorization_url(
     redirect_uri: str,
     ttl_seconds: int = 300,
     pkce_enabled: bool = True,
+    *,
+    binding: str,
 ) -> str:
     """Create a signed state token and return the provider authorization URL.
+
+    ``binding`` comes from :func:`generate_oauth_binding` and must be returned to
+    the client, which presents it again at the callback.
 
     Adds a PKCE code_challenge when both ``pkce_enabled`` and the provider
     supports PKCE. The matching verifier is derived from the state nonce at
     token exchange, so nothing extra needs to be stored between requests.
     """
     nonce = secrets.token_hex(16)
-    state = generate_oauth_state(token_engine, ttl_seconds, redirect_uri, nonce=nonce)
+    state = generate_oauth_state(
+        token_engine, ttl_seconds, redirect_uri, nonce=nonce, binding=binding
+    )
 
     secret = token_engine.config.SECRET_KEY
     if pkce_enabled and provider.supports_pkce and secret:
@@ -73,11 +102,20 @@ def build_authorization_url(
     return provider.get_authorization_url(state, redirect_uri)
 
 
-async def verify_oauth_state(token_engine: TokenEngine, state: str) -> str | None:
+async def _decode_bound_state(token_engine: TokenEngine, state: str, binding: str) -> TokenPayload:
     payload = await token_engine.decode_token(state, expected_type="access")
     if payload.extra.get("purpose") != "oauth_state":
         logger.warning("Invalid OAuth state token (wrong purpose)")
         raise OAuthProviderError("Invalid OAuth state token")
+    expected = payload.extra.get("binding")
+    if not isinstance(expected, str) or not hmac.compare_digest(expected, _binding_digest(binding)):
+        logger.warning("OAuth state rejected: not bound to the presenting client")
+        raise OAuthProviderError("Invalid OAuth state token")
+    return payload
+
+
+async def verify_oauth_state(token_engine: TokenEngine, state: str, *, binding: str) -> str | None:
+    payload = await _decode_bound_state(token_engine, state, binding)
     redirect_uri: str | None = payload.extra.get("redirect_uri")
     return redirect_uri
 
@@ -88,12 +126,13 @@ async def exchange_oauth_code(
     code: str,
     state: str,
     pkce_enabled: bool = True,
+    *,
+    binding: str,
 ) -> tuple[dict[str, Any], OAuthUserInfo]:
-    """Verify state and exchange authorization code for user info."""
-    payload = await token_engine.decode_token(state, expected_type="access")
-    if payload.extra.get("purpose") != "oauth_state":
-        logger.warning("Invalid OAuth state token (wrong purpose)")
-        raise OAuthProviderError("Invalid OAuth state token")
+    """Verify the state and its binding, then exchange the code for user info."""
+    # Checked before the state is burned, so a mismatched attempt cannot use up
+    # the legitimate client's state.
+    payload = await _decode_bound_state(token_engine, state, binding)
 
     # Single-use: burn the state so a captured (code, state) pair can't be
     # replayed within the state's TTL. Decoding it again raises TokenBlacklisted.
@@ -240,10 +279,12 @@ async def oauth_callback(
     pkce_enabled: bool = True,
     user_agent: str | None = None,
     ip_address: str | None = None,
+    *,
+    binding: str,
 ) -> tuple[TokenPair, UserSchema, bool, OAuthUserInfo]:
     """Full OAuth callback flow. Delegates to smaller functions."""
     provider_tokens, info = await exchange_oauth_code(
-        provider, token_engine, code, state, pkce_enabled=pkce_enabled
+        provider, token_engine, code, state, pkce_enabled=pkce_enabled, binding=binding
     )
 
     user, is_new_user = await link_or_create_user(

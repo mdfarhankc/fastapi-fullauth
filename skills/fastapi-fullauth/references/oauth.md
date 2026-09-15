@@ -52,26 +52,28 @@ The `redirect_uris` list is a whitelist. `/oauth/{provider}/authorize?redirect_u
 ## Routes
 
 - `GET  /api/v1/auth/oauth/providers`: list configured providers
-- `GET  /api/v1/auth/oauth/{provider}/authorize?redirect_uri=...`: returns the authorization URL to redirect the browser to
-- `POST /api/v1/auth/oauth/{provider}/callback`: body `{code, state}`, exchange code for tokens and log the user in
+- `GET  /api/v1/auth/oauth/{provider}/authorize?redirect_uri=...`: returns `{authorization_url, binding}`
+- `POST /api/v1/auth/oauth/{provider}/callback`: body `{code, state, binding}`, exchange code for tokens and log the user in
 - `GET  /api/v1/auth/oauth/accounts`: list OAuth accounts linked to current user (auth required)
 - `DELETE /api/v1/auth/oauth/accounts/{provider}`: unlink a provider (auth required, only works if the user has another login method)
 
 The SPA flow:
 
 1. User clicks "sign in with GitHub" → SPA calls `/authorize?redirect_uri=https://app.example.com/after-oauth`
-2. SPA redirects the browser to the returned `authorization_url`
+2. SPA stores the returned `binding` in `sessionStorage` (never in a URL) and redirects the browser to `authorization_url`
 3. GitHub redirects back to `https://app.example.com/after-oauth?code=...&state=...`
-4. SPA pulls `code` and `state` from the URL and POSTs to `/callback`
+4. SPA POSTs `code`, `state`, and the stored `binding` to `/callback`, then removes the stored `binding`
 5. Response is a login response (access + refresh tokens)
 
-## State and redirect_uri
+## State, binding, and redirect_uri
 
-State is a JWT carrying `{"purpose": "oauth_state", "nonce": ..., "redirect_uri": ...}`, signed with `SECRET_KEY`. TTL defaults to 300 s (`OAUTH_STATE_EXPIRE_SECONDS`). The `/callback` route validates the state's purpose and expiry; mismatches return 401.
+State is a JWT carrying `{"purpose": "oauth_state", "nonce": ..., "binding": <sha256 of binding>, "redirect_uri": ...}`, signed with `SECRET_KEY`. TTL defaults to 300 s (`OAUTH_STATE_EXPIRE_SECONDS`), and it is single-use when the blacklist is enabled.
+
+The `binding` binds the state to the client that started the flow, as RFC 9700 requires; a signed state alone allows login CSRF (an attacker makes the victim's browser finish the attacker's login). The callback rejects a missing `binding` with 422 and a mismatched one with 400, checked before the state is burned. When calling the flows directly, `generate_oauth_binding()` creates it and `build_authorization_url`, `exchange_oauth_code`, `oauth_callback`, `generate_oauth_state`, and `verify_oauth_state` all take a required keyword-only `binding`.
 
 ## PKCE
 
-PKCE (S256) is enabled by default for providers that support it (Google, GitHub, Discord, GitLab) via the `OAUTH_PKCE_ENABLED` setting. The flow stays stateless: the `code_verifier` is derived from the signed state token's nonce keyed by `SECRET_KEY`, so it never travels through the browser. Treat this as defense-in-depth for a confidential client that already sends a `client_secret`, not as a replacement for binding the OAuth state to the browser session. A custom provider opts in by setting `supports_pkce = True` and accepting the `code_challenge` (on `get_authorization_url`) and `code_verifier` (on `exchange_code`) keyword arguments; providers that leave `supports_pkce = False` keep the two-argument method signatures.
+PKCE (S256) is enabled by default for providers that support it (Google, GitHub, Discord, GitLab) via the `OAUTH_PKCE_ENABLED` setting. The flow stays stateless: the `code_verifier` is derived from the signed state token's nonce keyed by `SECRET_KEY`, so it never travels through the browser. Because the server derives it, it is defense-in-depth for a confidential client that already sends a `client_secret`; the `binding` is what stops login CSRF. A custom provider opts in by setting `supports_pkce = True` and accepting the `code_challenge` (on `get_authorization_url`) and `code_verifier` (on `exchange_code`) keyword arguments; providers that leave `supports_pkce = False` keep the two-argument method signatures.
 
 ## Auto-link-by-email and the email_verified gate
 
@@ -92,8 +94,8 @@ To disable auto-link entirely: `FULLAUTH_OAUTH_AUTO_LINK_BY_EMAIL=False`. Then e
 High-level, in `flows/oauth.py`:
 
 ```
-code + state
-   → verify_oauth_state                    # JWT decode + purpose check
+code + state + binding
+   → decode state                          # JWT decode + purpose + binding check, then burn
    → provider.exchange_code(code, ...)     # tokens
    → provider.get_user_info(tokens)        # OAuthUserInfo
    → link_or_create_user                   # see below
