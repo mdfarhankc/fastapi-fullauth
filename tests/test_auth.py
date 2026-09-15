@@ -109,6 +109,85 @@ async def test_register_anti_enumeration_same_response_for_new_and_existing():
     await engine.dispose()
 
 
+def _record_response_completion(app, events):
+    """Wrap an ASGI app so ``events`` records when the response body finishes,
+    letting a test see whether a hook ran before or after the client got its
+    response."""
+
+    async def wrapped(scope, receive, send):
+        async def recording_send(message):
+            await send(message)
+            if message["type"] == "http.response.body" and not message.get("more_body"):
+                events.append("response sent")
+
+        await app(scope, receive, recording_send)
+
+    return wrapped
+
+
+@pytest.mark.asyncio
+async def test_register_hook_runs_after_the_response_is_sent():
+    """after_register typically sends an email. Running it inline makes new
+    registrations measurably slower than duplicates, which reveals whether an
+    email is registered despite the identical 202 body."""
+    engine, session_maker = await _make_db()
+    fullauth = FullAuth(
+        config=FullAuthConfig(SECRET_KEY="test-secret-key-that-is-long-enough-32b"),
+        adapter=make_test_adapter(session_maker),
+    )
+    events: list[str] = []
+
+    @fullauth.hooks.on("after_register")
+    async def on_register(user):
+        events.append("hook ran")
+
+    app = FastAPI()
+    fullauth.init_app(app)
+
+    transport = ASGITransport(app=_record_response_completion(app, events))
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        r = await client.post(
+            "/api/v1/auth/register",
+            json={"email": "bg@test.com", "password": "securepass123"},
+        )
+    assert r.status_code == 202
+    assert events == ["response sent", "hook ran"]
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_register_duplicate_email_pays_the_same_hashing_cost():
+    """With anti-enumeration on, a duplicate email must do the password hash a
+    new registration does, or the missing work shows up in response time."""
+    import importlib
+    from unittest.mock import patch
+
+    from fastapi_fullauth.core.crypto import ahash_password
+
+    engine, session_maker = await _make_db()
+    fullauth = FullAuth(
+        config=FullAuthConfig(SECRET_KEY="test-secret-key-that-is-long-enough-32b"),
+        adapter=make_test_adapter(session_maker),
+    )
+    app = FastAPI()
+    fullauth.init_app(app)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        body = {"email": "dup@test.com", "password": "securepass123"}
+        await client.post("/api/v1/auth/register", json=body)
+
+        auth_router_module = importlib.import_module("fastapi_fullauth.routers.auth")
+        with patch.object(auth_router_module, "ahash_password", side_effect=ahash_password) as spy:
+            r = await client.post("/api/v1/auth/register", json=body)
+
+    assert r.status_code == 202
+    spy.assert_awaited_once()
+
+    await engine.dispose()
+
+
 @pytest.mark.asyncio
 async def test_register_weak_password(client):
     r = await client.post(
@@ -867,6 +946,43 @@ async def _register_and_login_verify(client):
         json={"email": "verify@test.com", "password": "securepass123"},
     )
     return r.json()
+
+
+@pytest.mark.asyncio
+async def test_password_reset_email_is_sent_after_the_response():
+    """Only real accounts trigger the reset email; sending it inline would make
+    their responses slower than unknown addresses and reveal which exist."""
+    engine, session_maker = await _make_db()
+    fullauth = FullAuth(
+        config=FullAuthConfig(
+            SECRET_KEY="test-secret-key-that-is-long-enough-32b",
+            PREVENT_REGISTRATION_ENUMERATION=False,
+        ),
+        adapter=make_test_adapter(session_maker),
+    )
+    events: list[str] = []
+
+    @fullauth.hooks.on("send_password_reset_email")
+    async def send_reset(email, token):
+        events.append("hook ran")
+
+    app = FastAPI()
+    fullauth.init_app(app)
+
+    transport = ASGITransport(app=_record_response_completion(app, events))
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        await client.post(
+            "/api/v1/auth/register",
+            json={"email": "reset@test.com", "password": "securepass123"},
+        )
+        events.clear()
+        r = await client.post(
+            "/api/v1/auth/password-reset/request", json={"email": "reset@test.com"}
+        )
+    assert r.status_code == 202
+    assert events == ["response sent", "hook ran"]
+
+    await engine.dispose()
 
 
 @pytest.mark.asyncio

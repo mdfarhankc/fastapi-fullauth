@@ -1,7 +1,7 @@
 import logging
 from typing import TYPE_CHECKING
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 
 from fastapi_fullauth.dependencies.current_user import CurrentUser, get_fullauth
 from fastapi_fullauth.exceptions import CREDENTIALS_EXCEPTION, InvalidPasswordError, TokenError
@@ -34,6 +34,7 @@ def create_verify_router(
     async def verify_email_request_route(
         user: CurrentUser,
         request: Request,
+        background_tasks: BackgroundTasks,
         fullauth: "FullAuth" = Depends(get_fullauth),
     ) -> MessageResponse:
         await fullauth.enforce_rate_limit(request, "password-reset")
@@ -42,8 +43,11 @@ def create_verify_router(
             fullauth.adapter, fullauth.token_engine, user.id
         )
         if verify_token:
-            await fullauth.hooks.emit(
-                "send_verification_email", email=user.email, token=verify_token
+            background_tasks.add_task(
+                fullauth.hooks.emit,
+                "send_verification_email",
+                email=user.email,
+                token=verify_token,
             )
 
         return message_response_schema(detail="If eligible, a verification email has been sent.")
@@ -80,6 +84,7 @@ def create_verify_router(
     async def password_reset_request_route(
         data: PasswordResetRequest,
         request: Request,
+        background_tasks: BackgroundTasks,
         fullauth: "FullAuth" = Depends(get_fullauth),
     ) -> MessageResponse:
         await fullauth.enforce_rate_limit(request, "password-reset")
@@ -87,7 +92,11 @@ def create_verify_router(
         token = await request_password_reset(fullauth.adapter, fullauth.token_engine, data.email)
 
         if token:
-            await fullauth.hooks.emit("send_password_reset_email", email=data.email, token=token)
+            # Sent after the response, so the email send's latency cannot reveal
+            # that the address belongs to an account.
+            background_tasks.add_task(
+                fullauth.hooks.emit, "send_password_reset_email", email=data.email, token=token
+            )
 
         return message_response_schema(detail="If the email exists, a reset link has been sent.")
 

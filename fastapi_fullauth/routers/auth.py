@@ -2,9 +2,10 @@ import contextlib
 import logging
 from typing import TYPE_CHECKING, cast
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, ValidationError
 
+from fastapi_fullauth.core.crypto import ahash_password
 from fastapi_fullauth.dependencies.current_user import _extract_token, get_fullauth
 from fastapi_fullauth.exceptions import (
     CREDENTIALS_EXCEPTION,
@@ -68,12 +69,14 @@ def create_auth_router(
     async def register_route(
         request: Request,
         response: Response,
+        background_tasks: BackgroundTasks,
         fullauth: "FullAuth" = Depends(get_fullauth),
         data: create_user_schema = Body(...),  # type: ignore[valid-type]
     ) -> UserSchema | MessageResponse:
         await fullauth.enforce_rate_limit(request, "register")
 
         anti_enum = fullauth.config.PREVENT_REGISTRATION_ENUMERATION
+        hash_algorithm = fullauth.config.PASSWORD_HASH_ALGORITHM
         generic = message_response_schema(
             detail="If this email isn't already registered, a verification email has been sent."
         )
@@ -83,18 +86,26 @@ def create_auth_router(
                 fullauth.adapter,
                 data,
                 login_field=login_field,
-                hash_algorithm=fullauth.config.PASSWORD_HASH_ALGORITHM,
+                hash_algorithm=hash_algorithm,
                 password_validator=fullauth.password_validator,
             )
         except InvalidPasswordError as e:
             raise HTTPException(status_code=422, detail=str(e))
         except UserAlreadyExistsError:
-            if anti_enum:
-                response.status_code = 202
-                return generic
-            raise USER_EXISTS_EXCEPTION
+            if not anti_enum:
+                raise USER_EXISTS_EXCEPTION
+            # A new account pays for a password hash; without the same work here
+            # the response time reveals that the email is already registered.
+            try:
+                await ahash_password(cast("CreateUserSchema", data).password, hash_algorithm)
+            except InvalidPasswordError as e:
+                raise HTTPException(status_code=422, detail=str(e))
+            response.status_code = 202
+            return generic
 
-        await fullauth.hooks.emit("after_register", user=user)
+        # Run after the response is sent, so hook latency (typically an email
+        # send) cannot reveal that an account was created.
+        background_tasks.add_task(fullauth.hooks.emit, "after_register", user=user)
 
         if anti_enum:
             response.status_code = 202

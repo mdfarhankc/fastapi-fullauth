@@ -11,6 +11,7 @@ Key behaviors:
 - Hooks fire **after** the side effect commits. When `after_register` fires, the user is already in the database. When `after_logout` fires, the token is already blacklisted. You can't cancel an operation from a hook.
 - **Error isolation**: if a hook raises an exception, it's caught and logged to the `fastapi_fullauth.hooks` logger. The route returns its normal response. Other hooks for the same event still run.
 - Hooks run in **registration order**, sequentially (not concurrently).
+- `after_register`, `send_verification_email`, and `send_password_reset_email` run **after the response is sent**, as FastAPI background tasks. Their latency (typically an email send) would otherwise make responses for real accounts slower than for unknown ones, revealing which emails are registered. Other hooks run before the response.
 
 ## Registering hooks
 
