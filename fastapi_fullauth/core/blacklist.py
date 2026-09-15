@@ -15,6 +15,17 @@ class TokenBlacklist:
     async def is_blacklisted(self, jti: str) -> bool:
         raise NotImplementedError
 
+    async def is_any_blacklisted(self, *keys: str) -> bool:
+        """Whether any of ``keys`` is blacklisted.
+
+        Token checks look up the token id and its session family together.
+        Backends that can answer in one round trip should override this.
+        """
+        for key in keys:
+            if await self.is_blacklisted(key):
+                return True
+        return False
+
     async def aclose(self) -> None:
         """Release any held resources. No-op unless overridden."""
 
@@ -59,15 +70,20 @@ class RedisTokenBlacklist(TokenBlacklist):
         await self._redis.setex(f"{self._prefix}{jti}", ttl, "1")
 
     async def is_blacklisted(self, jti: str) -> bool:
+        return await self.is_any_blacklisted(jti)
+
+    async def is_any_blacklisted(self, *keys: str) -> bool:
+        if not keys:
+            return False
         try:
-            return bool(await self._redis.exists(f"{self._prefix}{jti}") > 0)
+            return bool(await self._redis.exists(*(f"{self._prefix}{key}" for key in keys)) > 0)
         except Exception:
             # Fail closed: if we can't confirm a token is NOT revoked, treat it as
             # revoked so a leaked/blacklisted token can't slip through during a
             # Redis outage. The caller surfaces this as an auth failure, not a 500.
             logger.error(
-                "Blacklist Redis error; treating token as revoked (fail-closed): jti=%s",
-                jti,
+                "Blacklist Redis error; treating token as revoked (fail-closed): keys=%s",
+                keys,
                 exc_info=True,
             )
             return True

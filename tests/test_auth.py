@@ -586,8 +586,9 @@ async def test_refresh_persists_new_token_and_revokes_old():
 
 
 @pytest.mark.asyncio
-async def test_refresh_reuse_blocked_by_blacklist():
-    """Replaying an already-used refresh token is blocked (JTI blacklisted)."""
+async def test_refresh_reuse_is_rejected_and_revokes_the_family():
+    """Replaying an already-rotated refresh token is rejected and burns the
+    whole family, including the token issued by the legitimate rotation."""
     app, adapter, _, engine = await _make_app()
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -608,10 +609,19 @@ async def test_refresh_reuse_blocked_by_blacklist():
         )
         assert r.status_code == 200
 
-        # replay the OLD refresh token = blocked by blacklist
+        new_refresh = r.json()["refresh_token"]
+
+        # replay the OLD refresh token = reuse detected
         r = await client.post(
             "/api/v1/auth/refresh",
             json={"refresh_token": old_refresh},
+        )
+        assert r.status_code == 401
+
+        # the legitimate successor is revoked with the family
+        r = await client.post(
+            "/api/v1/auth/refresh",
+            json={"refresh_token": new_refresh},
         )
         assert r.status_code == 401
 

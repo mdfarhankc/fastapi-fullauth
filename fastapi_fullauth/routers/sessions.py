@@ -52,7 +52,9 @@ def create_sessions_router() -> APIRouter:
         fullauth: "FullAuth" = Depends(get_fullauth),
     ) -> Response:
         adapter = cast("SessionAdapterMixin", fullauth.adapter)
-        if not await revoke_session(adapter, user.id, family_id):
+        if not await revoke_session(
+            adapter, user.id, family_id, token_engine=fullauth.token_engine
+        ):
             raise HTTPException(status_code=404, detail="Session not found")
         logger.info("Session revoked: user_id=%s family_id=%s", user.id, family_id)
         return Response(status_code=204)
@@ -74,7 +76,9 @@ def create_sessions_router() -> APIRouter:
             # refusing avoids signing the caller out of their own session too.
             raise CREDENTIALS_EXCEPTION
         adapter = cast("SessionAdapterMixin", fullauth.adapter)
-        count = await revoke_other_sessions(adapter, user.id, family_id)
+        count = await revoke_other_sessions(
+            adapter, user.id, family_id, token_engine=fullauth.token_engine
+        )
         logger.info("Other sessions revoked: user_id=%s count=%s", user.id, count)
         return MessageResponse(detail=f"Signed out {count} other session(s).")
 

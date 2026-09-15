@@ -45,6 +45,12 @@ The access token carries a `family_id` claim identifying its session. When listi
 
 Access tokens issued before upgrading don't carry the claim; their `current` flag resolves on the next login or refresh.
 
+## Revocation takes effect immediately
+
+Revoking a session signs that device out at once: its refresh token stops working, and so do the access tokens it already holds, because the session's `family_id` is blacklisted for the access-token lifetime. The same applies to logout, a password change or reset (which end every session), and refresh-token reuse detection.
+
+This relies on the token blacklist (`BLACKLIST_ENABLED`, on by default). Run it on Redis when you have more than one worker; an in-memory blacklist only knows about revocations made in the same process.
+
 ## Using a custom adapter
 
 The built-in adapters implement session listing out of the box. A custom adapter opts in by inheriting `SessionAdapterMixin` and implementing three methods:

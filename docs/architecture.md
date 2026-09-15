@@ -149,6 +149,10 @@ Attacker replays token A -> revoke_refresh_token returns False
 
 Access tokens are blacklisted by their `jti` (unique token ID) on logout. The blacklist entry has a TTL matching the token's remaining lifetime, so entries expire automatically.
 
+Ending a session also blacklists its `family_id`, so every access token the session already issued stops working immediately, not just the one presented. This happens on logout, single-session revoke, revoke-others, refresh-token reuse, password change, and password reset. The entry lives for the access-token lifetime plus leeway. It needs `BLACKLIST_ENABLED` (the default), and in multi-worker deployments a shared Redis blacklist; with in-memory backends only the worker that handled the revoke knows about it.
+
+Rotated refresh tokens are not blacklisted: their revoked database row is what sends a replay into reuse detection.
+
 Single-use tokens (email verification, password reset) are also blacklisted after consumption to prevent replay.
 
 ### Purpose-scoped tokens

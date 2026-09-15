@@ -245,9 +245,23 @@ async def test_full_auth_round_trip_for_key_type(user_model, refresh_model, sche
         )
         assert r.status_code == 401
 
+        # The family is gone, so the access token issued by the legitimate
+        # rotation is rejected too.
+        r = await client.get(
+            "/api/v1/auth/me",
+            headers={"Authorization": f"Bearer {rotated['access_token']}"},
+        )
+        assert r.status_code == 401
+
+        # A fresh login still works for the same key.
+        r = await client.post(
+            "/api/v1/auth/login",
+            json={"email": "k@test.com", "password": "securepass123"},
+        )
+        assert r.status_code == 200
         r = await client.post(
             "/api/v1/auth/logout",
-            headers={"Authorization": f"Bearer {rotated['access_token']}"},
+            headers={"Authorization": f"Bearer {r.json()['access_token']}"},
         )
         assert r.status_code == 204
 

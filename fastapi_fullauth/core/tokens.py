@@ -17,6 +17,11 @@ from fastapi_fullauth.types import RefreshTokenMeta, TokenPayload
 logger = logging.getLogger("fastapi_fullauth.tokens")
 
 
+def _family_key(family_id: str) -> str:
+    # Namespaced so a family id can never collide with a token jti in the blacklist.
+    return f"family:{family_id}"
+
+
 class TokenEngine:
     def __init__(self, config: FullAuthConfig, blacklist: TokenBlacklist | None = None) -> None:
         self.config = config
@@ -106,9 +111,14 @@ class TokenEngine:
             raise TokenError(f"Invalid token: {e}")
 
         jti = data.get("jti", "")
-        if self.config.BLACKLIST_ENABLED and await self.blacklist.is_blacklisted(jti):
-            logger.warning("Blacklisted token used: jti=%s, sub=%s", jti, data.get("sub"))
-            raise TokenBlacklistedError("Token has been revoked")
+        family_id = data.get("family_id")
+        if self.config.BLACKLIST_ENABLED:
+            # A token dies with its session: revoking the family blacklists every
+            # token issued to it, not only the one presented at logout.
+            keys = [jti, _family_key(family_id)] if family_id else [jti]
+            if await self.blacklist.is_any_blacklisted(*keys):
+                logger.warning("Blacklisted token used: jti=%s, sub=%s", jti, data.get("sub"))
+                raise TokenBlacklistedError("Token has been revoked")
 
         if expected_type is not None and data.get("type", "access") != expected_type:
             logger.warning(
@@ -134,7 +144,7 @@ class TokenEngine:
             type=data.get("type", "access"),
             roles=data.get("roles", []),
             extra=extra,
-            family_id=data.get("family_id"),
+            family_id=family_id,
         )
 
     async def blacklist_token(self, jti: str, ttl_seconds: int | None = None) -> None:
@@ -151,6 +161,19 @@ class TokenEngine:
         """
         remaining = int((payload.exp - datetime.now(timezone.utc)).total_seconds())
         await self.blacklist.add(payload.jti, max(1, remaining))
+
+    async def revoke_family(self, family_id: str) -> None:
+        """Invalidate every access and refresh token issued to a session.
+
+        Ending a session in the database stops it minting new tokens, but access
+        tokens it already issued stay valid until they expire. Blacklisting the
+        family closes that window. The entry only has to outlive the longest
+        access token the family can still hold, plus clock leeway.
+        """
+        if not self.config.BLACKLIST_ENABLED:
+            return
+        ttl = self.config.ACCESS_TOKEN_EXPIRE_MINUTES * 60 + self.config.JWT_LEEWAY_SECONDS
+        await self.blacklist.add(_family_key(family_id), ttl)
 
     def create_token_pair(
         self,

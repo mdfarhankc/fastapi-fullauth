@@ -111,6 +111,7 @@ def create_profile_router(
                 current_password=data.current_password,
                 hash_algorithm=fullauth.config.PASSWORD_HASH_ALGORITHM,
                 password_validator=fullauth.password_validator,
+                token_engine=fullauth.token_engine,
             )
         except AuthenticationError:
             raise HTTPException(status_code=400, detail="Current password is incorrect")
