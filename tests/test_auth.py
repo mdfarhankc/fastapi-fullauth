@@ -226,6 +226,40 @@ async def test_login_locked_account_returns_generic_credentials_error():
 
 
 @pytest.mark.asyncio
+async def test_lockout_counts_email_case_and_whitespace_variants_together():
+    """Adapters normalise emails for lookup, so lockout must key on the same
+    normalised value; otherwise each casing gets its own counter and an attacker
+    can guess indefinitely by varying case."""
+    engine, session_maker = await _make_db()
+    fullauth = FullAuth(
+        config=FullAuthConfig(
+            SECRET_KEY="test-secret-key-that-is-long-enough-32b",
+            MAX_LOGIN_ATTEMPTS=3,
+            AUTH_RATE_LIMIT_ENABLED=False,
+        ),
+        adapter=make_test_adapter(session_maker),
+    )
+    app = FastAPI()
+    fullauth.init_app(app)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        await client.post(
+            "/api/v1/auth/register",
+            json={"email": "victim@test.com", "password": "securepass123"},
+        )
+        for variant in ("Victim@test.com", "VICTIM@TEST.COM", "  victim@test.com "):
+            await client.post("/api/v1/auth/login", json={"email": variant, "password": "wrong"})
+        r = await client.post(
+            "/api/v1/auth/login",
+            json={"email": "victim@test.com", "password": "securepass123"},
+        )
+        assert r.status_code == 401
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
 async def test_me_authenticated(client, auth_headers):
     r = await client.get("/me", headers=auth_headers)
     assert r.status_code == 200
