@@ -2,7 +2,8 @@ import logging
 from typing import TYPE_CHECKING, cast
 
 from fastapi import APIRouter, Body, Depends, HTTPException
-from pydantic import BaseModel
+from fastapi.exceptions import RequestValidationError
+from pydantic import BaseModel, ValidationError
 
 from fastapi_fullauth.dependencies.current_user import CurrentUser, VerifiedUser, get_fullauth
 from fastapi_fullauth.exceptions import (
@@ -68,11 +69,14 @@ def create_profile_router(
     ) -> UserSchema:
         raw = cast("BaseModel", data).model_dump(exclude_unset=True)
         try:
-            updates = validate_profile_updates(raw, user_schema)
+            updates = validate_profile_updates(raw, user_schema, current=user)
         except NoValidFieldsError:
             raise HTTPException(status_code=400, detail="No valid fields to update")
         except UnknownFieldsError as e:
             raise HTTPException(status_code=422, detail=str(e))
+        except ValidationError as e:
+            # Same 422 shape FastAPI uses for request body validation.
+            raise RequestValidationError(e.errors(include_url=False))
 
         return await fullauth.adapter.update_user(user.id, updates)
 

@@ -220,6 +220,56 @@ async def test_update_profile():
 
 
 @pytest.mark.asyncio
+async def test_update_profile_enforces_the_user_schema():
+    """PATCH /me must apply the schema's own rules: field constraints, custom
+    validators, and nullability. The update body model is rebuilt with every
+    field optional, so without validating against the real schema a client
+    could write values the schema forbids."""
+    from pydantic import Field, field_validator
+
+    from fastapi_fullauth.types import UserSchema
+
+    class StrictUser(UserSchema):
+        display_name: str = Field(default="", max_length=10)
+
+        @field_validator("display_name")
+        @classmethod
+        def no_admin(cls, value: str) -> str:
+            if "admin" in value.lower():
+                raise ValueError("display_name may not impersonate staff")
+            return value
+
+    engine, session_maker = await _make_db()
+    fullauth = FullAuth(
+        config=FullAuthConfig(
+            SECRET_KEY="test-secret-key-that-is-long-enough-32b",
+            AUTH_RATE_LIMIT_ENABLED=False,
+        ),
+        adapter=make_test_adapter(session_maker, user_schema=StrictUser),
+    )
+    app = FastAPI()
+    fullauth.init_app(app)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        tokens = await _register_and_login(client)
+        headers = {"Authorization": f"Bearer {tokens['access_token']}"}
+
+        for bad in ({"display_name": "x" * 50}, {"display_name": "Admin"}, {"display_name": None}):
+            r = await client.patch("/api/v1/auth/me", json=bad, headers=headers)
+            assert r.status_code == 422, (bad, r.text)
+
+        r = await client.patch("/api/v1/auth/me", json={"display_name": "Farhan"}, headers=headers)
+        assert r.status_code == 200
+        assert r.json()["display_name"] == "Farhan"
+
+        r = await client.get("/api/v1/auth/me", headers=headers)
+        assert r.json()["display_name"] == "Farhan"
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
 async def test_update_profile_rejects_unknown_fields():
     app, _, _, engine = await _make_app()
     transport = ASGITransport(app=app)
