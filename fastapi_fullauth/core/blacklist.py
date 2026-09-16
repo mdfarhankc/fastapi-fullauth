@@ -7,6 +7,10 @@ import time
 
 logger = logging.getLogger("fastapi_fullauth.blacklist")
 
+# How often the in-memory stores scan for expired entries. Scanning on every
+# write would be O(n) per request; once a minute keeps memory bounded cheaply.
+SWEEP_INTERVAL_SECONDS = 60.0
+
 
 class TokenBlacklist:
     async def add(self, jti: str, ttl_seconds: int | None = None) -> None:
@@ -33,15 +37,32 @@ class TokenBlacklist:
 class InMemoryTokenBlacklist(TokenBlacklist):
     def __init__(self) -> None:
         self._blacklisted: dict[str, float | None] = {}
+        self._next_sweep = 0.0
 
     async def add(self, jti: str, ttl_seconds: int | None = None) -> None:
+        now = time.monotonic()
+        self._sweep_expired(now)
         # `is None` (not falsy): a ttl of 0 means "already expired", which we
         # floor to an immediate 1s entry rather than the no-expiry sentinel.
         if ttl_seconds is None:
             expires_at: float | None = None
         else:
-            expires_at = time.monotonic() + max(1, ttl_seconds)
+            expires_at = now + max(1, ttl_seconds)
         self._blacklisted[jti] = expires_at
+
+    def _sweep_expired(self, now: float) -> None:
+        # Lookups only evict the key they check, so entries nobody asks about
+        # again would otherwise live for the whole process.
+        if now < self._next_sweep:
+            return
+        self._next_sweep = now + SWEEP_INTERVAL_SECONDS
+        expired = [
+            key
+            for key, expires_at in self._blacklisted.items()
+            if expires_at is not None and expires_at <= now
+        ]
+        for key in expired:
+            del self._blacklisted[key]
 
     async def is_blacklisted(self, jti: str) -> bool:
         if jti not in self._blacklisted:

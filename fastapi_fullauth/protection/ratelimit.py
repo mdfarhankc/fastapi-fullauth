@@ -8,6 +8,8 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from fastapi_fullauth.config import FullAuthConfig
 
+from fastapi_fullauth.core.blacklist import SWEEP_INTERVAL_SECONDS
+
 logger = logging.getLogger("fastapi_fullauth.ratelimit")
 
 
@@ -18,6 +20,7 @@ class RateLimiter:
         self.max_requests = max_requests
         self.window_seconds = window_seconds
         self._hits: dict[str, deque[float]] = defaultdict(deque)
+        self._next_sweep = 0.0
 
     def _cleanup(self, key: str, now: float) -> deque[float]:
         cutoff = now - self.window_seconds
@@ -28,8 +31,19 @@ class RateLimiter:
             del self._hits[key]
         return timestamps
 
+    def _sweep_idle(self, now: float) -> None:
+        # _cleanup only prunes the key being checked; clients that never return
+        # (rotating IPs, scanners) would otherwise keep their entries forever.
+        if now < self._next_sweep:
+            return
+        self._next_sweep = now + SWEEP_INTERVAL_SECONDS
+        cutoff = now - self.window_seconds
+        for key in [k for k, stamps in self._hits.items() if not stamps or stamps[-1] <= cutoff]:
+            del self._hits[key]
+
     async def is_allowed(self, key: str) -> bool:
         now = time.monotonic()
+        self._sweep_idle(now)
         self._cleanup(key, now)
         timestamps = self._hits[key]
 
