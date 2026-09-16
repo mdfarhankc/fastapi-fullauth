@@ -1163,6 +1163,32 @@ async def test_verify_invalid_token(verify_client):
 
 
 @pytest.mark.asyncio
+async def test_verify_and_reset_confirm_for_a_deleted_user_are_401_not_500(
+    client, fullauth, adapter, registered_user
+):
+    """A valid token whose user was deleted must look like any other invalid
+    token: a 401, never a 500 and never a response that reveals the deletion."""
+    user = await adapter.get_user_by_email("user@test.com")
+    engine = fullauth.token_engine
+    verify_token = engine.create_access_token(
+        user_id=str(user.id), extra={"purpose": "email_verify"}
+    )
+    reset_token = engine.create_access_token(
+        user_id=str(user.id), extra={"purpose": "password_reset"}
+    )
+    await adapter.delete_user(user.id)
+
+    r = await client.post("/api/v1/auth/verify-email/confirm", json={"token": verify_token})
+    assert r.status_code == 401
+
+    r = await client.post(
+        "/api/v1/auth/password-reset/confirm",
+        json={"token": reset_token, "new_password": "brandnewpass456"},
+    )
+    assert r.status_code == 401
+
+
+@pytest.mark.asyncio
 async def test_verify_without_callback(client, auth_headers):
     """No email callback configured = request still returns 202 but no email sent."""
     r = await client.post("/api/v1/auth/verify-email/request", headers=auth_headers)
