@@ -31,7 +31,7 @@ When rotation is enabled (the default), each refresh call invalidates the old re
 
 ### Logging out
 
-Call `POST /api/v1/auth/logout` with the access token. Optionally include the refresh token in the body to revoke the entire session:
+Call `POST /api/v1/auth/logout` with the access token. Logout ends the whole session, including other access tokens it issued:
 
 ```json
 POST /api/v1/auth/logout
@@ -39,6 +39,8 @@ Authorization: Bearer <access_token>
 
 {"refresh_token": "<refresh_token>"}
 ```
+
+The refresh token is optional while the access token is valid. Send it anyway: if the access token has already expired (an idle tab, for example), the server ends the session with the refresh token instead, so logout still works. With the cookie backend this happens automatically through the refresh cookie, and both cookies are cleared on every logout response, including a 401.
 
 After logout, clear the stored tokens on the client side.
 
