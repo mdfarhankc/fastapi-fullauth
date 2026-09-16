@@ -8,6 +8,7 @@ from fastapi_fullauth.exceptions import AccountLockedError, AuthenticationError
 from fastapi_fullauth.flows.tokens import ClaimsProvider, issue_token_pair
 from fastapi_fullauth.protection.lockout import LockoutManager
 from fastapi_fullauth.types import TokenPair, UserSchema
+from fastapi_fullauth.utils import normalize_email
 
 logger = logging.getLogger("fastapi_fullauth.login")
 
@@ -43,7 +44,11 @@ async def login(
     user_agent: str | None = None,
     ip_address: str | None = None,
 ) -> TokenPair:
-    if lockout and await lockout.is_locked(identifier):
+    # Adapters normalise emails before lookup; key the lockout on the same value
+    # so case or whitespace variants of one address share a single counter.
+    lockout_key = normalize_email(identifier) if login_field == "email" else identifier
+
+    if lockout and await lockout.is_locked(lockout_key):
         logger.warning("Login blocked; account locked: %s", identifier)
         raise AccountLockedError("Account is temporarily locked")
 
@@ -58,13 +63,13 @@ async def login(
         if prevent_timing_attacks:
             await averify_password(password, await _get_dummy_hash(hash_algorithm))
         if lockout:
-            await lockout.record_failure(identifier)
+            await lockout.record_failure(lockout_key)
         logger.warning("Login failed; unknown user or no password: %s", identifier)
         raise AuthenticationError("Invalid credentials")
 
     if not await averify_password(password, hashed):
         if lockout:
-            await lockout.record_failure(identifier)
+            await lockout.record_failure(lockout_key)
         logger.warning("Login failed; invalid password: %s", identifier)
         raise AuthenticationError("Invalid credentials")
 
@@ -82,7 +87,7 @@ async def login(
             logger.exception("Password rehash failed for user_id=%s", user.id)
 
     if lockout:
-        await lockout.clear(identifier)
+        await lockout.clear(lockout_key)
 
     # Only now that authentication succeeded: the app's claims hook must not
     # run (or hit its own services) for failed or probing login attempts.

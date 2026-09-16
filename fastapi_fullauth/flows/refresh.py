@@ -91,12 +91,15 @@ async def refresh(
                 stored.family_id,
             )
             await adapter.revoke_refresh_token_family(stored.family_id)
+            # Reuse means the family may be in an attacker's hands: kill the
+            # access tokens it already issued, not just its ability to refresh.
+            await token_engine.revoke_family(stored.family_id)
             raise RefreshTokenReuseError("Refresh token already used; family revoked")
 
-        await token_engine.blacklist_token(
-            payload.jti,
-            ttl_seconds=config.REFRESH_TOKEN_EXPIRE_DAYS * 86400,
-        )
+        # The rotated token is deliberately not blacklisted. Its revoked row is
+        # what routes a replay into the reuse detection above; a blacklist entry
+        # would reject the replay at decode instead, leaving the family alive in
+        # an attacker's hands.
         return tokens
 
     if stored.revoked:

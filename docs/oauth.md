@@ -75,11 +75,14 @@ Response:
 
 ```json
 {
-  "authorization_url": "https://accounts.google.com/o/oauth2/v2/auth?client_id=...&state=..."
+  "authorization_url": "https://accounts.google.com/o/oauth2/v2/auth?client_id=...&state=...",
+  "binding": "q8vR3..."
 }
 ```
 
 The `redirect_uri` parameter is required and is validated against your `redirect_uris` allow-list; a missing or unlisted value is rejected.
+
+Keep the `binding` on the client, for example in `sessionStorage`, and never put it in a URL. It ties this login attempt to the browser that started it; see [Security model](#security-model).
 
 ### 2. Redirect the user
 
@@ -87,15 +90,18 @@ Your frontend redirects the user to the `authorization_url`. The user authentica
 
 ### 3. Handle the callback
 
-The provider redirects back to your `redirect_uri` with `code` and `state` query parameters. Your frontend sends these to the callback endpoint:
+The provider redirects back to your `redirect_uri` with `code` and `state` query parameters. Your frontend sends these, together with the `binding` it stored in step 1, to the callback endpoint:
 
 ```
 POST /api/v1/auth/oauth/google/callback
 {
   "code": "4/0AX4XfW...",
-  "state": "eyJ..."
+  "state": "eyJ...",
+  "binding": "q8vR3..."
 }
 ```
+
+A request without `binding` is rejected with 422, and one whose `binding` does not match the state with 400.
 
 Response:
 
@@ -113,7 +119,7 @@ From this point on, the session works exactly like email/password login. The use
 
 ## What happens on callback
 
-1. **State token is verified** (CSRF protection, 5-minute TTL)
+1. **State token is verified**: signature, 5-minute TTL, and that it is bound to this client's `binding` (login-CSRF protection); then it is burned
 2. **Authorization code is exchanged** for provider tokens
 3. **User info is fetched** from the provider (email, name, picture)
 4. **Account linking logic** runs:
@@ -139,17 +145,19 @@ config = FullAuthConfig(
 
 ## Security model
 
-**State token**: the OAuth `state` parameter is a purpose-scoped JWT with a 5-minute TTL (`OAUTH_STATE_EXPIRE_SECONDS`). It prevents CSRF attacks on the callback endpoint. If the state token is missing, expired, or tampered with, the callback is rejected.
+**State token**: the OAuth `state` parameter is a purpose-scoped JWT with a 5-minute TTL (`OAUTH_STATE_EXPIRE_SECONDS`). If it is missing, expired, or tampered with, the callback is rejected. With the token blacklist enabled (the default) it is single-use.
+
+**Binding to the browser (login CSRF)**: a signed state alone does not stop login CSRF. An attacker can start a login with their own provider account, then make a victim's browser submit the attacker's `code` and `state`, signing the victim into the attacker's account. RFC 9700 (OAuth 2.0 Security Best Current Practice) therefore requires the state to be bound to the user agent. The authorize endpoint returns a random `binding` and puts only its SHA-256 hash in the state; the callback requires the `binding` back and compares it in constant time before touching the code. The victim's browser never had the attacker's binding, so the forged callback fails.
 
 **Redirect URI validation**: the library validates the `redirect_uri` parameter against the provider's configured `redirect_uris` list. Mismatched URIs are rejected with a 400 error.
 
 **Token storage**: provider access and refresh tokens are stored in the `oauth_accounts` table and updated on each login.
 
-**PKCE**: PKCE (S256) is enabled by default for providers that support it (Google, GitHub, Discord, GitLab) via the `OAUTH_PKCE_ENABLED` setting. The flow stays stateless: the `code_verifier` is derived from the signed state token's nonce keyed by `SECRET_KEY`, so it never travels through the browser. Treat this as defense-in-depth for a confidential client that already sends a `client_secret`, not as a replacement for binding the OAuth state to the browser session. A custom provider opts in by setting `supports_pkce = True` and accepting the `code_challenge`/`code_verifier` keyword arguments.
+**PKCE**: PKCE (S256) is enabled by default for providers that support it (Google, GitHub, Discord, GitLab) via the `OAUTH_PKCE_ENABLED` setting. The flow stays stateless: the `code_verifier` is derived from the signed state token's nonce keyed by `SECRET_KEY`, so it never travels through the browser. Because the server derives it, it is defense-in-depth for a confidential client that already sends a `client_secret`; the `binding` above is what stops login CSRF. A custom provider opts in by setting `supports_pkce = True` and accepting the `code_challenge`/`code_verifier` keyword arguments.
 
 ### Known limitations
 
-The OAuth `state` token is signed but not bound to the browser session, so on its own it does not prevent login-CSRF / account fixation; put the OAuth routes behind your own CSRF protection if that is a concern. The state is replayable within `OAUTH_STATE_EXPIRE_SECONDS` (the authorization code itself is single-use at the provider).
+With `BLACKLIST_ENABLED=False` the state cannot be burned, so it is replayable within `OAUTH_STATE_EXPIRE_SECONDS` by whoever holds both the state and its binding (the authorization code itself is single-use at the provider).
 
 ## OAuth-only users
 

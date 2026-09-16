@@ -3,7 +3,9 @@ from typing import Literal
 
 from fastapi_fullauth.adapters.base import AbstractUserAdapter
 from fastapi_fullauth.core.crypto import ahash_password, averify_password
+from fastapi_fullauth.core.tokens import TokenEngine
 from fastapi_fullauth.exceptions import AuthenticationError
+from fastapi_fullauth.flows.sessions import revoke_user_session_tokens
 from fastapi_fullauth.types import UserID
 from fastapi_fullauth.validators import PasswordValidator
 
@@ -17,7 +19,13 @@ async def change_password(
     current_password: str | None = None,
     hash_algorithm: Literal["argon2id", "bcrypt"] = "argon2id",
     password_validator: PasswordValidator | None = None,
+    token_engine: TokenEngine | None = None,
 ) -> None:
+    """Change a user's password and end all of their sessions.
+
+    Pass ``token_engine`` to also invalidate the access tokens those sessions
+    already issued; otherwise they stay valid until they expire.
+    """
     hashed = await adapter.get_hashed_password(user_id)
     # OAuth-only users have hashed=None; skip the current-password check for them.
     if hashed is not None and (
@@ -31,5 +39,7 @@ async def change_password(
 
     new_hash = await ahash_password(new_password, algorithm=hash_algorithm)
     await adapter.set_password(user_id, new_hash)
+    if token_engine is not None:
+        await revoke_user_session_tokens(adapter, token_engine, user_id)
     await adapter.revoke_all_user_refresh_tokens(user_id)
     logger.info("Password changed: user_id=%s", user_id)

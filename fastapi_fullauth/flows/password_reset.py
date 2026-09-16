@@ -7,6 +7,7 @@ from fastapi_fullauth.adapters.base import AbstractUserAdapter
 from fastapi_fullauth.core.crypto import ahash_password
 from fastapi_fullauth.core.tokens import TokenEngine
 from fastapi_fullauth.exceptions import TokenError, UserNotFoundError
+from fastapi_fullauth.flows.sessions import revoke_user_session_tokens
 from fastapi_fullauth.types import UserSchema
 from fastapi_fullauth.validators import PasswordValidator
 
@@ -71,7 +72,9 @@ async def reset_password(
     # Blacklist the reset token so it can't be reused, for its remaining lifetime
     await token_engine.blacklist_payload(payload)
 
-    # Revoke all existing sessions so stolen tokens can't be used
+    # End every existing session, including access tokens already issued, so a
+    # stolen session can't outlive the reset. Tokens first: only live sessions list.
+    await revoke_user_session_tokens(adapter, token_engine, user.id)
     await adapter.revoke_all_user_refresh_tokens(user.id)
 
     logger.info("Password reset completed: user_id=%s", user.id)

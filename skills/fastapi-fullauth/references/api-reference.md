@@ -162,6 +162,8 @@ from fastapi_fullauth.flows.oauth import (
     exchange_oauth_code,
     link_or_create_user,
     issue_oauth_tokens,
+    generate_oauth_binding,   # client-held secret; required `binding=` on the state/callback flows
+    build_authorization_url,
     generate_oauth_state,
     verify_oauth_state,
 )

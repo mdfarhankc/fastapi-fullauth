@@ -65,7 +65,16 @@ GET /api/v1/auth/oauth/google/authorize?redirect_uri=https://myapp.com/auth/call
 
 The `redirect_uri` tells the provider where to send the user after they authenticate. It must match one of the URIs configured on both the provider's dashboard and in your `FullAuthConfig`.
 
-The backend returns a JSON response with the `authorization_url`. Redirect the user to this URL.
+The backend returns JSON with an `authorization_url` and a `binding`. Store the `binding` in `sessionStorage` (never in a URL), then redirect the user to the `authorization_url`:
+
+```javascript
+const res = await fetch(`/api/v1/auth/oauth/google/authorize?redirect_uri=${encodeURIComponent(redirectUri)}`);
+const { authorization_url, binding } = await res.json();
+sessionStorage.setItem("oauth_binding", binding);
+window.location.assign(authorization_url);
+```
+
+The `binding` proves at the callback that this browser started the login. Without it, an attacker could make your app finish *their* login in a victim's browser.
 
 ### Step 2: User authenticates with the provider
 
@@ -80,25 +89,32 @@ https://myapp.com/auth/callback?code=abc123&state=eyJ...
 
 ### Step 3: Exchange the code for tokens
 
-Your frontend reads `code` and `state` from the URL and sends them to your backend:
+Your frontend reads `code` and `state` from the URL and sends them, with the stored `binding`, to your backend:
 
-```
-POST /api/v1/auth/oauth/google/callback
-{"code": "abc123", "state": "eyJ..."}
+```javascript
+const params = new URLSearchParams(window.location.search);
+const binding = sessionStorage.getItem("oauth_binding");
+sessionStorage.removeItem("oauth_binding");
+
+const res = await fetch("/api/v1/auth/oauth/google/callback", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ code: params.get("code"), state: params.get("state"), binding }),
+});
 ```
 
-The backend validates the state, exchanges the code with the provider, creates or links the user account, and returns a JWT token pair. From here, the session works like a normal login.
+The backend checks that the state belongs to this binding, exchanges the code with the provider, creates or links the user account, and returns a JWT token pair. From here, the session works like a normal login.
 
 ### Handling the redirect page
 
 Your frontend's callback page (e.g. `/auth/callback`) needs to:
 
-1. Extract `code` and `state` from the URL query parameters
-2. Send them to the backend callback endpoint
+1. Extract `code` and `state` from the URL query parameters, and read the `binding` from `sessionStorage`
+2. Send all three to the backend callback endpoint, then remove the stored `binding`
 3. Store the returned tokens
 4. Redirect the user to the app (e.g. dashboard)
 
-If the callback fails (expired state, invalid code), show an error and let the user retry.
+If the callback fails (expired state, invalid code, missing or mismatched binding), show an error and let the user start the login again.
 
 ### Listing available providers
 

@@ -2,7 +2,7 @@ import logging
 from typing import TYPE_CHECKING, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from fastapi_fullauth.adapters.base import OAuthAdapterMixin
 from fastapi_fullauth.dependencies.current_user import CurrentUser, get_fullauth
@@ -11,7 +11,11 @@ from fastapi_fullauth.exceptions import (
     OAuthProviderError,
     TokenError,
 )
-from fastapi_fullauth.flows.oauth import build_authorization_url, oauth_callback
+from fastapi_fullauth.flows.oauth import (
+    build_authorization_url,
+    generate_oauth_binding,
+    oauth_callback,
+)
 from fastapi_fullauth.routers._schemas import LoginResponse, build_login_response_model
 from fastapi_fullauth.routers._transport import write_tokens
 from fastapi_fullauth.types import TokenPair, UserSchema, UserSchemaType
@@ -26,6 +30,11 @@ if TYPE_CHECKING:
 class OAuthCallbackRequest(BaseModel):
     code: str
     state: str
+    binding: str = Field(
+        min_length=1,
+        max_length=512,
+        description="The `binding` returned by the authorize endpoint that started this flow.",
+    )
 
 
 class OAuthProviderListResponse(BaseModel):
@@ -34,6 +43,12 @@ class OAuthProviderListResponse(BaseModel):
 
 class OAuthAuthorizeResponse(BaseModel):
     authorization_url: str
+    binding: str = Field(
+        description=(
+            "Secret binding this login attempt to your client. Keep it (for example in "
+            "sessionStorage) and send it back with the callback. Never put it in a URL."
+        ),
+    )
 
 
 class OAuthAccountResponse(BaseModel):
@@ -80,14 +95,16 @@ def create_oauth_router(
         if redirect_uri not in oauth_provider.redirect_uris:
             raise HTTPException(status_code=400, detail="Invalid redirect URI")
 
+        binding = generate_oauth_binding()
         url = build_authorization_url(
             fullauth.token_engine,
             oauth_provider,
             redirect_uri,
             ttl_seconds=fullauth.config.OAUTH_STATE_EXPIRE_SECONDS,
             pkce_enabled=fullauth.config.OAUTH_PKCE_ENABLED,
+            binding=binding,
         )
-        return OAuthAuthorizeResponse(authorization_url=url)
+        return OAuthAuthorizeResponse(authorization_url=url, binding=binding)
 
     @router.post(
         "/oauth/{provider}/callback",
@@ -125,6 +142,7 @@ def create_oauth_router(
                 pkce_enabled=fullauth.config.OAUTH_PKCE_ENABLED,
                 user_agent=user_agent,
                 ip_address=ip_address,
+                binding=data.binding,
             )
         except (OAuthProviderError, TokenError):
             raise OAUTH_ERROR_EXCEPTION

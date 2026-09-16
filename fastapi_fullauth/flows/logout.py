@@ -22,6 +22,7 @@ async def logout(
     # requiring the client to resupply the refresh token.
     if adapter and token_payload.family_id:
         await adapter.revoke_refresh_token_family(token_payload.family_id)
+        await token_engine.revoke_family(token_payload.family_id)
     elif adapter and refresh_token:
         # Fallback for access tokens minted before family_id was carried: revoke
         # via the supplied refresh token, but only when it belongs to the caller;
@@ -29,6 +30,7 @@ async def logout(
         stored = await adapter.get_refresh_token(hash_refresh_token(refresh_token))
         if stored and str(stored.user_id) == token_payload.sub:
             await adapter.revoke_refresh_token_family(stored.family_id)
+            await token_engine.revoke_family(stored.family_id)
         elif stored:
             logger.warning(
                 "Logout ignored refresh_token; owner mismatch: caller=%s owner=%s",
