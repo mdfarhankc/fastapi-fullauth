@@ -181,3 +181,79 @@ async def test_passkey_sign_count_zero_counter(passkey_adapter):
     assert stored is not None
     assert stored.sign_count == 0
     assert stored.last_used_at is not None
+
+
+# ── Transports ─────────────────────────────────────────────────────
+
+
+async def _passkey_user(adapter):
+    from fastapi_fullauth.types import CreateUserSchema
+
+    return await adapter.create_user(
+        CreateUserSchema(email="pk@test.com", password="securepass123"), hashed_password="x"
+    )
+
+
+@pytest.mark.asyncio
+async def test_authentication_options_skip_unknown_stored_transports(passkey_adapter):
+    """Transports are client-supplied; one unrecognised value stored for a
+    credential must not break passkey sign-in for the whole account."""
+    from fastapi_fullauth.flows.passkey import begin_authentication
+
+    user = await _passkey_user(passkey_adapter)
+    await passkey_adapter.store_passkey(
+        PasskeyCredential(
+            id=UUID(str(uuid7())),
+            user_id=user.id,
+            credential_id="Y3JlZC0x",
+            public_key="cGs",
+            transports=["usb", "made-up-transport"],
+        )
+    )
+
+    options = await begin_authentication(
+        rp_id="example.com",
+        challenge_store=InMemoryChallengeStore(),
+        adapter=passkey_adapter,
+        user_id=user.id,
+        email_provided=True,
+    )
+    assert options["allowCredentials"][0]["transports"] == ["usb"]
+
+
+@pytest.mark.asyncio
+async def test_registration_stores_only_known_transports(passkey_adapter):
+    from types import SimpleNamespace
+    from unittest.mock import patch
+
+    from fastapi_fullauth.flows.passkey import complete_registration
+
+    user = await _passkey_user(passkey_adapter)
+    store = InMemoryChallengeStore()
+    await store.store("passkey:reg:k", "Y2hhbGxlbmdl", ttl=60)
+    verification = SimpleNamespace(
+        credential_id=b"cred-2",
+        credential_public_key=b"pk",
+        sign_count=0,
+        credential_backed_up=False,
+    )
+    credential = {
+        "id": "Y3JlZC0y",
+        "response": {"transports": ["internal", "hybrid", "bogus", 42, None]},
+    }
+
+    with patch("webauthn.verify_registration_response", return_value=verification):
+        passkey = await complete_registration(
+            challenge_key="passkey:reg:k",
+            credential=credential,
+            device_name="Laptop",
+            user=user,
+            rp_id="example.com",
+            expected_origin="https://example.com",
+            challenge_store=store,
+            adapter=passkey_adapter,
+        )
+
+    assert passkey.transports == ["internal", "hybrid"]
+    stored = await passkey_adapter.get_passkey_by_credential_id(passkey.credential_id)
+    assert stored is not None and stored.transports == ["internal", "hybrid"]

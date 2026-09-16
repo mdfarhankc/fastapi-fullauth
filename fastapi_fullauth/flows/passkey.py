@@ -27,6 +27,21 @@ def _b64_decode(data: str) -> bytes:
     return urlsafe_b64decode(data + "=" * padding)
 
 
+def _known_transports(values: Any) -> list[str]:
+    """Keep only transport hints that WebAuthn defines.
+
+    Transports come from the client, so they may hold anything. Storing an
+    unrecognised value would later break building authentication options for
+    every credential on the account, so unknown or non-string values are dropped.
+    """
+    from webauthn.helpers.structs import AuthenticatorTransport
+
+    if not isinstance(values, list):
+        return []
+    known = {transport.value for transport in AuthenticatorTransport}
+    return [value for value in values if isinstance(value, str) and value in known]
+
+
 async def begin_registration(
     user: UserSchema,
     rp_id: str,
@@ -105,9 +120,10 @@ async def complete_registration(
         require_user_verification=require_user_verification,
     )
 
-    transports = []
-    if isinstance(credential, dict) and "response" in credential:
-        transports = credential["response"].get("transports", [])
+    transports: list[str] = []
+    response = credential.get("response") if isinstance(credential, dict) else None
+    if isinstance(response, dict):
+        transports = _known_transports(response.get("transports"))
 
     passkey = PasskeyCredential(
         id=UUID(str(uuid7())),
@@ -151,9 +167,8 @@ async def begin_authentication(
                 PublicKeyCredentialDescriptor(
                     id=_b64_decode(pk.credential_id),
                     transports=(
-                        [AuthenticatorTransport(t) for t in pk.transports]
-                        if pk.transports
-                        else None
+                        [AuthenticatorTransport(t) for t in _known_transports(pk.transports)]
+                        or None
                     ),
                 )
                 for pk in existing
