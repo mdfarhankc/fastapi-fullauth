@@ -35,13 +35,11 @@ class GitHubOAuthProvider(StandardOAuthProvider):
         email = data.get("email")
         email_verified = False
 
-        emails_resp = await self._client().get(self.emails_endpoint, headers=headers)
-        if emails_resp.status_code == 200:
-            for entry in emails_resp.json():
-                if entry.get("primary") and entry.get("verified"):
-                    email = entry["email"]
-                    email_verified = True
-                    break
+        for entry in await self._verified_emails(headers):
+            if entry.get("primary") and entry.get("verified") and entry.get("email"):
+                email = entry["email"]
+                email_verified = True
+                break
 
         if data.get("id") is None:
             raise self._invalid_user_info("id")
@@ -55,3 +53,21 @@ class GitHubOAuthProvider(StandardOAuthProvider):
             picture=data.get("avatar_url"),
             raw=data,
         )
+
+    async def _verified_emails(self, headers: dict[str, str]) -> list[dict[str, Any]]:
+        """Best-effort fetch of the user's email list.
+
+        Any failure (network error, non-200, unexpected body) yields an empty
+        list, so the profile email is used unverified rather than failing login.
+        """
+        import httpx
+
+        try:
+            resp = await self._client().get(self.emails_endpoint, headers=headers)
+            entries = resp.json() if resp.status_code == 200 else []
+        except (httpx.HTTPError, ValueError):
+            self._logger.warning("GitHub emails lookup failed; email treated as unverified")
+            return []
+        if not isinstance(entries, list):
+            return []
+        return [entry for entry in entries if isinstance(entry, dict)]

@@ -889,3 +889,114 @@ async def test_gitlab_userinfo_maps_fields():
     assert info.name == "Ada Lovelace"
     assert info.picture == "https://gitlab.com/uploads/avatar.png"
     await provider.aclose()
+
+
+# ── Provider failures surface as OAuthProviderError, never a 500 ─────
+
+
+def _google_with_transport(handler):
+    import httpx
+
+    from fastapi_fullauth.oauth.google import GoogleOAuthProvider
+
+    provider = GoogleOAuthProvider(
+        client_id="id", client_secret="secret", redirect_uris=["http://localhost/cb"]
+    )
+    provider._http_client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    return provider
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "failure",
+    ["timeout", "connection", "html_body", "json_list"],
+)
+async def test_token_exchange_failures_raise_oauth_provider_error(failure):
+    import httpx
+
+    from fastapi_fullauth.exceptions import OAuthProviderError
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if failure == "timeout":
+            raise httpx.ConnectTimeout("timed out", request=request)
+        if failure == "connection":
+            raise httpx.ConnectError("refused", request=request)
+        if failure == "html_body":
+            return httpx.Response(200, text="<html>maintenance</html>")
+        return httpx.Response(200, json=["unexpected"])
+
+    provider = _google_with_transport(handler)
+    with pytest.raises(OAuthProviderError, match="token exchange failed"):
+        await provider.exchange_code("code", "http://localhost/cb")
+    await provider.aclose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", ["timeout", "html_body", "json_list"])
+async def test_userinfo_failures_raise_oauth_provider_error(failure):
+    import httpx
+
+    from fastapi_fullauth.exceptions import OAuthProviderError
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if failure == "timeout":
+            raise httpx.ReadTimeout("slow", request=request)
+        if failure == "html_body":
+            return httpx.Response(200, text="not json")
+        return httpx.Response(200, json=["unexpected"])
+
+    provider = _google_with_transport(handler)
+    with pytest.raises(OAuthProviderError, match="Failed to fetch user info"):
+        await provider.get_user_info({"access_token": "tok"})
+    await provider.aclose()
+
+
+@pytest.mark.asyncio
+async def test_github_emails_endpoint_failure_falls_back_to_unverified_profile_email():
+    """The emails call is best-effort, as a non-200 already was: a network error
+    there must not fail the login, and the email stays unverified."""
+    import httpx
+
+    from fastapi_fullauth.oauth.github import GitHubOAuthProvider
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/user/emails":
+            raise httpx.ReadTimeout("slow", request=request)
+        return httpx.Response(200, json={"id": 7, "email": "gh@example.com", "name": "GH"})
+
+    provider = GitHubOAuthProvider(
+        client_id="id", client_secret="secret", redirect_uris=["http://localhost/cb"]
+    )
+    provider._http_client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+
+    info = await provider.get_user_info({"access_token": "tok"})
+    assert info.provider_user_id == "7"
+    assert info.email == "gh@example.com"
+    assert info.email_verified is False
+    await provider.aclose()
+
+
+@pytest.mark.asyncio
+async def test_callback_returns_400_when_the_provider_is_unreachable(adapter, config):
+    import httpx
+
+    from fastapi_fullauth.flows.oauth import generate_oauth_binding
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectTimeout("timed out", request=request)
+
+    provider = _google_with_transport(handler)
+    fullauth = FullAuth(config=config, adapter=adapter, providers=[provider])
+    app = FastAPI()
+    fullauth.init_app(app)
+
+    binding = generate_oauth_binding()
+    state = generate_oauth_state(fullauth.token_engine, binding=binding)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        r = await client.post(
+            "/api/v1/auth/oauth/google/callback",
+            json={"code": "c", "state": state, "binding": binding},
+        )
+    assert r.status_code == 400
+    await provider.aclose()
