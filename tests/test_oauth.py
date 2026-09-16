@@ -702,6 +702,9 @@ async def test_oauth_login_blocked_for_deactivated_user(adapter, config):
             binding=BINDING,
         )
 
+    # Refused before any write: the provider identity is not linked to the account.
+    assert await adapter.get_oauth_account("mock", "mock-user-123") is None
+
 
 @pytest.mark.asyncio
 async def test_google_userinfo_rejects_token_response_without_access_token():

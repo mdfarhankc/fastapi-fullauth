@@ -156,6 +156,14 @@ async def exchange_oauth_code(
     return tokens, info
 
 
+def _ensure_active(user: UserSchema) -> None:
+    # Checked before any write, so a deactivated account gains no provider link
+    # and no refreshed provider tokens from a refused sign-in.
+    if not user.is_active:
+        logger.warning("OAuth login blocked; account deactivated: user_id=%s", user.id)
+        raise OAuthProviderError("User account is deactivated")
+
+
 async def link_or_create_user(
     adapter: AbstractUserAdapter,
     info: OAuthUserInfo,
@@ -178,6 +186,7 @@ async def link_or_create_user(
                 info.provider_user_id,
             )
             raise OAuthProviderError("Linked user no longer exists")
+        _ensure_active(user)
 
         await oauth_adapter.update_oauth_account(
             info.provider,
@@ -208,6 +217,7 @@ async def link_or_create_user(
                     "This email is already registered. Sign in with your existing "
                     "credentials and link your OAuth account from account settings."
                 )
+            _ensure_active(existing)
             user = existing
 
     if user is None:
