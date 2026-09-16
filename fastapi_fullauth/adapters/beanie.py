@@ -34,6 +34,7 @@ from fastapi_fullauth.adapters.base import (
     PermissionAdapterMixin,
     RoleAdapterMixin,
     SessionAdapterMixin,
+    create_user_extra_fields,
 )
 from fastapi_fullauth.exceptions import UserAlreadyExistsError
 from fastapi_fullauth.models.beanie import (
@@ -182,7 +183,7 @@ class BeanieAdapter(
     async def create_user(
         self, data: CreateUserSchemaType, hashed_password: str | None
     ) -> UserSchemaType:
-        extra = data.model_dump(exclude={"email", "password"})
+        extra = create_user_extra_fields(data)
         normalized_email = normalize_email(data.email)
         doc = self._user_model(
             email=normalized_email,

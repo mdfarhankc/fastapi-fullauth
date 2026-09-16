@@ -147,6 +147,8 @@ Most methods are plain CRUD. A few carry semantics the security model depends on
 
 **`revoke_refresh_token(token_str) -> bool`** must be an atomic compare-and-swap: flip the token from `revoked=False` to `revoked=True` and return `True` only if *this* call performed the flip. Return `False` if the token was missing or already revoked. A `False` result is the reuse/replay signal - the library responds by revoking the entire token family. On a real database, implement this as a single conditional `UPDATE ... WHERE revoked = false` and check the affected-row count, not a read-then-write.
 
+**`create_user(data, hashed_password)`** must never persist privileged fields from `data`. If your create schema carries app-specific fields, build them with `create_user_extra_fields(data)` (`from fastapi_fullauth.adapters import create_user_extra_fields`), which drops `email`, `password`, and `PRIVILEGED_USER_FIELDS` (`id`, `hashed_password`, `is_active`, `is_verified`, `is_superuser`, `roles`), instead of dumping the schema directly. Otherwise a create schema that exposes one of those fields lets a registering client grant itself admin.
+
 **`get_user_roles(user_id) -> list[str]`** is called at token-creation time; the returned names are embedded in the JWT. Keep it cheap.
 
 **`transaction()`** defaults to a best-effort no-op that yields `self`. Refresh-token rotation revokes the old token and stores the new one inside this block, so if your store supports real transactions, override it to make that pair atomic (the SQL adapters do). Otherwise a crash mid-rotation could orphan a session.

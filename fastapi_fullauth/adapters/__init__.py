@@ -17,6 +17,7 @@ those would hide real bugs.
 """
 
 from fastapi_fullauth.adapters.base import (
+    PRIVILEGED_USER_FIELDS,
     AbstractUserAdapter,
     AdapterFeature,
     OAuthAdapterMixin,
@@ -24,9 +25,11 @@ from fastapi_fullauth.adapters.base import (
     PermissionAdapterMixin,
     RoleAdapterMixin,
     SessionAdapterMixin,
+    create_user_extra_fields,
 )
 
 __all__ = [
+    "PRIVILEGED_USER_FIELDS",
     "AbstractUserAdapter",
     "AdapterFeature",
     "OAuthAdapterMixin",
@@ -34,6 +37,7 @@ __all__ = [
     "PermissionAdapterMixin",
     "RoleAdapterMixin",
     "SessionAdapterMixin",
+    "create_user_extra_fields",
 ]
 
 try:

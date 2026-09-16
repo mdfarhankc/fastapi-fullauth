@@ -141,6 +141,10 @@ Add `RoleAdapterMixin`, `PermissionAdapterMixin`, `OAuthAdapterMixin`, `PasskeyA
 
 ## Contracts custom adapters must honour
 
+### `create_user` never persists privileged fields
+
+Build the model kwargs for app-specific fields with `create_user_extra_fields(data)` (exported from `fastapi_fullauth.adapters`), never `data.model_dump()`. It drops `email`, `password`, and `PRIVILEGED_USER_FIELDS` (`id`, `hashed_password`, `is_active`, `is_verified`, `is_superuser`, `roles`), so a create schema that exposes one of them cannot let a client register as admin.
+
 ### `create_user` translates uniqueness violations
 
 Two concurrent registrations racing on the same email: the DB unique constraint wins, one INSERT fails with an integrity error. `create_user` catches that and raises `UserAlreadyExistsError`. Without this, callers see a 500.
