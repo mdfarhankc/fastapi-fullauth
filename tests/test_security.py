@@ -454,6 +454,58 @@ async def test_redis_rate_limiter_fails_open_on_redis_error():
     assert await limiter.is_allowed("any-ip") is True
 
 
+class _RedisDown:
+    """Every Redis call fails, as during an outage."""
+
+    def __getattr__(self, name):
+        def fail(*args, **kwargs):
+            raise ConnectionError("redis down")
+
+        return fail
+
+
+@pytest.mark.asyncio
+async def test_redis_rate_limiter_middleware_serves_requests_during_a_redis_outage():
+    """is_allowed already fails open, but the middleware also asks for
+    remaining() and reset_time() to build headers; those must not turn the
+    outage into a 500 on every request."""
+    from fastapi_fullauth.middleware.ratelimit import RateLimitMiddleware
+    from fastapi_fullauth.protection.ratelimit import RedisRateLimiter
+
+    limiter = RedisRateLimiter.__new__(RedisRateLimiter)
+    limiter.max_requests = 5
+    limiter.window_seconds = 60
+    limiter._redis = _RedisDown()
+    limiter._prefix = "fullauth:ratelimit:"
+
+    app = FastAPI()
+
+    @app.get("/ping")
+    async def ping():
+        return {"ok": True}
+
+    app.add_middleware(RateLimitMiddleware, limiter=limiter)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        r = await client.get("/ping")
+    assert r.status_code == 200
+    assert r.json() == {"ok": True}
+
+
+@pytest.mark.asyncio
+async def test_redis_rate_limiter_remaining_and_reset_fail_open():
+    from fastapi_fullauth.protection.ratelimit import RedisRateLimiter
+
+    limiter = RedisRateLimiter.__new__(RedisRateLimiter)
+    limiter.max_requests = 5
+    limiter.window_seconds = 60
+    limiter._redis = _RedisDown()
+    limiter._prefix = "fullauth:ratelimit:"
+
+    assert await limiter.remaining("ip") == 5
+    assert await limiter.reset_time("ip") == 0.0
+
+
 @pytest.mark.asyncio
 async def test_redis_blacklist_fails_closed_on_redis_error():
     """A Redis outage must not let a possibly-revoked token through: treat as

@@ -119,10 +119,16 @@ class RedisRateLimiter:
         now = time.time()
         cutoff = now - self.window_seconds
 
-        pipe = self._redis.pipeline()
-        pipe.zremrangebyscore(redis_key, "-inf", cutoff)
-        pipe.zcard(redis_key)
-        results = await pipe.execute()
+        try:
+            pipe = self._redis.pipeline()
+            pipe.zremrangebyscore(redis_key, "-inf", cutoff)
+            pipe.zcard(redis_key)
+            results = await pipe.execute()
+        except Exception:
+            # Fail open, like is_allowed(): these feed response headers, and an
+            # outage must not turn every request through the middleware into a 500.
+            logger.error("Rate limiter Redis error; reporting full quota", exc_info=True)
+            return self.max_requests
 
         count: int = results[1]
         return max(0, self.max_requests - count)
@@ -131,7 +137,11 @@ class RedisRateLimiter:
         redis_key = f"{self._prefix}{key}"
         now = time.time()
 
-        oldest = await self._redis.zrange(redis_key, 0, 0, withscores=True)
+        try:
+            oldest = await self._redis.zrange(redis_key, 0, 0, withscores=True)
+        except Exception:
+            logger.error("Rate limiter Redis error; reporting no reset delay", exc_info=True)
+            return 0.0
         if not oldest:
             return 0.0
         oldest_score = float(oldest[0][1])
