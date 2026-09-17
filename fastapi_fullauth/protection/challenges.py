@@ -51,7 +51,7 @@ class InMemoryChallengeStore(ChallengeStore):
         if entry is None:
             return None
         challenge, expires_at = entry
-        if time.monotonic() > expires_at:
+        if time.monotonic() >= expires_at:
             return None
         return challenge
 
