@@ -3,6 +3,7 @@ import logging
 from fastapi_fullauth.adapters.base import AbstractUserAdapter
 from fastapi_fullauth.core.crypto import hash_refresh_token
 from fastapi_fullauth.core.tokens import TokenEngine
+from fastapi_fullauth.exceptions import AuthenticationError
 from fastapi_fullauth.types import TokenPayload
 
 logger = logging.getLogger("fastapi_fullauth.logout")
@@ -39,3 +40,27 @@ async def logout(
             )
 
     logger.info("Logout: user_id=%s jti=%s", token_payload.sub, token_payload.jti)
+
+
+async def logout_with_refresh_token(
+    adapter: AbstractUserAdapter,
+    token_engine: TokenEngine,
+    refresh_token: str,
+) -> TokenPayload:
+    """End a session using only its refresh token.
+
+    For clients whose access token has already expired: an idle browser tab's
+    access cookie lapses long before its refresh cookie, and requiring a live
+    access token would leave that session alive. Returns the refresh token's
+    payload. Raises ``TokenError`` for an invalid, expired, or revoked token and
+    ``AuthenticationError`` when no stored session backs it.
+    """
+    payload = await token_engine.decode_token(refresh_token, expected_type="refresh")
+    stored = await adapter.get_refresh_token(hash_refresh_token(refresh_token))
+    if stored is None or str(stored.user_id) != payload.sub:
+        raise AuthenticationError("Refresh token has no backing session")
+
+    await adapter.revoke_refresh_token_family(stored.family_id)
+    await token_engine.revoke_family(stored.family_id)
+    logger.info("Logout via refresh token: user_id=%s family=%s", payload.sub, stored.family_id)
+    return payload

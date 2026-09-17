@@ -3,10 +3,11 @@ import logging
 from typing import TYPE_CHECKING, cast
 
 from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException, Request, Response
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ValidationError
 
 from fastapi_fullauth.core.crypto import ahash_password
-from fastapi_fullauth.dependencies.current_user import _extract_token, get_fullauth
+from fastapi_fullauth.dependencies.current_user import _extract_optional_token, get_fullauth
 from fastapi_fullauth.exceptions import (
     CREDENTIALS_EXCEPTION,
     USER_EXISTS_EXCEPTION,
@@ -17,7 +18,7 @@ from fastapi_fullauth.exceptions import (
     UserAlreadyExistsError,
 )
 from fastapi_fullauth.flows.login import login
-from fastapi_fullauth.flows.logout import logout
+from fastapi_fullauth.flows.logout import logout, logout_with_refresh_token
 from fastapi_fullauth.flows.refresh import refresh
 from fastapi_fullauth.flows.register import register
 from fastapi_fullauth.routers._schemas import (
@@ -33,6 +34,7 @@ from fastapi_fullauth.types import (
     CreateUserSchema,
     CreateUserSchemaType,
     TokenPair,
+    TokenPayload,
     UserSchema,
     UserSchemaType,
 )
@@ -211,43 +213,73 @@ def create_auth_router(
     @router.post(
         "/logout",
         status_code=204,
-        description="Blacklist token. Pass refresh_token in body to revoke the session.",
+        description=(
+            "End the current session. Uses the access token when it is valid; otherwise "
+            "the refresh token (cookie or body), so a client whose access token expired "
+            "can still sign out. Token cookies are cleared on every outcome."
+        ),
     )
     async def logout_route(
         request: Request,
         fullauth: "FullAuth" = Depends(get_fullauth),
-        token: str = Depends(_extract_token),
+        token: str | None = Depends(_extract_optional_token),
         data: LogoutRequest | None = Body(None),
     ) -> Response:
-        try:
-            payload = await fullauth.token_engine.decode_token(token, expected_type="access")
-        except TokenError:
-            raise CREDENTIALS_EXCEPTION
-
-        # A session token must not carry a purpose (password-reset / email-verify
-        # tokens are access-typed but purpose-scoped); reject them as the session
-        # dependencies do, so a purpose-scoped token can't be used to log out.
-        if payload.extra.get("purpose"):
-            raise CREDENTIALS_EXCEPTION
-
         refresh_token = await resolve_refresh_token(
             request, fullauth, data.refresh_token if data else None
         )
-        await logout(
-            fullauth.token_engine,
-            payload,
-            adapter=fullauth.adapter,
-            refresh_token=refresh_token,
-        )
+        payload = await _session_payload(fullauth, token)
+        try:
+            if payload is not None:
+                await logout(
+                    fullauth.token_engine,
+                    payload,
+                    adapter=fullauth.adapter,
+                    refresh_token=refresh_token,
+                )
+            elif refresh_token is not None:
+                payload = await logout_with_refresh_token(
+                    fullauth.adapter, fullauth.token_engine, refresh_token
+                )
+            else:
+                return await _clear_token_cookies(fullauth, _credentials_error())
+        except (TokenError, AuthenticationError):
+            return await _clear_token_cookies(fullauth, _credentials_error())
+
         with contextlib.suppress(ValueError, ValidationError):
             await fullauth.hooks.emit(
                 "after_logout", user_id=fullauth.adapter.parse_user_id(payload.sub)
             )
-
-        response = Response(status_code=204)
-        for backend in fullauth.backends:
-            await backend.delete_token(response)
-            await backend.delete_refresh_token(response)
-        return response
+        return await _clear_token_cookies(fullauth, Response(status_code=204))
 
     return router
+
+
+async def _session_payload(fullauth: "FullAuth", token: str | None) -> TokenPayload | None:
+    """Decode a session access token, or None when it is missing or unusable.
+
+    Purpose-scoped tokens (password reset, email verification) are access-typed
+    but are not session credentials, so they count as unusable.
+    """
+    if token is None:
+        return None
+    try:
+        payload = await fullauth.token_engine.decode_token(token, expected_type="access")
+    except TokenError:
+        return None
+    return None if payload.extra.get("purpose") else payload
+
+
+def _credentials_error() -> JSONResponse:
+    return JSONResponse(
+        {"detail": CREDENTIALS_EXCEPTION.detail},
+        status_code=CREDENTIALS_EXCEPTION.status_code,
+        headers=CREDENTIALS_EXCEPTION.headers,
+    )
+
+
+async def _clear_token_cookies(fullauth: "FullAuth", response: Response) -> Response:
+    for backend in fullauth.backends:
+        await backend.delete_token(response)
+        await backend.delete_refresh_token(response)
+    return response

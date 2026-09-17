@@ -6,6 +6,8 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from fastapi_fullauth.config import FullAuthConfig
 
+from fastapi_fullauth.core.blacklist import SWEEP_INTERVAL_SECONDS
+
 logger = logging.getLogger("fastapi_fullauth.lockout")
 
 
@@ -36,6 +38,7 @@ class InMemoryLockoutManager(LockoutManager):
         super().__init__(max_attempts, lockout_seconds)
         self._attempts: dict[str, list[float]] = {}
         self._locked_until: dict[str, float] = {}
+        self._next_sweep = 0.0
 
     async def is_locked(self, key: str) -> bool:
         until = self._locked_until.get(key)
@@ -48,6 +51,7 @@ class InMemoryLockoutManager(LockoutManager):
 
     async def record_failure(self, key: str) -> None:
         now = time.monotonic()
+        self._sweep_expired(now)
         attempts = self._attempts.setdefault(key, [])
         cutoff = now - self.lockout_seconds
         attempts[:] = [t for t in attempts if t > cutoff]
@@ -64,6 +68,21 @@ class InMemoryLockoutManager(LockoutManager):
     async def clear(self, key: str) -> None:
         self._attempts.pop(key, None)
         self._locked_until.pop(key, None)
+
+    def _sweep_expired(self, now: float) -> None:
+        # Keys are attacker-chosen (any identifier tried at login), so stale
+        # entries must be evicted or a spray of unknown emails grows memory
+        # for the life of the process.
+        if now < self._next_sweep:
+            return
+        self._next_sweep = now + SWEEP_INTERVAL_SECONDS
+        cutoff = now - self.lockout_seconds
+        for key in [
+            k for k, stamps in self._attempts.items() if not stamps or stamps[-1] <= cutoff
+        ]:
+            del self._attempts[key]
+        for key in [k for k, until in self._locked_until.items() if until <= now]:
+            del self._locked_until[key]
 
 
 class RedisLockoutManager(LockoutManager):

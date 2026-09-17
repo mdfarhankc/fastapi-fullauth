@@ -220,6 +220,99 @@ async def test_cookie_logout_clears_both_cookies():
     await engine.dispose()
 
 
+async def _register_login(client, email="c@test.com"):
+    await client.post("/api/v1/auth/register", json={"email": email, "password": "securepass123"})
+    r = await client.post("/api/v1/auth/login", json={"email": email, "password": "securepass123"})
+    assert r.status_code == 200
+    return r
+
+
+def _expired_access_token(app, user_id):
+    engine = app.state.fullauth.token_engine
+    return engine.create_access_token(user_id=user_id, expire_seconds=-3600)
+
+
+def _clears_both_cookies(response) -> bool:
+    deletions = [h.lower() for h in _httpx_set_cookies(response)]
+    return any("fullauth_access" in h and "max-age=0" in h for h in deletions) and any(
+        "fullauth_refresh" in h and "max-age=0" in h for h in deletions
+    )
+
+
+@pytest.mark.asyncio
+async def test_cookie_logout_with_expired_access_token_still_ends_the_session():
+    """An idle tab's access cookie expires long before its refresh cookie. Logout
+    must still revoke the session through the refresh cookie and clear both
+    cookies, instead of a 401 that leaves the session alive."""
+    app, engine = await _cookie_app()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        await _register_login(client)
+        me = await client.get("/me")
+        refresh_token = client.cookies.get("fullauth_refresh")
+        client.cookies.set("fullauth_access", _expired_access_token(app, me.json()["id"]))
+
+        r = await client.post("/api/v1/auth/logout")
+        assert r.status_code == 204
+        assert _clears_both_cookies(r)
+
+        # The session is revoked server-side, not only forgotten by the browser.
+        r = await client.post("/api/v1/auth/refresh", json={"refresh_token": refresh_token})
+        assert r.status_code == 401
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_cookie_logout_without_valid_tokens_is_401_but_clears_cookies():
+    app, engine = await _cookie_app()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        client.cookies.set("fullauth_access", "not-a-token")
+        client.cookies.set("fullauth_refresh", "not-a-token-either")
+
+        r = await client.post("/api/v1/auth/logout")
+        assert r.status_code == 401
+        assert _clears_both_cookies(r)
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_bearer_logout_with_expired_access_token_and_refresh_token_in_body():
+    engine = create_async_engine("sqlite+aiosqlite://", echo=False)
+    session_maker = async_sessionmaker(engine, expire_on_commit=False)
+    async with engine.begin() as conn:
+        await conn.run_sync(SQLModel.metadata.create_all)
+    config = FullAuthConfig(SECRET_KEY="test-secret-key-that-is-long-enough-32b")
+    fullauth = FullAuth(config=config, adapter=make_test_adapter(session_maker))
+    app = FastAPI()
+    fullauth.init_app(app)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        tokens = (await _register_login(client, "b@test.com")).json()
+        payload = await fullauth.token_engine.decode_token(tokens["access_token"])
+        expired = _expired_access_token(app, payload.sub)
+        headers = {"Authorization": f"Bearer {expired}"}
+
+        r = await client.post(
+            "/api/v1/auth/logout", json={"refresh_token": "garbage"}, headers=headers
+        )
+        assert r.status_code == 401
+
+        r = await client.post(
+            "/api/v1/auth/logout",
+            json={"refresh_token": tokens["refresh_token"]},
+            headers=headers,
+        )
+        assert r.status_code == 204
+
+        r = await client.post(
+            "/api/v1/auth/refresh", json={"refresh_token": tokens["refresh_token"]}
+        )
+        assert r.status_code == 401
+    await engine.dispose()
+
+
 @pytest.mark.asyncio
 async def test_bearer_mode_keeps_refresh_token_in_body():
     """Regression guard: the default bearer transport still returns the refresh

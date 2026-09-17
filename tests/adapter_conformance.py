@@ -107,6 +107,34 @@ class AdapterConformance:
         assert fetched is not None
         assert fetched.email == "test@test.com"
 
+    async def test_create_user_ignores_privileged_fields_from_the_create_schema(self, adapter):
+        """A registration schema that exposes privileged fields (by mistake, or
+        copied from the user model) must not let a client grant itself admin,
+        pre-verify its email, or supply its own password hash."""
+
+        class OverreachingCreate(CreateUserSchema):
+            is_superuser: bool = False
+            is_verified: bool = False
+            is_active: bool = True
+            hashed_password: str | None = None
+            roles: list[str] = []
+
+        data = OverreachingCreate(
+            email="overreach@test.com",
+            password="securepass123",
+            is_superuser=True,
+            is_verified=True,
+            hashed_password="attacker-chosen",
+            roles=["admin"],
+        )
+        user = await adapter.create_user(data, hashed_password="server-hash")
+
+        assert user.is_superuser is False
+        assert user.is_verified is False
+        assert user.is_active is True
+        assert await adapter.get_hashed_password(user.id) == "server-hash"
+        assert await adapter.get_user_roles(user.id) == []
+
     async def test_get_user_by_email(self, adapter, make_user):
         await make_user("find@test.com")
 

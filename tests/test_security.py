@@ -454,6 +454,58 @@ async def test_redis_rate_limiter_fails_open_on_redis_error():
     assert await limiter.is_allowed("any-ip") is True
 
 
+class _RedisDown:
+    """Every Redis call fails, as during an outage."""
+
+    def __getattr__(self, name):
+        def fail(*args, **kwargs):
+            raise ConnectionError("redis down")
+
+        return fail
+
+
+@pytest.mark.asyncio
+async def test_redis_rate_limiter_middleware_serves_requests_during_a_redis_outage():
+    """is_allowed already fails open, but the middleware also asks for
+    remaining() and reset_time() to build headers; those must not turn the
+    outage into a 500 on every request."""
+    from fastapi_fullauth.middleware.ratelimit import RateLimitMiddleware
+    from fastapi_fullauth.protection.ratelimit import RedisRateLimiter
+
+    limiter = RedisRateLimiter.__new__(RedisRateLimiter)
+    limiter.max_requests = 5
+    limiter.window_seconds = 60
+    limiter._redis = _RedisDown()
+    limiter._prefix = "fullauth:ratelimit:"
+
+    app = FastAPI()
+
+    @app.get("/ping")
+    async def ping():
+        return {"ok": True}
+
+    app.add_middleware(RateLimitMiddleware, limiter=limiter)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        r = await client.get("/ping")
+    assert r.status_code == 200
+    assert r.json() == {"ok": True}
+
+
+@pytest.mark.asyncio
+async def test_redis_rate_limiter_remaining_and_reset_fail_open():
+    from fastapi_fullauth.protection.ratelimit import RedisRateLimiter
+
+    limiter = RedisRateLimiter.__new__(RedisRateLimiter)
+    limiter.max_requests = 5
+    limiter.window_seconds = 60
+    limiter._redis = _RedisDown()
+    limiter._prefix = "fullauth:ratelimit:"
+
+    assert await limiter.remaining("ip") == 5
+    assert await limiter.reset_time("ip") == 0.0
+
+
 @pytest.mark.asyncio
 async def test_redis_blacklist_fails_closed_on_redis_error():
     """A Redis outage must not let a possibly-revoked token through: treat as
@@ -657,3 +709,84 @@ async def test_redis_rate_limiter_enforces_limit_under_concurrency():
     assert sum(results) == 3
     # The stored set never holds more than the limit either.
     assert await limiter._redis.zcard("fullauth:ratelimit:burst-ip") == 3
+
+
+# In-memory stores evict expired entries
+
+
+class _Clock:
+    """Stand-in for a module's ``time`` import with a controllable monotonic clock."""
+
+    def __init__(self, now=1000.0):
+        self.now = now
+
+    def monotonic(self):
+        return self.now
+
+
+@pytest.mark.asyncio
+async def test_in_memory_blacklist_evicts_expired_entries():
+    """Expired entries were only removed if that exact jti was looked up again,
+    so every logout grew the dict for the life of the process."""
+    from fastapi_fullauth.core.blacklist import InMemoryTokenBlacklist
+
+    clock = _Clock()
+    with patch("fastapi_fullauth.core.blacklist.time", clock):
+        blacklist = InMemoryTokenBlacklist()
+        for i in range(1000):
+            await blacklist.add(f"jti-{i}", ttl_seconds=30)
+        await blacklist.add("permanent")
+
+        clock.now += 3600
+        await blacklist.add("fresh", ttl_seconds=30)
+
+    assert set(blacklist._blacklisted) == {"permanent", "fresh"}
+
+
+@pytest.mark.asyncio
+async def test_in_memory_lockout_evicts_stale_attempts_and_expired_locks():
+    clock = _Clock()
+    with patch("fastapi_fullauth.protection.lockout.time", clock):
+        lockout = InMemoryLockoutManager(max_attempts=2, lockout_seconds=60)
+        for i in range(500):
+            await lockout.record_failure(f"probe-{i}@test.com")
+        await lockout.record_failure("locked@test.com")
+        await lockout.record_failure("locked@test.com")
+        assert await lockout.is_locked("locked@test.com")
+
+        clock.now += 3600
+        await lockout.record_failure("new@test.com")
+
+    assert set(lockout._attempts) == {"new@test.com"}
+    assert lockout._locked_until == {}
+
+
+@pytest.mark.asyncio
+async def test_in_memory_rate_limiter_evicts_idle_clients():
+    from fastapi_fullauth.protection.ratelimit import RateLimiter
+
+    clock = _Clock()
+    with patch("fastapi_fullauth.protection.ratelimit.time", clock):
+        limiter = RateLimiter(max_requests=5, window_seconds=60)
+        for i in range(500):
+            await limiter.is_allowed(f"10.0.{i // 250}.{i % 250}")
+
+        clock.now += 3600
+        await limiter.is_allowed("10.9.9.9")
+
+    assert set(limiter._hits) == {"10.9.9.9"}
+
+
+@pytest.mark.asyncio
+async def test_in_memory_sweep_never_drops_live_entries():
+    from fastapi_fullauth.core.blacklist import InMemoryTokenBlacklist
+
+    clock = _Clock()
+    with patch("fastapi_fullauth.core.blacklist.time", clock):
+        blacklist = InMemoryTokenBlacklist()
+        await blacklist.add("long-lived", ttl_seconds=86400)
+        await blacklist.add("short", ttl_seconds=10)
+        clock.now += 3600
+        await blacklist.add("trigger", ttl_seconds=10)
+        assert await blacklist.is_blacklisted("long-lived")
+        assert "short" not in blacklist._blacklisted

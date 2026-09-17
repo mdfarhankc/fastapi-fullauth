@@ -8,6 +8,8 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from fastapi_fullauth.config import FullAuthConfig
 
+from fastapi_fullauth.core.blacklist import SWEEP_INTERVAL_SECONDS
+
 logger = logging.getLogger("fastapi_fullauth.ratelimit")
 
 
@@ -18,6 +20,7 @@ class RateLimiter:
         self.max_requests = max_requests
         self.window_seconds = window_seconds
         self._hits: dict[str, deque[float]] = defaultdict(deque)
+        self._next_sweep = 0.0
 
     def _cleanup(self, key: str, now: float) -> deque[float]:
         cutoff = now - self.window_seconds
@@ -28,8 +31,19 @@ class RateLimiter:
             del self._hits[key]
         return timestamps
 
+    def _sweep_idle(self, now: float) -> None:
+        # _cleanup only prunes the key being checked; clients that never return
+        # (rotating IPs, scanners) would otherwise keep their entries forever.
+        if now < self._next_sweep:
+            return
+        self._next_sweep = now + SWEEP_INTERVAL_SECONDS
+        cutoff = now - self.window_seconds
+        for key in [k for k, stamps in self._hits.items() if not stamps or stamps[-1] <= cutoff]:
+            del self._hits[key]
+
     async def is_allowed(self, key: str) -> bool:
         now = time.monotonic()
+        self._sweep_idle(now)
         self._cleanup(key, now)
         timestamps = self._hits[key]
 
@@ -119,10 +133,16 @@ class RedisRateLimiter:
         now = time.time()
         cutoff = now - self.window_seconds
 
-        pipe = self._redis.pipeline()
-        pipe.zremrangebyscore(redis_key, "-inf", cutoff)
-        pipe.zcard(redis_key)
-        results = await pipe.execute()
+        try:
+            pipe = self._redis.pipeline()
+            pipe.zremrangebyscore(redis_key, "-inf", cutoff)
+            pipe.zcard(redis_key)
+            results = await pipe.execute()
+        except Exception:
+            # Fail open, like is_allowed(): these feed response headers, and an
+            # outage must not turn every request through the middleware into a 500.
+            logger.error("Rate limiter Redis error; reporting full quota", exc_info=True)
+            return self.max_requests
 
         count: int = results[1]
         return max(0, self.max_requests - count)
@@ -131,7 +151,11 @@ class RedisRateLimiter:
         redis_key = f"{self._prefix}{key}"
         now = time.time()
 
-        oldest = await self._redis.zrange(redis_key, 0, 0, withscores=True)
+        try:
+            oldest = await self._redis.zrange(redis_key, 0, 0, withscores=True)
+        except Exception:
+            logger.error("Rate limiter Redis error; reporting no reset delay", exc_info=True)
+            return 0.0
         if not oldest:
             return 0.0
         oldest_score = float(oldest[0][1])

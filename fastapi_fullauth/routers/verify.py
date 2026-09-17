@@ -4,7 +4,12 @@ from typing import TYPE_CHECKING
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 
 from fastapi_fullauth.dependencies.current_user import CurrentUser, get_fullauth
-from fastapi_fullauth.exceptions import CREDENTIALS_EXCEPTION, InvalidPasswordError, TokenError
+from fastapi_fullauth.exceptions import (
+    CREDENTIALS_EXCEPTION,
+    InvalidPasswordError,
+    TokenError,
+    UserNotFoundError,
+)
 from fastapi_fullauth.flows.email_verify import create_email_verification_token, verify_email
 from fastapi_fullauth.flows.password_reset import request_password_reset, reset_password
 from fastapi_fullauth.routers._schemas import (
@@ -67,7 +72,8 @@ def create_verify_router(
 
         try:
             user = await verify_email(fullauth.adapter, fullauth.token_engine, data.token)
-        except TokenError:
+        except (TokenError, UserNotFoundError):
+            # A token for a deleted account is answered like any invalid token.
             raise CREDENTIALS_EXCEPTION
 
         if user:
@@ -124,7 +130,7 @@ def create_verify_router(
             )
         except InvalidPasswordError as e:
             raise HTTPException(status_code=422, detail=str(e))
-        except TokenError:
+        except (TokenError, UserNotFoundError):
             raise CREDENTIALS_EXCEPTION
 
         if user:

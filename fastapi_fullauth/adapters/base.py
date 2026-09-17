@@ -6,7 +6,7 @@ from types import UnionType
 from typing import Any, Generic, Literal, Protocol, TypeVar, Union, cast, get_args, get_origin
 from uuid import UUID
 
-from pydantic import TypeAdapter
+from pydantic import BaseModel, TypeAdapter
 
 from fastapi_fullauth.types import (
     CreateUserSchemaType,
@@ -19,6 +19,23 @@ from fastapi_fullauth.types import (
 )
 
 AdapterFeature = Literal["role", "permission", "oauth", "passkey", "session"]
+
+# Columns only the library may set when creating a user. A CreateUserSchema that
+# exposes them would otherwise let a registering client grant itself admin,
+# pre-verify its email, attach roles, or supply its own password hash.
+PRIVILEGED_USER_FIELDS = frozenset(
+    {"id", "hashed_password", "is_active", "is_verified", "is_superuser", "roles"}
+)
+
+
+def create_user_extra_fields(data: BaseModel) -> dict[str, Any]:
+    """The app-specific fields of a create schema that adapters may persist.
+
+    Drops ``email`` and ``password`` (handled explicitly) and
+    ``PRIVILEGED_USER_FIELDS``. Custom adapters should build ``create_user``
+    kwargs from this rather than dumping the schema directly.
+    """
+    return data.model_dump(exclude={"email", "password", *PRIVILEGED_USER_FIELDS})
 
 
 @cache

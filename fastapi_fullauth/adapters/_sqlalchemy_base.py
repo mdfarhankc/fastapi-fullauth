@@ -29,6 +29,7 @@ from fastapi_fullauth.adapters.base import (
     PermissionAdapterMixin,
     RoleAdapterMixin,
     SessionAdapterMixin,
+    create_user_extra_fields,
 )
 from fastapi_fullauth.exceptions import UserAlreadyExistsError
 from fastapi_fullauth.types import (
@@ -301,7 +302,7 @@ class _BaseSQLAlchemyAdapter(
         self, data: CreateUserSchemaType, hashed_password: str | None
     ) -> UserSchemaType:
         async with self._begin() as session:
-            extra = data.model_dump(exclude={"email", "password"})
+            extra = create_user_extra_fields(data)
             normalized_email = normalize_email(data.email)
             user = self._user_model(
                 email=normalized_email,

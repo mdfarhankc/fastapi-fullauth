@@ -26,11 +26,11 @@ def get_fullauth(request: Request) -> "FullAuth":
     return fullauth
 
 
-async def _extract_token(
+async def _extract_optional_token(
     request: Request,
     fullauth: "FullAuth" = Depends(get_fullauth),
     credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
-) -> str:
+) -> str | None:
     if credentials is not None:
         return credentials.credentials
     # fallback to backends (cookie, etc.)
@@ -38,7 +38,13 @@ async def _extract_token(
         token = await backend.read_token(request)
         if token is not None:
             return token
-    raise CREDENTIALS_EXCEPTION
+    return None
+
+
+async def _extract_token(token: str | None = Depends(_extract_optional_token)) -> str:
+    if token is None:
+        raise CREDENTIALS_EXCEPTION
+    return token
 
 
 async def current_token_payload(

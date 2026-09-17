@@ -135,8 +135,11 @@ class StandardOAuthProvider(OAuthProvider):
         body = self._token_request_body(code, redirect_uri)
         if code_verifier:
             body["code_verifier"] = code_verifier
-        resp = await self._client().post(
+        failure = f"{self.display_name} token exchange failed"
+        resp = await self._send(
+            "POST",
             self.token_endpoint,
+            failure,
             data=body,
             headers={"Accept": "application/json"},
         )
@@ -146,8 +149,8 @@ class StandardOAuthProvider(OAuthProvider):
             self._logger.error(
                 "%s token exchange failed (HTTP %s)", self.display_name, resp.status_code
             )
-            raise OAuthProviderError(f"{self.display_name} token exchange failed")
-        data: dict[str, Any] = resp.json()
+            raise OAuthProviderError(failure)
+        data = self._json_object(resp, failure)
         # Some providers (GitHub) return errors with HTTP 200 and an `error` body.
         if "error" in data:
             self._logger.error(
@@ -155,7 +158,7 @@ class StandardOAuthProvider(OAuthProvider):
                 self.display_name,
                 data.get("error_description", data["error"]),
             )
-            raise OAuthProviderError(f"{self.display_name} token exchange failed")
+            raise OAuthProviderError(failure)
         return data
 
     async def get_user_info(self, tokens: dict[str, Any]) -> OAuthUserInfo:
@@ -167,11 +170,38 @@ class StandardOAuthProvider(OAuthProvider):
             "Authorization": f"Bearer {access_token}",
             "Accept": "application/json",
         }
-        resp = await self._client().get(self.userinfo_endpoint, headers=headers)
+        failure = f"Failed to fetch user info from {self.display_name}"
+        resp = await self._send("GET", self.userinfo_endpoint, failure, headers=headers)
         if resp.status_code != 200:
             self._logger.error("%s userinfo failed (HTTP %s)", self.display_name, resp.status_code)
-            raise OAuthProviderError(f"Failed to fetch user info from {self.display_name}")
-        return await self.parse_user_info(resp.json(), headers)
+            raise OAuthProviderError(failure)
+        return await self.parse_user_info(self._json_object(resp, failure), headers)
+
+    async def _send(self, method: str, url: str, failure: str, **kwargs: Any) -> "httpx.Response":
+        """Send a request to the provider, turning transport errors (timeouts,
+        refused connections, TLS failures) into ``OAuthProviderError(failure)``
+        instead of letting them escape as a 500."""
+        import httpx
+
+        try:
+            return await self._client().request(method, url, **kwargs)
+        except httpx.HTTPError as exc:
+            self._logger.error(
+                "%s request to %s failed: %s", self.display_name, url, type(exc).__name__
+            )
+            raise OAuthProviderError(failure) from exc
+
+    def _json_object(self, resp: "httpx.Response", failure: str) -> dict[str, Any]:
+        """Parse a provider response that must be a JSON object."""
+        try:
+            data = resp.json()
+        except ValueError as exc:
+            self._logger.error("%s returned a non-JSON response", self.display_name)
+            raise OAuthProviderError(failure) from exc
+        if not isinstance(data, dict):
+            self._logger.error("%s returned JSON that is not an object", self.display_name)
+            raise OAuthProviderError(failure)
+        return data
 
     def _invalid_user_info(self, missing: str) -> OAuthProviderError:
         self._logger.error("%s userinfo response missing %s", self.display_name, missing)
