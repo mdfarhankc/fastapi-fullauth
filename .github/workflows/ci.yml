@@ -29,5 +29,5 @@ jobs:
       - uses: astral-sh/setup-uv@v5
         with:
           python-version: ${{ matrix.python-version }}
-      - run: uv sync --dev --extra sqlalchemy --extra sqlmodel
+      - run: uv sync --dev --extra sqlalchemy --extra sqlmodel --extra passkey
       - run: uv run pytest tests/ -v
