@@ -97,6 +97,7 @@ plugins:
         Security:
           - security/rate-limiting.md: Per-route auth limits and global IP-based rate limiting with memory or Redis backends
           - security/middleware.md: Security headers and CSRF double-submit cookie protection, added with app.add_middleware
+          - security/threat-model.md: What the library defends against, its trust assumptions, failure modes, and what remains the application's responsibility
         Operations:
           - frontend-integration.md: Wiring auth into a frontend; token storage, refresh handling, and protected requests
           - migrations.md: Alembic env.py wiring with your project's metadata and opt-in tables via mixin subclassing
@@ -130,6 +131,7 @@ nav:
   - Security:
       - Rate Limiting: security/rate-limiting.md
       - Middleware: security/middleware.md
+      - Threat Model: security/threat-model.md
   - Frontend Integration: frontend-integration.md
   - Database Migrations: migrations.md
   - Testing: testing.md
