@@ -75,6 +75,7 @@ plugins:
         Getting started:
           - index.md: Overview, features, installation, quick start example, route table, and composable routers
           - getting-started.md: Step-by-step setup with user model, database, FullAuth config, FastAPI wiring, and first API calls
+          - migrating-from-fastapi-users.md: Moving an existing fastapi-users app across; concept and route mapping, password hashes carry over, data migration SQL, and client changes
           - architecture.md: How the library works internally; adapters, backends, flows, routers, and protection layers
           - configuration.md: All FullAuthConfig options; core, tokens, passwords, login, rate limiting, Redis, blacklist, cookies, OAuth, routing
           - customization.md: Map of every extension point; custom adapters, user schemas, token claims, event hooks, password rules, token transport, route selection
@@ -109,6 +110,7 @@ plugins:
 nav:
   - Home: index.md
   - Getting Started: getting-started.md
+  - Migrating from fastapi-users: migrating-from-fastapi-users.md
   - Architecture: architecture.md
   - Configuration: configuration.md
   - Customization: customization.md
