@@ -1,0 +1,291 @@
+# OAuth2 Social Login
+
+Add Google, GitHub, Discord, and GitLab login with a few config lines. Users can link multiple providers alongside email/password login.
+
+## Installation
+
+```
+pip install fastapi-fullauth[oauth]
+```
+
+## Configuration
+
+```
+from fastapi_fullauth import FullAuth, FullAuthConfig
+from fastapi_fullauth.oauth.google import GoogleOAuthProvider
+from fastapi_fullauth.oauth.github import GitHubOAuthProvider
+from fastapi_fullauth.oauth.discord import DiscordOAuthProvider
+from fastapi_fullauth.oauth.gitlab import GitLabOAuthProvider
+
+fullauth = FullAuth(
+    adapter=adapter,
+    config=FullAuthConfig(SECRET_KEY="..."),
+    providers=[
+        GoogleOAuthProvider(
+            client_id="your-google-client-id",
+            client_secret="your-google-secret",
+            redirect_uris=[
+                "http://localhost:3000/auth/callback",
+                "https://myapp.com/auth/callback",
+            ],
+        ),
+        GitHubOAuthProvider(
+            client_id="your-github-client-id",
+            client_secret="your-github-secret",
+            redirect_uris=["http://localhost:3000/auth/callback"],
+        ),
+        DiscordOAuthProvider(
+            client_id="your-discord-client-id",
+            client_secret="your-discord-secret",
+            redirect_uris=["http://localhost:3000/auth/callback"],
+        ),
+        GitLabOAuthProvider(
+            client_id="your-gitlab-application-id",
+            client_secret="your-gitlab-secret",
+            redirect_uris=["http://localhost:3000/auth/callback"],
+        ),
+    ],
+)
+```
+
+Tip
+
+`redirect_uris` is the list of allowed callback URLs. The client must pass `redirect_uri` as a query parameter in the authorize request; the library validates it against this list.
+
+## Routes
+
+When OAuth providers are configured, these routes are registered automatically:
+
+| Method | Path                               | Description                |
+| ------ | ---------------------------------- | -------------------------- |
+| GET    | `/auth/oauth/providers`            | List configured providers  |
+| GET    | `/auth/oauth/{provider}/authorize` | Get authorization URL      |
+| POST   | `/auth/oauth/{provider}/callback`  | Exchange code for tokens   |
+| GET    | `/auth/oauth/accounts`             | List linked OAuth accounts |
+| DELETE | `/auth/oauth/accounts/{provider}`  | Unlink a provider          |
+
+## How the flow works
+
+### 1. Get the authorization URL
+
+```
+GET /api/v1/auth/oauth/google/authorize?redirect_uri=http://localhost:3000/auth/callback
+```
+
+Response:
+
+```
+{
+  "authorization_url": "https://accounts.google.com/o/oauth2/v2/auth?client_id=...&state=...",
+  "binding": "q8vR3..."
+}
+```
+
+The `redirect_uri` parameter is required and is validated against your `redirect_uris` allow-list; a missing or unlisted value is rejected.
+
+Keep the `binding` on the client, for example in `sessionStorage`, and never put it in a URL. It ties this login attempt to the browser that started it; see [Security model](#security-model).
+
+### 2. Redirect the user
+
+Your frontend redirects the user to the `authorization_url`. The user authenticates with Google/GitHub.
+
+### 3. Handle the callback
+
+The provider redirects back to your `redirect_uri` with `code` and `state` query parameters. Your frontend sends these, together with the `binding` it stored in step 1, to the callback endpoint:
+
+```
+POST /api/v1/auth/oauth/google/callback
+{
+  "code": "4/0AX4XfW...",
+  "state": "eyJ...",
+  "binding": "q8vR3..."
+}
+```
+
+A request without `binding` is rejected with 422, and one whose `binding` does not match the state with 400.
+
+Response:
+
+```
+{
+  "access_token": "eyJ...",
+  "refresh_token": "eyJ...",
+  "token_type": "bearer",
+  "expires_in": 1800,
+  "user": { "id": "...", "email": "user@example.com", "is_active": true, "is_verified": true }
+}
+```
+
+From this point on, the session works exactly like email/password login. The user can call `/me`, `/refresh`, `/logout`, etc. with the JWT tokens.
+
+## What happens on callback
+
+1. **State token is verified**: signature, 5-minute TTL, and that it is bound to this client's `binding` (login-CSRF protection); then it is burned
+1. **Authorization code is exchanged** for provider tokens
+1. **User info is fetched** from the provider (email, name, picture)
+1. **Account linking logic** runs:
+   - If this provider account is already linked - update tokens, return existing user
+   - If an account with the same email exists and the provider confirms the email is verified - link the OAuth account to it
+   - If the email exists but the provider hasn't verified it - reject the login (security check)
+   - Otherwise - create a new user (marked as verified, since the provider confirmed their email)
+1. **JWT tokens are issued** (same as regular login)
+
+Warning
+
+Auto-linking only happens when the provider reports `email_verified=True`. This prevents an attacker from creating a provider account with a victim's email and hijacking their local account. If the provider hasn't verified the email, the user must log in with their existing credentials and link the provider manually.
+
+## Auto-linking by email
+
+By default, if a user registers with `user@example.com` via email/password, then later logs in with Google using the same verified email, the accounts are linked automatically. Disable this with:
+
+```
+config = FullAuthConfig(
+    SECRET_KEY="...",
+    OAUTH_AUTO_LINK_BY_EMAIL=False,
+)
+```
+
+## Security model
+
+**State token**: the OAuth `state` parameter is a purpose-scoped JWT with a 5-minute TTL (`OAUTH_STATE_EXPIRE_SECONDS`). If it is missing, expired, or tampered with, the callback is rejected. With the token blacklist enabled (the default) it is single-use.
+
+**Binding to the browser (login CSRF)**: a signed state alone does not stop login CSRF. An attacker can start a login with their own provider account, then make a victim's browser submit the attacker's `code` and `state`, signing the victim into the attacker's account. RFC 9700 (OAuth 2.0 Security Best Current Practice) therefore requires the state to be bound to the user agent. The authorize endpoint returns a random `binding` and puts only its SHA-256 hash in the state; the callback requires the `binding` back and compares it in constant time before touching the code. The victim's browser never had the attacker's binding, so the forged callback fails.
+
+**Redirect URI validation**: the library validates the `redirect_uri` parameter against the provider's configured `redirect_uris` list. Mismatched URIs are rejected with a 400 error.
+
+**Token storage**: provider access and refresh tokens are stored in the `oauth_accounts` table and updated on each login.
+
+**PKCE**: PKCE (S256) is enabled by default for providers that support it (Google, GitHub, Discord, GitLab) via the `OAUTH_PKCE_ENABLED` setting. The flow stays stateless: the `code_verifier` is derived from the signed state token's nonce keyed by `SECRET_KEY`, so it never travels through the browser. Because the server derives it, it is defense-in-depth for a confidential client that already sends a `client_secret`; the `binding` above is what stops login CSRF. A custom provider opts in by setting `supports_pkce = True` and accepting the `code_challenge`/`code_verifier` keyword arguments.
+
+### Known limitations
+
+With `BLACKLIST_ENABLED=False` the state cannot be burned, so it is replayable within `OAUTH_STATE_EXPIRE_SECONDS` by whoever holds both the state and its binding (the authorization code itself is single-use at the provider).
+
+## OAuth-only users
+
+Users created through OAuth login have no password hash. They authenticate exclusively through their linked provider.
+
+- To set a password later, use `POST /change-password`. The `current_password` field is not required for users without an existing password.
+- Unlinking a provider is blocked if it's the user's only login method (no password set, no other linked providers). The user must set a password first.
+
+## Unlinking providers
+
+Users can unlink an OAuth provider:
+
+```
+DELETE /api/v1/auth/oauth/accounts/google
+```
+
+This is blocked if the OAuth account is the user's only login method (no password set, no other OAuth providers). The user must set a password first.
+
+## Adding your own provider
+
+Most identity providers follow the standard OAuth2 authorization-code wire format. For those, subclass `StandardOAuthProvider`: set the three endpoints, and implement only the userinfo mapping. You get the authorize URL, PKCE, code exchange, and uniform error handling for free.
+
+```
+from fastapi_fullauth.oauth import StandardOAuthProvider
+from fastapi_fullauth.types import OAuthUserInfo
+
+class MyProvider(StandardOAuthProvider):
+    name = "myprovider"
+    display_name = "MyProvider"  # used in log and error messages
+    authorization_endpoint = "https://auth.example.com/oauth/authorize"
+    token_endpoint = "https://auth.example.com/oauth/token"
+    userinfo_endpoint = "https://auth.example.com/oauth/userinfo"
+
+    @property
+    def default_scopes(self) -> list[str]:
+        return ["openid", "email"]
+
+    async def parse_user_info(self, data: dict, headers: dict) -> OAuthUserInfo:
+        if not data.get("sub"):
+            raise self._invalid_user_info("sub")
+        return OAuthUserInfo(
+            provider=self.name,
+            provider_user_id=str(data["sub"]),
+            email=data.get("email"),
+            email_verified=bool(data.get("email_verified", False)),
+            name=data.get("name"),
+            picture=data.get("picture"),
+            raw=data,
+        )
+```
+
+Providers with wire-format quirks override the small `_authorize_params` / `_token_request_body` hooks; see `GitHubOAuthProvider` in the source (GitHub's endpoints take neither `response_type` nor `grant_type`). `GoogleOAuthProvider` shows adding extra authorize params via `extra_authorize_params`.
+
+If your provider deviates from the standard flow entirely, subclass the bare `OAuthProvider` ABC instead and implement `get_authorization_url`, `exchange_code`, and `get_user_info` yourself.
+
+## Event hooks
+
+Two hooks fire during OAuth flows:
+
+- `after_oauth_login` fires on every OAuth login (new and returning users):
+
+```
+@fullauth.hooks.on("after_oauth_login")
+async def on_oauth_login(user, provider, is_new_user):
+    if is_new_user:
+        print(f"New user via {provider}: {user.email}")
+```
+
+- `after_oauth_register` fires only when a new user is created via OAuth, and includes the provider's user info:
+
+```
+@fullauth.hooks.on("after_oauth_register")
+async def on_oauth_register(user, user_info):
+    print(f"New OAuth user: {user.email}, provider data: {user_info.raw}")
+```
+
+The `after_register` hook also fires for new OAuth users.
+
+## Provider setup guides
+
+### Google
+
+1. Go to [Google Cloud Console](https://console.cloud.google.com/)
+1. Create a project (or select existing)
+1. Go to **APIs & Services > Credentials**
+1. Create an **OAuth 2.0 Client ID** (Web application)
+1. Add your redirect URIs under **Authorized redirect URIs**
+1. Copy the Client ID and Client Secret
+
+Default scopes: `openid`, `email`, `profile`
+
+### GitHub
+
+1. Go to [GitHub Developer Settings](https://github.com/settings/developers)
+1. Click **New OAuth App**
+1. Set the **Authorization callback URL** to your redirect URI
+1. Copy the Client ID and Client Secret
+
+Default scopes: `read:user`, `user:email`
+
+Note
+
+GitHub requires a separate API call to fetch the user's verified primary email. The library handles this automatically.
+
+### Discord
+
+1. Go to the [Discord Developer Portal](https://discord.com/developers/applications)
+1. Click **New Application**, name it, and open the app
+1. Under **OAuth2**, add your redirect URI under **Redirects**
+1. Copy the **Client ID** and **Client Secret** from the OAuth2 page
+
+Default scopes: `identify`, `email`
+
+Note
+
+Discord returns the display name as `global_name` (falling back to `username`) and the avatar as a hash; the library builds the CDN avatar URL for you. No app review is required.
+
+### GitLab
+
+1. Go to [GitLab > Preferences > Applications](https://gitlab.com/-/profile/applications) (or a group/instance application for org-wide use)
+1. Set the **Redirect URI** to your callback URL
+1. Select the **`openid`**, **`email`**, and **`profile`** scopes
+1. Save and copy the **Application ID** and **Secret**
+
+Default scopes: `openid`, `email`, `profile`
+
+Note
+
+These defaults target `gitlab.com`. For a self-hosted GitLab, subclass `GitLabOAuthProvider` and override `authorization_endpoint`, `token_endpoint`, and `userinfo_endpoint` with your instance URL.

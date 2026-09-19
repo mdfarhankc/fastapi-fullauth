@@ -1,0 +1,248 @@
+# Protected Routes
+
+fastapi-fullauth provides FastAPI dependency functions to protect your routes. Build your own `Annotated` types with `Depends()`.
+
+## Setting up dependencies
+
+If you use the default `UserSchema`, import the ready-made annotated types:
+
+```
+from fastapi_fullauth.dependencies import CurrentUser, VerifiedUser, SuperUser
+```
+
+With a custom user schema, build them once (e.g. in `deps.py`) from the typed factories so your extra fields type-check:
+
+```
+from typing import Annotated
+from fastapi import Depends
+from fastapi_fullauth.dependencies import typed_current_user, typed_verified_user, typed_superuser
+
+from app.schemas import MyUserSchema  # your user schema
+
+CurrentUser = Annotated[MyUserSchema, Depends(typed_current_user(MyUserSchema))]
+VerifiedUser = Annotated[MyUserSchema, Depends(typed_verified_user(MyUserSchema))]
+SuperUser = Annotated[MyUserSchema, Depends(typed_superuser(MyUserSchema))]
+```
+
+Then use them in your routes:
+
+```
+@app.get("/profile")
+async def profile(user: CurrentUser):
+    return {"email": user.email, "roles": user.roles}
+```
+
+## Dependency functions
+
+### current_user
+
+Any authenticated user (active account required). Returns `401` if the token is invalid or the user is inactive.
+
+### current_active_verified_user
+
+Authenticated user with a verified email address. Returns `403 Forbidden` if the user's email is not verified.
+
+### current_superuser
+
+Authenticated user with `is_superuser=True`. Returns `403 Forbidden` if the user is not a superuser.
+
+### current_token_payload
+
+The decoded access-token `TokenPayload` for the request, without a database lookup. It reads the token from the `Authorization` header or a cookie backend and validates it (expiry, blacklist, signature, purpose). Use it when you only need token data - your [custom claims](https://mdfarhankc.github.io/fastapi-fullauth/auth/custom-claims/index.md) live in `payload.extra`:
+
+```
+from fastapi import Depends
+from fastapi_fullauth.dependencies import current_token_payload
+from fastapi_fullauth.types import TokenPayload
+
+@app.get("/tenant")
+async def tenant(payload: TokenPayload = Depends(current_token_payload)):
+    return {"tenant_id": payload.extra.get("tenant_id")}
+```
+
+Reach for `current_user` when you need the user record; reach for `current_token_payload` when a DB hit would be wasted.
+
+### require_role
+
+Check that the user has at least one of the specified roles. Superusers bypass all role checks.
+
+```
+from fastapi import Depends
+from fastapi_fullauth.dependencies import require_role
+
+@app.get("/editor")
+async def editor_panel(user=Depends(require_role("editor"))):
+    return {"msg": "welcome, editor"}
+
+# multiple roles: user needs at least one
+@app.get("/content")
+async def content(user=Depends(require_role("editor", "author"))):
+    return {"msg": "welcome"}
+```
+
+### require_permission
+
+Check that the user has at least one of the specified permissions. Permissions are resolved through roles; a user with role `"editor"` gets all permissions assigned to that role.
+
+```
+from fastapi import Depends
+from fastapi_fullauth.dependencies import require_permission
+
+@app.delete("/posts/{id}")
+async def delete_post(id: str, user=Depends(require_permission("posts:delete"))):
+    ...
+
+# multiple permissions: user needs at least one
+@app.put("/posts/{id}")
+async def edit_post(id: str, user=Depends(require_permission("posts:edit", "posts:admin"))):
+    ...
+```
+
+Superusers bypass all permission checks.
+
+#### Setting up permissions
+
+Permissions are assigned to roles, not directly to users:
+
+```
+# Assign permissions to a role (superuser only)
+curl -X POST http://localhost:8000/api/v1/auth/admin/assign-permission \
+  -H "Authorization: Bearer <superuser-token>" \
+  -H "Content-Type: application/json" \
+  -d '{"role": "editor", "permission": "posts:create"}'
+
+curl -X POST http://localhost:8000/api/v1/auth/admin/assign-permission \
+  -H "Authorization: Bearer <superuser-token>" \
+  -H "Content-Type: application/json" \
+  -d '{"role": "editor", "permission": "posts:edit"}'
+
+# List permissions for a role
+curl http://localhost:8000/api/v1/auth/admin/role-permissions/editor \
+  -H "Authorization: Bearer <superuser-token>"
+# → ["posts:create", "posts:edit"]
+```
+
+Or programmatically:
+
+```
+await adapter.assign_permission_to_role("editor", "posts:create")
+await adapter.assign_permission_to_role("editor", "posts:edit")
+await adapter.remove_permission_from_role("editor", "posts:create")
+
+# resolve all permissions for a user (through their roles)
+perms = await adapter.get_user_permissions(user.id)
+# → ["posts:edit"]
+```
+
+#### require_role vs require_permission
+
+|               | `require_role`                | `require_permission`                    |
+| ------------- | ----------------------------- | --------------------------------------- |
+| Checks        | Role names on the user        | Permissions resolved through roles      |
+| Setup         | Just assign roles             | Assign roles + map permissions to roles |
+| Use case      | Simple apps ("admin vs user") | Fine-grained access ("can edit posts?") |
+| Change access | Modify code                   | Update DB mappings                      |
+
+## How it works
+
+All dependencies follow the same flow:
+
+1. Extract the JWT from the `Authorization: Bearer <token>` header (or cookie backend)
+1. Decode and validate the token (expiry, blacklist, signature)
+1. Look up the user by `sub` (user ID) from the token payload
+1. Apply additional checks (verified, superuser, roles)
+
+If any step fails, a `401 Unauthorized` or `403 Forbidden` response is returned automatically.
+
+## Custom user schemas
+
+When using custom schemas with extra fields, use `typed_current_user(...)` (and the matching `typed_verified_user` / `typed_superuser`). Runtime behavior is identical to `current_user` - the adapter already returns instances of the schema it was built with - but the dependency's declared return type becomes your subclass, so the extra fields type-check without casts:
+
+```
+from typing import Annotated
+from fastapi import Depends
+from fastapi_fullauth.dependencies import typed_current_user
+
+from app.schemas import MyUserSchema
+
+CurrentUser = Annotated[MyUserSchema, Depends(typed_current_user(MyUserSchema))]
+
+@app.get("/profile")
+async def profile(user: CurrentUser):
+    return {"name": user.display_name}  # IDE and type checker know this field exists
+```
+
+## Writing custom dependencies
+
+You can write your own dependency functions for full control over the auth flow. There are two approaches:
+
+### Using get_fullauth
+
+`get_fullauth` is a FastAPI dependency that returns the `FullAuth` instance from `app.state`. It gives you access to the adapter, token engine, config, and everything else:
+
+```
+from fastapi import Depends
+from fastapi_fullauth.dependencies import current_token_payload, get_fullauth
+from fastapi_fullauth.types import TokenPayload
+
+async def my_current_user(
+    fullauth=Depends(get_fullauth),
+    payload: TokenPayload = Depends(current_token_payload),
+):
+    # parse_user_id converts the subject to your schema's key type (UUID, int, or str)
+    user = await fullauth.adapter.get_user_by_id(fullauth.adapter.parse_user_id(payload.sub))
+    # your custom logic: load relations, check feature flags, etc.
+    return user
+```
+
+Let `current_token_payload` handle token extraction and validation (header or cookie) so you don't reimplement it. This is useful when your dependency lives in a separate module from where you set up FullAuth.
+
+### Using the FullAuth instance directly
+
+If you already have the `FullAuth` instance in scope, just reference it directly:
+
+```
+auth = FullAuth(adapter=my_adapter, config=config)
+
+async def my_current_user():
+    user = await auth.adapter.get_user_by_id(...)
+    # your custom logic
+    return user
+```
+
+Both approaches give you the same access. Through the `FullAuth` instance you can reach:
+
+- `adapter` - all DB operations (users, roles, permissions, refresh tokens)
+- `token_engine` - decode, create, and blacklist tokens
+- `config` - all settings
+- `hooks` - event hooks
+- `lockout` - account lockout store
+- `auth_rate_limiter` - rate limiter
+- `challenge_store` - passkey challenges
+- `oauth_providers` - registered OAuth providers
+
+## Role management
+
+Roles are managed through the admin endpoints (superuser only):
+
+```
+# Assign a role
+curl -X POST http://localhost:8000/api/v1/auth/admin/assign-role \
+  -H "Authorization: Bearer <superuser-token>" \
+  -H "Content-Type: application/json" \
+  -d '{"user_id": "...", "role": "editor"}'
+
+# Remove a role
+curl -X POST http://localhost:8000/api/v1/auth/admin/remove-role \
+  -H "Authorization: Bearer <superuser-token>" \
+  -H "Content-Type: application/json" \
+  -d '{"user_id": "...", "role": "editor"}'
+```
+
+You can also manage roles programmatically through the adapter:
+
+```
+await adapter.assign_role(user_id, "editor")
+await adapter.remove_role(user_id, "editor")
+roles = await adapter.get_user_roles(user_id)
+```
