@@ -380,6 +380,10 @@ fullauth = FullAuth(
 
 See [Configuration docs](https://mdfarhankc.github.io/fastapi-fullauth/configuration/) for all options.
 
+## Coming from fastapi-users?
+
+fastapi-users is in maintenance mode. The [migration guide](https://mdfarhankc.github.io/fastapi-fullauth/migrating-from-fastapi-users/) maps every concept and route, and your existing password hashes keep working, so nobody has to reset a password.
+
 ## AI-friendly docs
 
 Using an AI coding assistant? Install the fastapi-fullauth [Agent Skill](https://agentskills.io/) so it knows the library's APIs, contracts, and pitfalls:
