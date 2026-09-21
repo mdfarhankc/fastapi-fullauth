@@ -48,6 +48,8 @@ fullauth.hooks.on("after_register", on_register)
 | `after_email_verify` | `async def(user: UserSchema)` | After email is verified |
 | `after_oauth_login` | `async def(user: UserSchema, provider: str, is_new_user: bool)` | After OAuth login succeeds |
 | `after_oauth_register` | `async def(user: UserSchema, user_info: OAuthUserInfo)` | After a new user is created via OAuth |
+| `after_oauth_link` | `async def(user: UserSchema, provider: str)` | After a signed-in user links a provider |
+| `after_oauth_unlink` | `async def(user: UserSchema, provider: str)` | After a signed-in user unlinks a provider |
 | `send_verification_email` | `async def(email: str, token: str)` | When email verification is requested |
 | `send_password_reset_email` | `async def(email: str, token: str)` | When password reset is requested |
 
@@ -111,7 +113,7 @@ async def send_verification(user):
     token = await create_email_verification_token(
         fullauth.adapter, fullauth.token_engine, user.id
     )
-    if token:  # None when the user no longer exists
+    if token:  # None when the account is already verified
         await mailer.send_verification(user.email, token)
 ```
 
@@ -182,6 +184,7 @@ The `hooks.on()` method uses `@overload` with Protocol types so your IDE can aut
 | `EmailHook` | Email events | `async def(email: str, token: str)` |
 | `AfterOAuthLoginHook` | `after_oauth_login` | `async def(user: UserSchema, provider: str, is_new_user: bool)` |
 | `AfterOAuthRegisterHook` | `after_oauth_register` | `async def(user: UserSchema, user_info: OAuthUserInfo)` |
+| `AfterOAuthLinkHook` | `after_oauth_link`, `after_oauth_unlink` | `async def(user: UserSchema, provider: str)` |
 
 You can import these from `fastapi_fullauth.hooks` if you want to type-annotate your callbacks:
 

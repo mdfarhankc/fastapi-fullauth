@@ -41,6 +41,16 @@ Some backends must choose between availability and strictness when Redis is unre
 
 - **Token blacklist fails closed.** If revocation cannot be checked, the token is rejected. A Redis outage signs users out rather than letting revoked tokens through.
 - **Rate limiter fails open.** Requests are allowed and the error is logged. A Redis outage must not lock every user out of login.
+- **Account lockout fails open.** Attempts are neither counted nor blocked while Redis is unreachable, and the error is logged. Failing closed would lock every account out, and raising would turn every login into a 500; brute-force protection is lost for the duration.
+
+## Destructive actions require recent authentication
+
+Deleting an account and setting a first password on an account that has none both
+require proof that the person is present, not just that a session exists: either
+the current password, or credentials checked within `REAUTH_MAX_AGE_SECONDS`
+(5 minutes by default). The age comes from an `auth_time` claim stamped when
+credentials are checked and carried unchanged through refresh rotation, so
+refreshing a stolen token does not renew it.
 
 ## Your application's responsibilities
 
@@ -54,6 +64,6 @@ Some backends must choose between availability and strictness when Redis is unre
 These are tracked for future releases:
 
 - OAuth provider access and refresh tokens are stored in plaintext.
-- Sensitive actions (account deletion, setting a first password on an OAuth-only account) do not require recent re-authentication.
-- Expired and revoked refresh-token rows are not pruned automatically.
 - Tokens carry no `iss` or `aud` claim, so services sharing a `SECRET_KEY` accept each other's tokens.
+- Pruning expired refresh tokens is available (`adapter.prune_expired_refresh_tokens()`) but has to be scheduled by the application; nothing runs it for you.
+- A password-reset link is invalidated by a password change, but not by a later reset *request*: the newest link and any still-unused older one both work until one of them is used.

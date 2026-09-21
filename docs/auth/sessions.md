@@ -51,6 +51,20 @@ Revoking a session signs that device out at once: its refresh token stops workin
 
 This relies on the token blacklist (`BLACKLIST_ENABLED`, on by default). Run it on Redis when you have more than one worker; an in-memory blacklist only knows about revocations made in the same process.
 
+## Pruning old refresh tokens
+
+Rotation writes a row per refresh, so the table only grows. Delete the expired
+rows periodically from your own scheduler:
+
+```python
+removed = await fullauth.adapter.prune_expired_refresh_tokens()
+```
+
+It removes only rows whose expiry has passed. A revoked but unexpired row stays:
+that row is what a replayed token is matched against, and removing it early would
+turn a stolen-token replay into an ordinary rejection, leaving the family alive.
+Custom adapters inherit a no-op, so override it if your storage needs pruning.
+
 ## Using a custom adapter
 
 The built-in adapters implement session listing out of the box. A custom adapter opts in by inheriting `SessionAdapterMixin` and implementing three methods:

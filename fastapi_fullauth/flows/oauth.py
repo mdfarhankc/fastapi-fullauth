@@ -7,12 +7,31 @@ from typing import Any, cast
 
 from fastapi_fullauth.adapters.base import AbstractUserAdapter, OAuthAdapterMixin
 from fastapi_fullauth.core.tokens import TokenEngine
-from fastapi_fullauth.exceptions import OAuthProviderError, UserAlreadyExistsError
+from fastapi_fullauth.exceptions import (
+    OAuthAccountAlreadyLinkedError,
+    OAuthProviderAlreadyLinkedError,
+    OAuthProviderError,
+    UserAlreadyExistsError,
+)
 from fastapi_fullauth.flows.tokens import issue_token_pair
 from fastapi_fullauth.oauth.base import OAuthProvider
-from fastapi_fullauth.types import OAuthAccount, OAuthUserInfo, TokenPair, TokenPayload, UserSchema
+from fastapi_fullauth.types import (
+    OAuthAccount,
+    OAuthUserInfo,
+    TokenPair,
+    TokenPayload,
+    UserID,
+    UserSchema,
+)
 
 logger = logging.getLogger("fastapi_fullauth.oauth")
+
+# Purposes keep the two flows apart: a sign-in state cannot be redeemed at the
+# link callback, and a link state cannot sign anyone in.
+STATE_PURPOSE = "oauth_state"
+LINK_STATE_PURPOSE = "oauth_link"
+
+_RESERVED_STATE_CLAIMS = frozenset({"purpose", "nonce", "binding", "redirect_uri"})
 
 
 def _b64url(data: bytes) -> str:
@@ -59,12 +78,28 @@ def generate_oauth_state(
     nonce: str | None = None,
     *,
     binding: str,
+    purpose: str = STATE_PURPOSE,
+    claims: dict[str, Any] | None = None,
 ) -> str:
+    """Create the signed, user-agent-bound state token for an OAuth flow.
+
+    ``claims`` are carried in the state and returned at the callback. The claims
+    the state's own security rests on cannot be set this way.
+
+    The subject is always ``"oauth-state"``, never a real user id: the state
+    travels through the browser's address bar and the provider, so it must be
+    worthless as a session token.
+    """
     extra: dict[str, Any] = {
-        "purpose": "oauth_state",
-        "nonce": nonce or secrets.token_hex(16),
-        "binding": _binding_digest(binding),
+        k: v for k, v in (claims or {}).items() if k not in _RESERVED_STATE_CLAIMS
     }
+    extra.update(
+        {
+            "purpose": purpose,
+            "nonce": nonce or secrets.token_hex(16),
+            "binding": _binding_digest(binding),
+        }
+    )
     if redirect_uri:
         extra["redirect_uri"] = redirect_uri
     return token_engine.create_access_token(
@@ -80,6 +115,8 @@ def build_authorization_url(
     pkce_enabled: bool = True,
     *,
     binding: str,
+    purpose: str = STATE_PURPOSE,
+    claims: dict[str, Any] | None = None,
 ) -> str:
     """Create a signed state token and return the provider authorization URL.
 
@@ -92,7 +129,13 @@ def build_authorization_url(
     """
     nonce = secrets.token_hex(16)
     state = generate_oauth_state(
-        token_engine, ttl_seconds, redirect_uri, nonce=nonce, binding=binding
+        token_engine,
+        ttl_seconds,
+        redirect_uri,
+        nonce=nonce,
+        binding=binding,
+        purpose=purpose,
+        claims=claims,
     )
 
     secret = token_engine.config.SECRET_KEY
@@ -102,9 +145,40 @@ def build_authorization_url(
     return provider.get_authorization_url(state, redirect_uri)
 
 
-async def _decode_bound_state(token_engine: TokenEngine, state: str, binding: str) -> TokenPayload:
+def build_link_authorization_url(
+    token_engine: TokenEngine,
+    provider: OAuthProvider,
+    redirect_uri: str,
+    user_id: UserID,
+    ttl_seconds: int = 300,
+    pkce_enabled: bool = True,
+    *,
+    binding: str,
+) -> str:
+    """Authorization URL for attaching ``provider`` to an already-signed-in user.
+
+    The state names the user it was issued for, which the callback checks against
+    the caller's session. Without that check, an attacker could run this flow with
+    their own provider account and have a victim submit the result, attaching the
+    attacker's identity to the victim's account.
+    """
+    return build_authorization_url(
+        token_engine,
+        provider,
+        redirect_uri,
+        ttl_seconds,
+        pkce_enabled,
+        binding=binding,
+        purpose=LINK_STATE_PURPOSE,
+        claims={"link_user_id": str(user_id)},
+    )
+
+
+async def _decode_bound_state(
+    token_engine: TokenEngine, state: str, binding: str, *, purpose: str = STATE_PURPOSE
+) -> TokenPayload:
     payload = await token_engine.decode_token(state, expected_type="access")
-    if payload.extra.get("purpose") != "oauth_state":
+    if payload.extra.get("purpose") != purpose:
         logger.warning("Invalid OAuth state token (wrong purpose)")
         raise OAuthProviderError("Invalid OAuth state token")
     expected = payload.extra.get("binding")
@@ -133,7 +207,17 @@ async def exchange_oauth_code(
     # Checked before the state is burned, so a mismatched attempt cannot use up
     # the legitimate client's state.
     payload = await _decode_bound_state(token_engine, state, binding)
+    return await _burn_state_and_exchange(provider, token_engine, payload, code, pkce_enabled)
 
+
+async def _burn_state_and_exchange(
+    provider: OAuthProvider,
+    token_engine: TokenEngine,
+    payload: TokenPayload,
+    code: str,
+    pkce_enabled: bool,
+) -> tuple[dict[str, Any], OAuthUserInfo]:
+    """Consume an already-verified state, then exchange the code for user info."""
     # Single-use: burn the state so a captured (code, state) pair can't be
     # replayed within the state's TTL. Decoding it again raises TokenBlacklisted.
     if token_engine.config.BLACKLIST_ENABLED:
@@ -162,6 +246,30 @@ def _ensure_active(user: UserSchema) -> None:
     if not user.is_active:
         logger.warning("OAuth login blocked; account deactivated: user_id=%s", user.id)
         raise OAuthProviderError("User account is deactivated")
+
+
+async def _ensure_provider_not_linked(
+    oauth_adapter: "OAuthAdapterMixin", user: UserSchema, info: OAuthUserInfo
+) -> None:
+    """Refuse a second identity from the same provider on one account.
+
+    Unlinking resolves by provider alone, so a duplicate row would leave the
+    provider attached after the user unlinked it, with no way to reach the
+    leftover. Reachable when two accounts at one provider verify the same email.
+    """
+    for account in await oauth_adapter.get_user_oauth_accounts(user.id):
+        if account.provider == info.provider:
+            logger.warning(
+                "oauth auto-link refused: account already linked to %s (user_id=%s, "
+                "existing=%s, attempted=%s)",
+                info.provider,
+                user.id,
+                account.provider_user_id,
+                info.provider_user_id,
+            )
+            raise OAuthProviderAlreadyLinkedError(
+                f"Your account is already linked to a different {info.provider} account."
+            )
 
 
 async def link_or_create_user(
@@ -214,10 +322,11 @@ async def link_or_create_user(
                     info.provider_user_id,
                 )
                 raise OAuthProviderError(
-                    "This email is already registered. Sign in with your password, or "
-                    f"verify this email address with {info.provider} and try again."
+                    "This email is already registered. Sign in with your password, "
+                    f"then link your {info.provider} account."
                 )
             _ensure_active(existing)
+            await _ensure_provider_not_linked(oauth_adapter, existing, info)
             user = existing
 
     if user is None:
@@ -317,3 +426,131 @@ async def oauth_callback(
     )
 
     return token_pair, user, is_new_user, info
+
+
+async def link_oauth_account(
+    adapter: AbstractUserAdapter,
+    user: UserSchema,
+    info: OAuthUserInfo,
+    provider_tokens: dict[str, Any],
+) -> OAuthAccount:
+    """Attach a provider identity to an already-authenticated user.
+
+    Authorization comes from the caller's session, so the provider email is
+    stored for display only: it is never matched against an account, and the user
+    row, including ``is_verified``, is left untouched.
+
+    Raises :class:`OAuthAccountAlreadyLinkedError` rather than moving an identity
+    that belongs to another user, and :class:`OAuthProviderAlreadyLinkedError`
+    when the user already linked a different account from the same provider,
+    which unlinking (keyed by provider alone) could not tell apart.
+    """
+    oauth_adapter = cast("OAuthAdapterMixin", adapter)
+    fields: dict[str, Any] = {
+        "access_token": provider_tokens.get("access_token"),
+        "refresh_token": provider_tokens.get("refresh_token"),
+        "provider_email": info.email,
+    }
+
+    existing = await oauth_adapter.get_oauth_account(info.provider, info.provider_user_id)
+    if existing is not None:
+        if existing.user_id == user.id:
+            updated = await oauth_adapter.update_oauth_account(
+                info.provider, info.provider_user_id, fields
+            )
+            logger.info("OAuth account re-linked: user_id=%s, provider=%s", user.id, info.provider)
+            return updated or existing.model_copy(update=fields)
+
+        owner = await adapter.get_user_by_id(existing.user_id)
+        if owner is not None:
+            logger.warning(
+                "OAuth link refused: identity owned by another user "
+                "(provider=%s, provider_user_id=%s, requested_by=%s)",
+                info.provider,
+                info.provider_user_id,
+                user.id,
+            )
+            raise OAuthAccountAlreadyLinkedError(
+                f"This {info.provider} account is already linked to another user."
+            )
+
+        # The owner is gone but the row outlived it (storage without cascading
+        # deletes). Leaving it would block the identity forever.
+        logger.warning(
+            "Replacing an orphaned OAuth link: provider=%s, provider_user_id=%s",
+            info.provider,
+            info.provider_user_id,
+        )
+        await oauth_adapter.delete_oauth_account(info.provider, info.provider_user_id)
+
+    for account in await oauth_adapter.get_user_oauth_accounts(user.id):
+        if account.provider == info.provider:
+            logger.info(
+                "OAuth link refused: provider already linked (user_id=%s, provider=%s)",
+                user.id,
+                info.provider,
+            )
+            raise OAuthProviderAlreadyLinkedError(
+                f"Your account is already linked to a different {info.provider} account."
+            )
+
+    created = await oauth_adapter.create_oauth_account(
+        OAuthAccount(
+            provider=info.provider,
+            provider_user_id=info.provider_user_id,
+            user_id=user.id,
+            provider_email=info.email,
+            access_token=provider_tokens.get("access_token"),
+            refresh_token=provider_tokens.get("refresh_token"),
+        )
+    )
+    if created.user_id != user.id:
+        # The adapters treat a duplicate insert as success and return the row
+        # that won, which on a race is another account's. Reporting that as a
+        # successful link would tell the caller they own an identity they do not.
+        logger.warning(
+            "OAuth link lost a race to another account (provider=%s, provider_user_id=%s, "
+            "requested_by=%s)",
+            info.provider,
+            info.provider_user_id,
+            user.id,
+        )
+        raise OAuthAccountAlreadyLinkedError(
+            f"This {info.provider} account is already linked to another user."
+        )
+    logger.info("OAuth account linked: user_id=%s, provider=%s", user.id, info.provider)
+    return created
+
+
+async def oauth_link_callback(
+    adapter: AbstractUserAdapter,
+    token_engine: TokenEngine,
+    provider: OAuthProvider,
+    code: str,
+    state: str,
+    user: UserSchema,
+    pkce_enabled: bool = True,
+    *,
+    binding: str,
+) -> OAuthAccount:
+    """Finish a link flow: verify the state, exchange the code, attach the identity.
+
+    Issues no tokens. The caller is already signed in, and linking a provider is
+    not a sign-in.
+    """
+    # Both checks run before the state is burned and before the code is spent, so
+    # a rejected attempt cannot consume the legitimate client's state.
+    payload = await _decode_bound_state(token_engine, state, binding, purpose=LINK_STATE_PURPOSE)
+    issued_for = payload.extra.get("link_user_id")
+    if not isinstance(issued_for, str) or issued_for != str(user.id):
+        logger.warning(
+            "OAuth link state rejected: issued for another user (provider=%s, presented_by=%s)",
+            provider.name,
+            user.id,
+        )
+        raise OAuthProviderError("Invalid OAuth state token")
+
+    provider_tokens, info = await _burn_state_and_exchange(
+        provider, token_engine, payload, code, pkce_enabled
+    )
+    return await link_oauth_account(adapter, user, info, provider_tokens)

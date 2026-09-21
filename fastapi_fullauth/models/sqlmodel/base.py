@@ -47,9 +47,13 @@ class RefreshTokenMixin(SQLModel):
     id: UUID = Field(default_factory=uuid7, primary_key=True)
     # VARCHAR(512): the AutoString 255 default truncates a refresh JWT on MySQL.
     token: str = Field(unique=True, index=True, max_length=512)
-    user_id: UUID = Field(foreign_key="fullauth_users.id", ondelete="CASCADE")
+    # Indexed: every session listing, revoke-all, and prune filters on it. A
+    # foreign key does not imply an index on PostgreSQL.
+    user_id: UUID = Field(foreign_key="fullauth_users.id", ondelete="CASCADE", index=True)
     family_id: str = Field(index=True, max_length=36)
-    expires_at: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
+    expires_at: datetime = Field(
+        sa_column=Column(DateTime(timezone=True), nullable=False, index=True)
+    )
     revoked: bool = Field(default=False)
     user_agent: str | None = Field(default=None, max_length=512)
     ip_address: str | None = Field(default=None, max_length=45)

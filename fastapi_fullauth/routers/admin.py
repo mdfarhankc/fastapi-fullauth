@@ -19,6 +19,14 @@ if TYPE_CHECKING:
     from fastapi_fullauth.fullauth import FullAuth
 
 
+def _require_permissions(fullauth: "FullAuth") -> None:
+    """The admin router mounts on role support alone, so the permission routes
+    can exist against an adapter with no permission models. Say so, rather than
+    letting the adapter's RuntimeError surface as a 500."""
+    if not fullauth.adapter.supports_feature("permission"):
+        raise HTTPException(status_code=501, detail="Adapter does not support permissions")
+
+
 def create_admin_router(user_id_type: Any = UUID) -> APIRouter:
     router = APIRouter()
     RoleAssignment = build_role_assignment_model(user_id_type)  # noqa: N806
@@ -73,6 +81,7 @@ def create_admin_router(user_id_type: Any = UUID) -> APIRouter:
         caller: SuperUser,
         fullauth: "FullAuth" = Depends(get_fullauth),
     ) -> MessageResponse:
+        _require_permissions(fullauth)
         await cast("PermissionAdapterMixin", fullauth.adapter).assign_permission_to_role(
             data.role, data.permission
         )
@@ -97,6 +106,7 @@ def create_admin_router(user_id_type: Any = UUID) -> APIRouter:
         caller: SuperUser,
         fullauth: "FullAuth" = Depends(get_fullauth),
     ) -> MessageResponse:
+        _require_permissions(fullauth)
         await cast("PermissionAdapterMixin", fullauth.adapter).remove_permission_from_role(
             data.role, data.permission
         )
@@ -120,6 +130,7 @@ def create_admin_router(user_id_type: Any = UUID) -> APIRouter:
         caller: SuperUser,
         fullauth: "FullAuth" = Depends(get_fullauth),
     ) -> list[str]:
+        _require_permissions(fullauth)
         return await cast("PermissionAdapterMixin", fullauth.adapter).get_role_permissions(
             role_name
         )

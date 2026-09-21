@@ -56,6 +56,8 @@ The `redirect_uris` list is a whitelist. `/oauth/{provider}/authorize?redirect_u
 - `POST /api/v1/auth/oauth/{provider}/callback`: body `{code, state, binding}`, exchange code for tokens and log the user in
 - `GET  /api/v1/auth/oauth/accounts`: list OAuth accounts linked to current user (auth required)
 - `DELETE /api/v1/auth/oauth/accounts/{provider}`: unlink a provider (auth required, only works if the user has another login method)
+- `GET  /api/v1/auth/oauth/{provider}/link/authorize`: authorization URL for linking to the signed-in account (auth required); same `binding` contract as sign-in
+- `POST /api/v1/auth/oauth/{provider}/link/callback`: link that provider account to the signed-in account (auth required); body `{code, state, binding}`, returns the account, issues no tokens
 
 The SPA flow:
 
@@ -83,7 +85,7 @@ PKCE (S256) is enabled by default for providers that support it (Google, GitHub,
 
 When the gate fires, the flow raises `OAuthProviderError`. The router collapses it, like every other OAuth failure, into a generic `400 {"detail": "OAuth authentication failed"}`, so the endpoint cannot be used to probe which emails are registered; the specific reason is only in the server log (`fastapi_fullauth.oauth`, "oauth auto-link refused").
 
-There is no authenticated "link this provider to my account" endpoint. Linking happens only as a side effect of signing in, on a provider-verified email, so a user whose provider email is unverified or differs from their account email cannot link that provider at all. Tell them to sign in with their password instead. `GET /oauth/accounts` and `DELETE /oauth/accounts/{provider}` list and remove links that already exist.
+The user signs in with their password instead, then links the provider explicitly: `GET /oauth/{provider}/link/authorize` followed by `POST /oauth/{provider}/link/callback`, both authenticated (see below). That path ignores the provider email entirely, so it also covers a provider account under a different address.
 
 To disable auto-link entirely: `FULLAUTH_OAUTH_AUTO_LINK_BY_EMAIL=False`. Then every OAuth sign-in either finds an existing linked identity or creates a brand-new user, never cross-links.
 
@@ -116,6 +118,8 @@ code + state + binding
 OAuth users have `hashed_password=NULL`. They can't log in with a password because there isn't one to verify against.
 
 `POST /api/v1/auth/change-password` (authenticated, body: `{new_password}`, `current_password` may be omitted) sets the first password. The route accepts the missing `current_password` only when the stored hash is `NULL`; once a password exists, `current_password` is required like any other change.
+
+Setting that first password also needs recent authentication, because there is no current password to check and it creates a new way into the account: the access token's `auth_time` must be within `FULLAUTH_REAUTH_MAX_AGE_SECONDS` (300 by default), otherwise the route answers `403 Re-authentication required`. Refreshing does not reset `auth_time`, so the user has to sign in again. Tell users to set their password soon after signing in, or raise the window.
 
 There's no separate `set-password` route; `/change-password` handles both first-time set and subsequent changes.
 
@@ -161,5 +165,5 @@ Instantiate with `client_id`, `client_secret`, `redirect_uris` and pass to `Full
 - **GitHub's `email_verified`**: fetch the authenticated user's primary email from `/user/emails` and trust only the one with `primary=true, verified=true`. The provider built-in does this; a custom provider needs to do the same.
 - **`redirect_uri` must match exactly** between authorize and callback; the provider enforces it, and the library passes it through to `exchange_code`. Query strings count.
 - **State token and access token use the same `SECRET_KEY`.** Don't add custom `aud` logic; the purpose claim plus short TTL is what keeps them distinct.
-- **Unlinking the only login**: `DELETE /oauth/accounts/{provider}` refuses to unlink a provider if it's the user's only remaining login method (no password, no other provider). It returns 400 with "Set a password first."
+- **Unlinking the only login**: `DELETE /oauth/accounts/{provider}` refuses with 400 when unlinking would leave the account with no way to sign in. A stored password, any other linked provider, and any registered passkey all count, so a passwordless user who has a passkey can unlink freely. `DELETE /passkeys/{id}` applies the same rule. Unlinking a provider the user does not have is 404.
 - **Composite unique** on `(provider, provider_user_id)` is enforced at the DB level since v0.8.0. If you upgrade from ≤ 0.7.0, autogenerate the Alembic migration before deploying.

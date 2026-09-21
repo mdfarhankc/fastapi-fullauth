@@ -501,3 +501,51 @@ async def test_require_permission_rejects_adapter_without_permission_support():
 
     with pytest.raises(RuntimeError, match="PermissionAdapterMixin"):
         await _dep(user=fake_user, fullauth=fake_fullauth)
+
+
+@pytest.mark.asyncio
+async def test_permission_routes_answer_501_without_permission_models():
+    """The admin router mounts on role support alone, so these routes exist even
+    when the adapter has no permission models. That must not be a 500."""
+    engine, session_maker = await _make_db()
+    adapter = SQLModelAdapter(
+        session_maker=session_maker,
+        user_model=User,
+        refresh_token_model=RefreshToken,
+        role_model=Role,
+        user_role_model=UserRole,
+        user_schema=UserSchemaWithRoles,
+    )
+    fullauth = FullAuth(
+        config=FullAuthConfig(SECRET_KEY="test-secret-key-that-is-long-enough-32b"),
+        adapter=adapter,
+    )
+    app = FastAPI()
+    fullauth.init_app(app)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        tokens = await _make_superuser(client, adapter)
+        headers = {"Authorization": f"Bearer {tokens['access_token']}"}
+
+        r = await client.post(
+            "/api/v1/auth/admin/assign-permission",
+            json={"role": "editor", "permission": "posts:create"},
+            headers=headers,
+        )
+        assert r.status_code == 501
+        assert r.json()["detail"] == "Adapter does not support permissions"
+
+        r = await client.get("/api/v1/auth/admin/role-permissions/editor", headers=headers)
+        assert r.status_code == 501
+
+        # Role management still works; only permissions are unavailable.
+        user = await adapter.get_user_by_email("admin@test.com")
+        r = await client.post(
+            "/api/v1/auth/admin/assign-role",
+            json={"user_id": str(user.id), "role": "editor"},
+            headers=headers,
+        )
+        assert r.status_code == 200
+
+    await engine.dispose()

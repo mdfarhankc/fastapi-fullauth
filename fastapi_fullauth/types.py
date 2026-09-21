@@ -106,6 +106,10 @@ class TokenPayload(BaseModel):
     roles: list[str] = Field(default_factory=list)
     extra: dict[str, Any] = Field(default_factory=dict)
     family_id: str | None = None
+    # When the credentials behind this session were last checked. Set at login,
+    # OAuth callback, and passkey sign-in, and carried unchanged through refresh
+    # rotation, so rotating a token is not mistaken for proving presence.
+    auth_time: datetime | None = None
 
 
 class PasskeyCredential(BaseModel):

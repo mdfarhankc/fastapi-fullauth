@@ -12,6 +12,7 @@ class PasswordValidator:
         require_digit: bool = False,
         require_special: bool = False,
         blocked_passwords: list[str] | None = None,
+        max_length: int = 4096,
     ) -> None:
         self.min_length = min_length
         self.require_uppercase = require_uppercase
@@ -19,12 +20,18 @@ class PasswordValidator:
         self.require_digit = require_digit
         self.require_special = require_special
         self.blocked_passwords = set(p.lower() for p in (blocked_passwords or []))
+        self.max_length = max_length
 
     def validate(self, password: str) -> None:
         errors: list[str] = []
 
         if len(password) < self.min_length:
             errors.append(f"Password must be at least {self.min_length} characters")
+
+        # 0 disables the cap. The flows validate before hashing, so an oversized
+        # password never reaches argon2.
+        if self.max_length and len(password) > self.max_length:
+            errors.append(f"Password must be at most {self.max_length} characters")
 
         if self.require_uppercase and not re.search(r"[A-Z]", password):
             errors.append("Password must contain at least one uppercase letter")

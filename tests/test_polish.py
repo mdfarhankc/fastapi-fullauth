@@ -241,15 +241,74 @@ async def test_redis_backends_share_one_client_per_url():
     blacklist = RedisTokenBlacklist(url)
     lockout = RedisLockoutManager(url)
     assert blacklist._redis is lockout._redis
+    key = blacklist._redis_key
+    assert key == lockout._redis_key
 
     await blacklist.aclose()
-    assert url in _clients  # still held by the lockout manager
+    assert key in _clients  # still held by the lockout manager
 
     await lockout.aclose()
-    assert url not in _clients
+    assert key not in _clients
 
     await lockout.aclose()  # double-close must not raise or disturb the registry
-    assert url not in _clients
+    assert key not in _clients
+
+
+def test_a_new_event_loop_never_inherits_a_dead_loop_client():
+    """`id(loop)` is recycled almost immediately after a loop is closed, so an
+    id-keyed registry hands a fresh loop a client bound to the dead one. The key
+    holds the loop object, which cannot be recycled while the entry refers to it."""
+    import asyncio
+
+    from fastapi_fullauth.core._redis import _clients, acquire_redis, release_redis
+
+    url = "redis://loop-isolation-test:6379/0"
+    clients: list[object] = []
+    keys: list[tuple] = []
+
+    def acquire_in_a_fresh_loop() -> None:
+        async def inner() -> None:
+            client, key = acquire_redis(url, feature="the test")
+            clients.append(client)
+            keys.append(key)
+            # Deliberately not released: this is the abandoned-holder case that
+            # leaves an entry behind for the next loop to trip over.
+
+        asyncio.run(inner())
+
+    for _ in range(5):
+        acquire_in_a_fresh_loop()
+
+    assert len({id(c) for c in clients}) == 5, "a loop was handed another loop's client"
+    assert len({k[1] for k in keys}) == 5
+
+    async def cleanup() -> None:
+        for key in keys:
+            await release_redis(key)
+
+    asyncio.run(cleanup())
+    assert not [k for k in _clients if k[0] == url]
+
+
+@pytest.mark.asyncio
+async def test_lockout_fails_open_when_redis_is_unreachable():
+    """Failing closed would lock every account out during an outage, and raising
+    would turn every login into a 500. The rate limiter makes the same trade."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    from fastapi_fullauth.protection.lockout import RedisLockoutManager
+
+    lockout = RedisLockoutManager("redis://lockout-outage-test:6379/0")
+    down = MagicMock()
+    down.get = AsyncMock(side_effect=ConnectionError("redis is down"))
+    down.pipeline = MagicMock(side_effect=ConnectionError("redis is down"))
+    lockout._redis = down
+
+    assert await lockout.is_locked("victim@test.com") is False
+    await lockout.record_failure("victim@test.com")
+    await lockout.clear("victim@test.com")
+
+    await lockout.aclose()
 
 
 # ── init_app composes aclose() with a custom lifespan ───────────────

@@ -22,7 +22,7 @@ class OAuthAccountMixin:
     provider: Mapped[str] = mapped_column(String(50), nullable=False)
     provider_user_id: Mapped[str] = mapped_column(String(320), nullable=False)
     user_id: Mapped[UUID] = mapped_column(
-        Uuid, ForeignKey("fullauth_users.id", ondelete="CASCADE"), nullable=False
+        Uuid, ForeignKey("fullauth_users.id", ondelete="CASCADE"), nullable=False, index=True
     )
     provider_email: Mapped[str | None] = mapped_column(String(320), nullable=True)
     access_token: Mapped[str | None] = mapped_column(Text, nullable=True)

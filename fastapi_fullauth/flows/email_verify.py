@@ -15,9 +15,16 @@ async def create_email_verification_token(
     token_engine: TokenEngine,
     user_id: UserID,
 ) -> str | None:
-    """Generate an email verification token. Returns None if user not found."""
+    """Generate an email verification token.
+
+    Returns None when there is nothing to verify: no such user, or the address is
+    already verified. Callers answer the same either way, so this leaks nothing.
+    """
     user = await adapter.get_user_by_id(user_id)
     if user is None:
+        return None
+    if user.is_verified:
+        logger.debug("Verification token not issued; already verified: user_id=%s", user_id)
         return None
 
     token = token_engine.create_access_token(

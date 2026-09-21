@@ -15,6 +15,8 @@ from typing import TYPE_CHECKING, cast
 if TYPE_CHECKING:
     from fastapi_fullauth.config import FullAuthConfig
 
+from fastapi_fullauth.core.blacklist import SWEEP_INTERVAL_SECONDS
+
 logger = logging.getLogger("fastapi_fullauth.challenges")
 
 
@@ -39,9 +41,22 @@ class InMemoryChallengeStore(ChallengeStore):
     def __init__(self) -> None:
         self._store: dict[str, tuple[str, float]] = {}
         self._lock = asyncio.Lock()
+        self._next_sweep = 0.0
 
     async def store(self, key: str, challenge: str, ttl: int = 60) -> None:
-        self._store[key] = (challenge, time.monotonic() + ttl)
+        now = time.monotonic()
+        self._sweep_expired(now)
+        self._store[key] = (challenge, now + ttl)
+
+    def _sweep_expired(self, now: float) -> None:
+        # pop() is the only other way an entry leaves, so a flow that is started
+        # and never completed would live for the whole process. Beginning an
+        # authentication needs no account, so those are attacker-reachable.
+        if now < self._next_sweep:
+            return
+        self._next_sweep = now + SWEEP_INTERVAL_SECONDS
+        for key in [k for k, (_, expires_at) in self._store.items() if expires_at <= now]:
+            del self._store[key]
 
     async def pop(self, key: str) -> str | None:
         # Lock the pop+expiry-check as one atomic section so two concurrent pops
@@ -60,10 +75,10 @@ class RedisChallengeStore(ChallengeStore):
     """Redis-backed challenge store. Works across multiple workers."""
 
     def __init__(self, redis_url: str) -> None:
-        from fastapi_fullauth.core._redis import acquire_redis
+        from fastapi_fullauth.core._redis import RedisClientKey, acquire_redis
 
-        self._redis = acquire_redis(redis_url, feature="the Redis challenge store")
-        self._redis_url: str | None = redis_url
+        self._redis_key: RedisClientKey | None
+        self._redis, self._redis_key = acquire_redis(redis_url, feature="the Redis challenge store")
         self._prefix = "fullauth:challenge:"
 
     async def store(self, key: str, challenge: str, ttl: int = 60) -> None:
@@ -77,9 +92,11 @@ class RedisChallengeStore(ChallengeStore):
     async def aclose(self) -> None:
         from fastapi_fullauth.core._redis import release_redis
 
-        if self._redis_url is not None:
-            await release_redis(self._redis_url)
-            self._redis_url = None
+        # Released with the key acquire returned, never a re-derived one:
+        # the closing loop may not be the acquiring one.
+        if self._redis_key is not None:
+            await release_redis(self._redis_key)
+            self._redis_key = None
 
 
 _challenge_store_registry: dict[str, type[ChallengeStore]] = {

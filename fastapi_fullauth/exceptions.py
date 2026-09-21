@@ -13,6 +13,7 @@ __all__ = [
     "NoValidFieldsError",
     "OAuthAccountAlreadyLinkedError",
     "OAuthError",
+    "OAuthProviderAlreadyLinkedError",
     "OAuthProviderError",
     "RefreshTokenReuseError",
     "TokenBlacklistedError",
@@ -78,6 +79,10 @@ class OAuthProviderError(OAuthError):
 
 class OAuthAccountAlreadyLinkedError(OAuthError):
     """The provider identity is already linked to a different user."""
+
+
+class OAuthProviderAlreadyLinkedError(OAuthError):
+    """The user already linked a different account from the same provider."""
 
 
 class NoValidFieldsError(FullAuthError):

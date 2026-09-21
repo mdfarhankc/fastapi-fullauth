@@ -76,7 +76,8 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
         self._warn_memory_backends(config)
 
         self.password_validator = password_validator or PasswordValidator(
-            min_length=config.PASSWORD_MIN_LENGTH
+            min_length=config.PASSWORD_MIN_LENGTH,
+            max_length=config.PASSWORD_MAX_LENGTH,
         )
         self.on_create_token_claims = on_create_token_claims
         self.login_response_schema = login_response_schema or LoginResponse
@@ -91,6 +92,7 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
         self._profile_router: APIRouter | None = None
         self._verify_router: APIRouter | None = None
         self._admin_router: APIRouter | None = None
+        self._oauth_router: APIRouter | None = None
         self._passkey_router: APIRouter | None = None
         self._sessions_router: APIRouter | None = None
         self._router: APIRouter | None = None
@@ -341,12 +343,14 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
     def oauth_router(self) -> APIRouter | None:
         if not self.oauth_providers:
             return None
-        from fastapi_fullauth.routers.oauth import create_oauth_router
+        if self._oauth_router is None:
+            from fastapi_fullauth.routers.oauth import create_oauth_router
 
-        return create_oauth_router(
-            user_schema=self.adapter._user_schema,
-            login_response_schema=self.login_response_schema,
-        )
+            self._oauth_router = create_oauth_router(
+                user_schema=self.adapter._user_schema,
+                login_response_schema=self.login_response_schema,
+            )
+        return self._oauth_router
 
     @property
     def passkey_router(self) -> APIRouter | None:

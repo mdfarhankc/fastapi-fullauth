@@ -34,6 +34,7 @@ class TokenEngine:
         extra: dict[str, Any] | None = None,
         expire_seconds: int | None = None,
         family_id: str | None = None,
+        auth_time: datetime | None = None,
     ) -> str:
         if self.config.SECRET_KEY is None:
             raise RuntimeError("SECRET_KEY must be set to create tokens")
@@ -55,12 +56,15 @@ class TokenEngine:
         # device the caller is currently on. Omitted when unknown.
         if family_id is not None:
             payload["family_id"] = family_id
+        if auth_time is not None:
+            payload["auth_time"] = int(auth_time.timestamp())
         return jwt.encode(payload, self.config.SECRET_KEY, algorithm=self.config.ALGORITHM)
 
     def create_refresh_token(
         self,
         user_id: str,
         family_id: str | None = None,
+        auth_time: datetime | None = None,
     ) -> RefreshTokenMeta:
         if self.config.SECRET_KEY is None:
             raise RuntimeError("SECRET_KEY must be set to create tokens")
@@ -75,6 +79,10 @@ class TokenEngine:
             "type": "refresh",
             "family_id": resolved_family_id,
         }
+        # Carried on the refresh token too, so rotation can hand the original
+        # credential-check time to the next access token.
+        if auth_time is not None:
+            payload["auth_time"] = int(auth_time.timestamp())
         token = jwt.encode(payload, self.config.SECRET_KEY, algorithm=self.config.ALGORITHM)
         return RefreshTokenMeta(token=token, expires_at=expires_at, family_id=resolved_family_id)
 
@@ -112,6 +120,15 @@ class TokenEngine:
 
         jti = data.get("jti", "")
         family_id = data.get("family_id")
+        auth_time: datetime | None = None
+        raw_auth_time = data.get("auth_time")
+        if isinstance(raw_auth_time, int | float):
+            try:
+                auth_time = datetime.fromtimestamp(raw_auth_time, tz=timezone.utc)
+            except (OverflowError, OSError, ValueError):
+                # Out of range for a timestamp. Treat it as absent rather than
+                # raising: the caller then asks for re-authentication.
+                logger.warning("Token carries an unusable auth_time claim")
         if self.config.BLACKLIST_ENABLED:
             # A token dies with its session: revoking the family blacklists every
             # token issued to it, not only the one presented at logout.
@@ -145,6 +162,7 @@ class TokenEngine:
             roles=data.get("roles", []),
             extra=extra,
             family_id=family_id,
+            auth_time=auth_time,
         )
 
     async def blacklist_token(self, jti: str, ttl_seconds: int | None = None) -> None:
@@ -181,11 +199,14 @@ class TokenEngine:
         roles: list[str] | None = None,
         extra: dict[str, Any] | None = None,
         family_id: str | None = None,
+        auth_time: datetime | None = None,
     ) -> tuple[str, RefreshTokenMeta]:
         # Create the refresh token first so its resolved family_id (freshly
         # minted when none was passed) can be stamped onto the access token too.
-        refresh = self.create_refresh_token(user_id, family_id)
-        access = self.create_access_token(user_id, roles, extra, family_id=refresh.family_id)
+        refresh = self.create_refresh_token(user_id, family_id, auth_time=auth_time)
+        access = self.create_access_token(
+            user_id, roles, extra, family_id=refresh.family_id, auth_time=auth_time
+        )
         return access, refresh
 
 

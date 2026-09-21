@@ -15,7 +15,7 @@ The good news first: **password hashes carry over unchanged, and so does your us
 | Passkeys (WebAuthn) | none | registration and passwordless sign-in |
 | Lockout, rate limiting, CSRF, security headers | none | built in |
 | User admin CRUD routes | `GET/PATCH/DELETE /{id}` | **not included**; write your own with `require_role`, or call the adapter |
-| Link an OAuth account while signed in | `get_oauth_associate_router` | **not yet**; sign-in linking is automatic on a provider-verified email |
+| Link an OAuth account while signed in | `get_oauth_associate_router` | `/oauth/{provider}/link/authorize` and `/link/callback`; sign-in linking on a provider-verified email is automatic on top |
 | MFA / TOTP | none | none |
 
 Read the [threat model](security/threat-model.md) before you commit: it states plainly what the library defends against and what stays your responsibility.
@@ -58,7 +58,8 @@ Your fastapi-users prefixes were whatever you passed to `include_router`; the ta
 | `GET/PATCH/DELETE /users/{id}` | not included | build your own, see below |
 | `GET /auth/{provider}/authorize` | `GET /oauth/{provider}/authorize` | returns `authorization_url` **and a `binding`** your client must store |
 | `GET /auth/{provider}/callback` | `POST /oauth/{provider}/callback` | JSON body `{code, state, binding}` |
-| `get_oauth_associate_router` | not yet | |
+| `get_oauth_associate_router` `/associate/{provider}/authorize` | `GET /oauth/{provider}/link/authorize` | authenticated; returns `authorization_url` and a `binding` |
+| `get_oauth_associate_router` `/associate/{provider}/callback` | `POST /oauth/{provider}/link/callback` | authenticated; JSON body `{code, state, binding}`; returns the linked account, not tokens |
 | none | `GET /sessions`, `DELETE /sessions/{family_id}`, `POST /sessions/revoke-others` | new |
 | none | `/passkeys/*`, `/admin/assign-role`, `/admin/assign-permission` | new |
 

@@ -51,11 +51,15 @@ class RefreshTokenMixin:
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid7)
     # VARCHAR(512), not Text: MySQL can't build a unique index on a TEXT column.
     token: Mapped[str] = mapped_column(String(512), unique=True, index=True, nullable=False)
+    # Indexed: every session listing, revoke-all, and prune filters on it. A
+    # foreign key does not imply an index on PostgreSQL.
     user_id: Mapped[UUID] = mapped_column(
-        Uuid, ForeignKey("fullauth_users.id", ondelete="CASCADE"), nullable=False
+        Uuid, ForeignKey("fullauth_users.id", ondelete="CASCADE"), nullable=False, index=True
     )
     family_id: Mapped[str] = mapped_column(String(36), index=True, nullable=False)
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
     revoked: Mapped[bool] = mapped_column(Boolean, default=False)
     user_agent: Mapped[str | None] = mapped_column(String(512), nullable=True)
     ip_address: Mapped[str | None] = mapped_column(String(45), nullable=True)

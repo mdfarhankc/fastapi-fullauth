@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 from typing import Any, TypeVar, cast
 from uuid import UUID
 
-from sqlalchemy import CursorResult, select, update
+from sqlalchemy import CursorResult, delete, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import selectinload
@@ -440,6 +440,20 @@ class _BaseSQLAlchemyAdapter(
                 .values(revoked=True)
             )
             await self._commit(session)
+
+    async def prune_expired_refresh_tokens(self, before: datetime | None = None) -> int:
+        cutoff = before or datetime.now(timezone.utc)
+        async with self._begin() as session:
+            result = cast(
+                "CursorResult[Any]",
+                await session.execute(
+                    delete(self._refresh_token_model).where(
+                        self._refresh_token_model.expires_at < cutoff
+                    )
+                ),
+            )
+            await self._commit(session)
+            return int(result.rowcount)
 
     async def list_user_sessions(self, user_id: UserID) -> list[SessionInfo]:
         model = self._refresh_token_model

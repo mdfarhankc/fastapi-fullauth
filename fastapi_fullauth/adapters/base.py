@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from datetime import datetime
 from functools import cache
 from types import UnionType
 from typing import Any, Generic, Literal, Protocol, TypeVar, Union, cast, get_args, get_origin
@@ -151,6 +152,20 @@ class AbstractUserAdapter(ABC, Generic[UserSchemaType, CreateUserSchemaType]):
 
     @abstractmethod
     async def set_user_verified(self, user_id: UserID) -> None: ...
+
+    async def prune_expired_refresh_tokens(self, before: "datetime | None" = None) -> int:
+        """Delete refresh tokens that expired before ``before`` (default: now).
+
+        Rotation writes a row per refresh, so the table only grows; call this
+        periodically from your own scheduler. Only expired rows go: a revoked but
+        unexpired row is what reuse detection matches a replayed token against,
+        and deleting it early would turn a stolen-token replay into an ordinary
+        rejection, leaving the family alive.
+
+        Returns the number of rows removed. The default removes nothing, so
+        custom adapters keep working; the bundled adapters override it.
+        """
+        return 0
 
     async def get_user_roles(self, user_id: UserID) -> list[str]:
         """Get user's roles. Returns [] by default. Override or use RoleAdapterMixin."""

@@ -7,6 +7,7 @@ from pydantic import BaseModel
 
 from fastapi_fullauth.adapters.base import PasskeyAdapterMixin
 from fastapi_fullauth.dependencies.current_user import CurrentUser, get_fullauth
+from fastapi_fullauth.flows.credentials import last_method_detail, remaining_login_methods
 from fastapi_fullauth.protection.challenges import ChallengeStore
 from fastapi_fullauth.routers._schemas import LoginResponse, build_login_response_model
 from fastapi_fullauth.routers._transport import write_tokens
@@ -278,6 +279,23 @@ def create_passkey_router(
         passkeys = await fullauth.adapter.get_user_passkeys(user.id)
         if not any(pk.id == passkey_id for pk in passkeys):
             raise HTTPException(status_code=404, detail="Passkey not found")
+
+        # Same rule the OAuth unlink route applies: never leave an account with
+        # no way to sign in. A linked provider only counts while it is still one
+        # of the configured ones.
+        if not await remaining_login_methods(
+            fullauth.adapter,
+            user.id,
+            usable_providers=set(fullauth.oauth_providers),
+            passkeys_usable=True,
+            without_passkey_id=passkey_id,
+        ):
+            # This route only exists where passkeys are enabled, so registering a
+            # second one is a real alternative to setting a password.
+            raise HTTPException(
+                status_code=400,
+                detail=last_method_detail(passkeys_available=True),
+            )
 
         await fullauth.adapter.delete_passkey(passkey_id)
         logger.info("Passkey deleted: user_id=%s, passkey_id=%s", user.id, passkey_id)

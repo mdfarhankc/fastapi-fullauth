@@ -95,33 +95,49 @@ class RedisLockoutManager(LockoutManager):
         lockout_seconds: int = 900,
     ) -> None:
         super().__init__(max_attempts, lockout_seconds)
-        from fastapi_fullauth.core._redis import acquire_redis
+        from fastapi_fullauth.core._redis import RedisClientKey, acquire_redis
 
-        self._redis = acquire_redis(redis_url, feature="the Redis lockout manager")
-        self._redis_url: str | None = redis_url
+        self._redis_key: RedisClientKey | None
+        self._redis, self._redis_key = acquire_redis(redis_url, feature="the Redis lockout manager")
         self._prefix = "fullauth:lockout:"
 
     async def is_locked(self, key: str) -> bool:
-        locked = await self._redis.get(f"{self._prefix}locked:{key}")
+        try:
+            locked = await self._redis.get(f"{self._prefix}locked:{key}")
+        except Exception:
+            # Fail open, like the rate limiter: a Redis outage must not turn every
+            # login into a 500, and failing closed would lock every account out.
+            # Brute-force protection is lost for the outage; log it loudly.
+            # (The token blacklist fails closed instead - see RedisTokenBlacklist.)
+            logger.error("Lockout Redis error; treating account as unlocked", exc_info=True)
+            return False
         return locked is not None
 
     async def record_failure(self, key: str) -> None:
         attempts_key = f"{self._prefix}attempts:{key}"
         locked_key = f"{self._prefix}locked:{key}"
 
-        pipe = self._redis.pipeline()
-        pipe.incr(attempts_key)
-        pipe.expire(attempts_key, self.lockout_seconds)
-        results = await pipe.execute()
+        try:
+            pipe = self._redis.pipeline()
+            pipe.incr(attempts_key)
+            pipe.expire(attempts_key, self.lockout_seconds)
+            results = await pipe.execute()
+        except Exception:
+            logger.error("Lockout Redis error; failure not counted", exc_info=True)
+            return
 
         count = results[0]
         if count >= self.max_attempts:
             # Set the lock and clear the counter in one round-trip so a concurrent
             # burst can't observe a half-applied state.
-            lock_pipe = self._redis.pipeline()
-            lock_pipe.setex(locked_key, self.lockout_seconds, "1")
-            lock_pipe.delete(attempts_key)
-            await lock_pipe.execute()
+            try:
+                lock_pipe = self._redis.pipeline()
+                lock_pipe.setex(locked_key, self.lockout_seconds, "1")
+                lock_pipe.delete(attempts_key)
+                await lock_pipe.execute()
+            except Exception:
+                logger.error("Lockout Redis error; account not locked", exc_info=True)
+                return
             logger.warning(
                 "Account locked after %d failed attempts: %s",
                 self.max_attempts,
@@ -129,17 +145,24 @@ class RedisLockoutManager(LockoutManager):
             )
 
     async def clear(self, key: str) -> None:
-        pipe = self._redis.pipeline()
-        pipe.delete(f"{self._prefix}attempts:{key}")
-        pipe.delete(f"{self._prefix}locked:{key}")
-        await pipe.execute()
+        try:
+            pipe = self._redis.pipeline()
+            pipe.delete(f"{self._prefix}attempts:{key}")
+            pipe.delete(f"{self._prefix}locked:{key}")
+            await pipe.execute()
+        except Exception:
+            # Best effort: a successful login that can't clear the counter is not
+            # worth failing, the entries expire on their own.
+            logger.error("Lockout Redis error; counters not cleared", exc_info=True)
 
     async def aclose(self) -> None:
         from fastapi_fullauth.core._redis import release_redis
 
-        if self._redis_url is not None:
-            await release_redis(self._redis_url)
-            self._redis_url = None
+        # Released with the key acquire returned, never a re-derived one:
+        # the closing loop may not be the acquiring one.
+        if self._redis_key is not None:
+            await release_redis(self._redis_key)
+            self._redis_key = None
 
 
 _lockout_registry: dict[str, type[LockoutManager]] = {
