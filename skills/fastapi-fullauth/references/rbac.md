@@ -77,19 +77,25 @@ Both must pass. Superuser short-circuits both.
 
 When `RoleAdapterMixin` is present, `init_app` includes the `admin` router:
 
-- `GET    /api/v1/auth/admin/users`: list all users (paginated)
-- `GET    /api/v1/auth/admin/users/{id}`: get one
-- `PATCH  /api/v1/auth/admin/users/{id}`: update (activate/deactivate, verify, set superuser, update fields)
-- `DELETE /api/v1/auth/admin/users/{id}`: delete
-- `POST   /api/v1/auth/admin/users/{id}/roles`: assign role
-- `DELETE /api/v1/auth/admin/users/{id}/roles/{role}`: remove role
+- `POST /api/v1/auth/admin/assign-role`: body `{user_id, role}`; 404 if the user does not exist. The role is created if it does not exist yet.
+- `POST /api/v1/auth/admin/remove-role`: body `{user_id, role}`
 
-When `PermissionAdapterMixin` is also present, role<->permission management routes are added:
+There is **no user CRUD** here: no list, get, update, or delete by id. Build those
+yourself against the adapter behind `SuperUser` or `require_role(...)`, and never
+hand a request body straight to `update_user`, which writes privileged columns
+verbatim.
 
-- `POST   /api/v1/auth/admin/roles/{role}/permissions`: assign permission
-- `DELETE /api/v1/auth/admin/roles/{role}/permissions/{permission}`: remove
+When `PermissionAdapterMixin` is also present, role/permission routes are added:
 
-Every admin route requires `require_role("admin")` or `is_superuser=True`. You can't bypass by role-assigning yourself; writes to role tables go through the mixin methods that also enforce the dependency.
+- `POST /api/v1/auth/admin/assign-permission`: body `{role, permission}`
+- `POST /api/v1/auth/admin/remove-permission`: body `{role, permission}`
+- `GET  /api/v1/auth/admin/role-permissions/{role_name}`: the role's permissions
+
+`user_id` in the role bodies is typed from your user schema's key type, so an
+`int` or `str` key validates as itself and a malformed id is a 422.
+
+Every admin route requires `is_superuser=True` (the `SuperUser` dependency).
+A role named "admin" does **not** grant access to them.
 
 ## Creating the first admin
 

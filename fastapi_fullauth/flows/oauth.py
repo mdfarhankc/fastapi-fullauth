@@ -214,8 +214,8 @@ async def link_or_create_user(
                     info.provider_user_id,
                 )
                 raise OAuthProviderError(
-                    "This email is already registered. Sign in with your existing "
-                    "credentials and link your OAuth account from account settings."
+                    "This email is already registered. Sign in with your password, or "
+                    f"verify this email address with {info.provider} and try again."
                 )
             _ensure_active(existing)
             user = existing
