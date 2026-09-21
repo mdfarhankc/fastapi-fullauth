@@ -76,10 +76,12 @@ class InMemoryTokenBlacklist(TokenBlacklist):
 
 class RedisTokenBlacklist(TokenBlacklist):
     def __init__(self, redis_url: str, default_ttl_seconds: int = 1800) -> None:
-        from fastapi_fullauth.core._redis import acquire_redis
+        from fastapi_fullauth.core._redis import RedisClientKey, acquire_redis
 
-        self._redis = acquire_redis(redis_url, feature="the Redis blacklist backend")
-        self._redis_url: str | None = redis_url
+        self._redis_key: RedisClientKey | None
+        self._redis, self._redis_key = acquire_redis(
+            redis_url, feature="the Redis blacklist backend"
+        )
         self._default_ttl = default_ttl_seconds
         self._prefix = "fullauth:blacklist:"
 
@@ -112,6 +114,8 @@ class RedisTokenBlacklist(TokenBlacklist):
     async def aclose(self) -> None:
         from fastapi_fullauth.core._redis import release_redis
 
-        if self._redis_url is not None:
-            await release_redis(self._redis_url)
-            self._redis_url = None
+        # Released with the key acquire returned, never a re-derived one:
+        # the closing loop may not be the acquiring one.
+        if self._redis_key is not None:
+            await release_redis(self._redis_key)
+            self._redis_key = None

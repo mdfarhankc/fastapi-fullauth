@@ -1,3 +1,5 @@
+import hashlib
+import hmac
 import logging
 from typing import Literal
 
@@ -14,6 +16,17 @@ from fastapi_fullauth.validators import PasswordValidator
 logger = logging.getLogger("fastapi_fullauth.password_reset")
 
 
+def _password_fingerprint(hashed_password: str | None) -> str:
+    """Digest of the password hash the reset token was issued against.
+
+    Carried in the token so that changing the password - through another reset
+    link, /change-password, or using this one - invalidates every other
+    outstanding link, without a table of issued tokens to keep. It is a digest of
+    a digest, so the token reveals nothing about the password.
+    """
+    return hashlib.sha256((hashed_password or "").encode()).hexdigest()[:32]
+
+
 async def request_password_reset(
     adapter: AbstractUserAdapter,
     token_engine: TokenEngine,
@@ -26,9 +39,10 @@ async def request_password_reset(
         return None
 
     logger.info("Password reset requested: user_id=%s", user.id)
+    fingerprint = _password_fingerprint(await adapter.get_hashed_password(user.id))
     token = token_engine.create_access_token(
         user_id=str(user.id),
-        extra={"purpose": "password_reset"},
+        extra={"purpose": "password_reset", "pwd": fingerprint},
         expire_seconds=token_engine.config.PASSWORD_RESET_EXPIRE_MINUTES * 60,
     )
     return token
@@ -65,6 +79,16 @@ async def reset_password(
         await token_engine.blacklist_payload(payload)
         logger.warning("Password reset blocked; account deactivated: user_id=%s", user.id)
         raise TokenError("User account is deactivated")
+
+    # A token issued against a password that has since changed is stale: another
+    # reset link was used, or the user changed it themselves. Reject it rather
+    # than let an old link out of an inbox undo a deliberate change.
+    presented = payload.extra.get("pwd")
+    expected = _password_fingerprint(await adapter.get_hashed_password(user.id))
+    if not isinstance(presented, str) or not hmac.compare_digest(presented, expected):
+        await token_engine.blacklist_payload(payload)
+        logger.warning("Password reset rejected; stale token: user_id=%s", user.id)
+        raise TokenError("Invalid password reset token")
 
     hashed = await ahash_password(new_password, algorithm=hash_algorithm)
     await adapter.set_password(user.id, hashed)

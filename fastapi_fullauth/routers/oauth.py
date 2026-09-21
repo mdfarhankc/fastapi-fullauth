@@ -8,14 +8,20 @@ from fastapi_fullauth.adapters.base import OAuthAdapterMixin
 from fastapi_fullauth.dependencies.current_user import CurrentUser, get_fullauth
 from fastapi_fullauth.exceptions import (
     OAUTH_ERROR_EXCEPTION,
-    OAuthProviderError,
+    OAuthAccountAlreadyLinkedError,
+    OAuthError,
+    OAuthProviderAlreadyLinkedError,
     TokenError,
 )
+from fastapi_fullauth.flows.credentials import last_method_detail, remaining_login_methods
 from fastapi_fullauth.flows.oauth import (
     build_authorization_url,
+    build_link_authorization_url,
     generate_oauth_binding,
     oauth_callback,
+    oauth_link_callback,
 )
+from fastapi_fullauth.oauth.base import OAuthProvider
 from fastapi_fullauth.routers._schemas import LoginResponse, build_login_response_model
 from fastapi_fullauth.routers._transport import write_tokens
 from fastapi_fullauth.types import TokenPair, UserSchema, UserSchemaType
@@ -57,6 +63,21 @@ class OAuthAccountResponse(BaseModel):
     provider_email: str | None = None
 
 
+def _require_oauth_adapter(fullauth: "FullAuth") -> None:
+    """The combined router only mounts these when the adapter supports OAuth, but
+    the routers are composable: mounted by hand, the adapter's RuntimeError would
+    surface as a 500."""
+    if not fullauth.adapter.supports_feature("oauth"):
+        raise HTTPException(status_code=501, detail="Adapter does not support OAuth")
+
+
+def _require_provider(fullauth: "FullAuth", provider: str) -> OAuthProvider:
+    oauth_provider = fullauth.oauth_providers.get(provider)
+    if oauth_provider is None:
+        raise HTTPException(status_code=404, detail=f"OAuth provider '{provider}' not configured")
+    return oauth_provider
+
+
 def create_oauth_router(
     user_schema: type[UserSchemaType] = UserSchema,  # type: ignore[assignment]
     login_response_schema: type[LoginResponse] = LoginResponse,
@@ -86,12 +107,7 @@ def create_oauth_router(
         redirect_uri: str,
         fullauth: "FullAuth" = Depends(get_fullauth),
     ) -> OAuthAuthorizeResponse:
-        oauth_provider = fullauth.oauth_providers.get(provider)
-        if oauth_provider is None:
-            raise HTTPException(
-                status_code=404, detail=f"OAuth provider '{provider}' not configured"
-            )
-
+        oauth_provider = _require_provider(fullauth, provider)
         if redirect_uri not in oauth_provider.redirect_uris:
             raise HTTPException(status_code=400, detail="Invalid redirect URI")
 
@@ -121,12 +137,7 @@ def create_oauth_router(
     ) -> TokenPair:
         await fullauth.enforce_rate_limit(request, "login")
 
-        oauth_provider = fullauth.oauth_providers.get(provider)
-        if oauth_provider is None:
-            raise HTTPException(
-                status_code=404, detail=f"OAuth provider '{provider}' not configured"
-            )
-
+        oauth_provider = _require_provider(fullauth, provider)
         user_agent, ip_address = request_session_metadata(
             request, fullauth.config.TRUSTED_PROXY_HEADERS, fullauth.config.TRUSTED_PROXY_COUNT
         )
@@ -144,7 +155,7 @@ def create_oauth_router(
                 ip_address=ip_address,
                 binding=data.binding,
             )
-        except (OAuthProviderError, TokenError):
+        except (OAuthError, TokenError):
             raise OAUTH_ERROR_EXCEPTION
 
         token_pair = await write_tokens(response, fullauth, token_pair)
@@ -168,6 +179,76 @@ def create_oauth_router(
         return token_pair
 
     @router.get(
+        "/oauth/{provider}/link/authorize",
+        status_code=200,
+        response_model=OAuthAuthorizeResponse,
+        description="Get the authorization URL for linking a provider to the signed-in account.",
+    )
+    async def link_authorize(
+        provider: str,
+        redirect_uri: str,
+        user: CurrentUser,
+        fullauth: "FullAuth" = Depends(get_fullauth),
+    ) -> OAuthAuthorizeResponse:
+        _require_oauth_adapter(fullauth)
+        oauth_provider = _require_provider(fullauth, provider)
+        if redirect_uri not in oauth_provider.redirect_uris:
+            raise HTTPException(status_code=400, detail="Invalid redirect URI")
+
+        binding = generate_oauth_binding()
+        url = build_link_authorization_url(
+            fullauth.token_engine,
+            oauth_provider,
+            redirect_uri,
+            user.id,
+            ttl_seconds=fullauth.config.OAUTH_STATE_EXPIRE_SECONDS,
+            pkce_enabled=fullauth.config.OAUTH_PKCE_ENABLED,
+            binding=binding,
+        )
+        return OAuthAuthorizeResponse(authorization_url=url, binding=binding)
+
+    @router.post(
+        "/oauth/{provider}/link/callback",
+        status_code=200,
+        response_model=OAuthAccountResponse,
+        description="Link the provider account from this flow to the signed-in account.",
+    )
+    async def link_callback(
+        provider: str,
+        data: OAuthCallbackRequest,
+        user: CurrentUser,
+        fullauth: "FullAuth" = Depends(get_fullauth),
+    ) -> OAuthAccountResponse:
+        _require_oauth_adapter(fullauth)
+        oauth_provider = _require_provider(fullauth, provider)
+
+        # Unlike sign-in, this route answers with the specific reason: the caller
+        # is authenticated, so there is nothing to enumerate, and a settings
+        # screen has to tell the two conflicts apart.
+        try:
+            account = await oauth_link_callback(
+                adapter=fullauth.adapter,
+                token_engine=fullauth.token_engine,
+                provider=oauth_provider,
+                code=data.code,
+                state=data.state,
+                user=user,
+                pkce_enabled=fullauth.config.OAUTH_PKCE_ENABLED,
+                binding=data.binding,
+            )
+        except (OAuthAccountAlreadyLinkedError, OAuthProviderAlreadyLinkedError) as e:
+            raise HTTPException(status_code=409, detail=str(e)) from e
+        except (OAuthError, TokenError):
+            raise OAUTH_ERROR_EXCEPTION
+
+        await fullauth.hooks.emit("after_oauth_link", user=user, provider=provider)
+        return OAuthAccountResponse(
+            provider=account.provider,
+            provider_user_id=account.provider_user_id,
+            provider_email=account.provider_email,
+        )
+
+    @router.get(
         "/oauth/accounts",
         status_code=200,
         response_model=list[OAuthAccountResponse],
@@ -177,6 +258,7 @@ def create_oauth_router(
         user: CurrentUser,
         fullauth: "FullAuth" = Depends(get_fullauth),
     ) -> list[OAuthAccountResponse]:
+        _require_oauth_adapter(fullauth)
         adapter = cast("OAuthAdapterMixin", fullauth.adapter)
         accounts = await adapter.get_user_oauth_accounts(user.id)
         return [
@@ -198,22 +280,33 @@ def create_oauth_router(
         user: CurrentUser,
         fullauth: "FullAuth" = Depends(get_fullauth),
     ) -> None:
+        _require_oauth_adapter(fullauth)
         oauth_adapter = cast("OAuthAdapterMixin", fullauth.adapter)
         accounts = await oauth_adapter.get_user_oauth_accounts(user.id)
-        has_password = await fullauth.adapter.get_hashed_password(user.id) is not None
-        other_oauth = [a for a in accounts if a.provider != provider]
-
-        if not has_password and not other_oauth:
-            raise HTTPException(
-                status_code=400,
-                detail="Cannot unlink the only login method. Set a password first.",
-            )
 
         target = next((a for a in accounts if a.provider == provider), None)
         if target is None:
             raise HTTPException(status_code=404, detail="OAuth account not found")
 
+        # Passkeys count as a sign-in method here, so a passwordless user with a
+        # passkey is not told to set a password they do not need.
+        passkeys_usable = fullauth.config.PASSKEY_ENABLED and fullauth.adapter.supports_feature(
+            "passkey"
+        )
+        if not await remaining_login_methods(
+            fullauth.adapter,
+            user.id,
+            usable_providers=set(fullauth.oauth_providers),
+            passkeys_usable=passkeys_usable,
+            without_provider=provider,
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail=last_method_detail(passkeys_available=passkeys_usable),
+            )
+
         await oauth_adapter.delete_oauth_account(provider, target.provider_user_id)
         logger.info("OAuth account unlinked: user_id=%s, provider=%s", user.id, provider)
+        await fullauth.hooks.emit("after_oauth_unlink", user=user, provider=provider)
 
     return router

@@ -167,6 +167,8 @@ from fastapi_fullauth.exceptions import (
     AccountLockedError,             # too many failed attempts
     OAuthError,                     # OAuth base error
     OAuthProviderError,             # provider-specific error
+    OAuthAccountAlreadyLinkedError, # identity belongs to another user
+    OAuthProviderAlreadyLinkedError,# user already linked this provider
 )
 ```
 

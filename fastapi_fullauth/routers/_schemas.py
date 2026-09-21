@@ -90,6 +90,11 @@ class ChangePasswordRequest(BaseModel):
     current_password: str | None = None
 
 
+class DeleteAccountRequest(BaseModel):
+    # Optional: a session whose credentials were checked recently is proof too.
+    current_password: str | None = None
+
+
 def build_role_assignment_model(user_id_type: Any = UUID) -> type[BaseModel]:
     """Build the admin role-assignment body with ``user_id`` typed to the user key.
 

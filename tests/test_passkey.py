@@ -1,5 +1,7 @@
 """Tests for passkey (WebAuthn) challenge store and adapter methods."""
 
+import time
+from unittest.mock import patch
 from uuid import UUID
 
 import pytest
@@ -257,3 +259,22 @@ async def test_registration_stores_only_known_transports(passkey_adapter):
     assert passkey.transports == ["internal", "hybrid"]
     stored = await passkey_adapter.get_passkey_by_credential_id(passkey.credential_id)
     assert stored is not None and stored.transports == ["internal", "hybrid"]
+
+
+@pytest.mark.asyncio
+async def test_challenge_store_evicts_challenges_that_were_never_used():
+    """Beginning a passkey sign-in needs no account, so unclaimed challenges are
+    attacker-reachable: they have to expire out of memory on their own."""
+    from fastapi_fullauth.protection import challenges
+
+    store = InMemoryChallengeStore()
+    for i in range(50):
+        await store.store(f"abandoned-{i}", "c", ttl=1)
+    assert len(store._store) == 50
+
+    # Jump past both the entries' TTL and the sweep interval.
+    store._next_sweep = 0.0
+    with patch.object(challenges.time, "monotonic", return_value=time.monotonic() + 3600):
+        await store.store("fresh", "c", ttl=60)
+
+    assert list(store._store) == ["fresh"]

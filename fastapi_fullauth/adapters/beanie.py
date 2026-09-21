@@ -292,6 +292,12 @@ class BeanieAdapter(
             {"$set": {"revoked": True}}
         )
 
+    async def prune_expired_refresh_tokens(self, before: datetime | None = None) -> int:
+        cutoff = before or datetime.now(timezone.utc)
+        model = self._refresh_token_model
+        result = await model.find(model.expires_at < cutoff).delete()
+        return int(getattr(result, "deleted_count", 0) or 0)
+
     # ── Sessions ─────────────────────────────────────────────────────
 
     async def list_user_sessions(self, user_id: UserID) -> list[SessionInfo]:

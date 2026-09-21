@@ -1068,10 +1068,11 @@ async def test_verify_email_token_burned_when_already_verified():
         CreateUserSchema(email="already@test.com", password="securepass123"),
         hashed_password="x",
     )
-    await adapter.set_user_verified(user.id)
-
+    # Issued while still unverified, then verified through another path - which
+    # is exactly how a live token ends up pointing at a verified account.
     token = await create_email_verification_token(adapter, token_engine, user.id)
     assert token is not None
+    await adapter.set_user_verified(user.id)
 
     # First use resolves the already-verified account and burns the token.
     await verify_email(adapter, token_engine, token)

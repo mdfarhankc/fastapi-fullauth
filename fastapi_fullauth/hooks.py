@@ -30,6 +30,10 @@ class AfterOAuthRegisterHook(Protocol):
     async def __call__(self, user: UserSchema, user_info: OAuthUserInfo) -> Any: ...
 
 
+class AfterOAuthLinkHook(Protocol):
+    async def __call__(self, user: UserSchema, provider: str) -> Any: ...
+
+
 EventHook = Callable[..., Awaitable[Any]]
 F = TypeVar("F", bound=EventHook)
 
@@ -44,6 +48,8 @@ EVENT_PARAMS: dict[str, tuple[str, ...]] = {
     "after_email_verify": ("user",),
     "after_oauth_login": ("user", "provider", "is_new_user"),
     "after_oauth_register": ("user", "user_info"),
+    "after_oauth_link": ("user", "provider"),
+    "after_oauth_unlink": ("user", "provider"),
     "send_verification_email": ("email", "token"),
     "send_password_reset_email": ("email", "token"),
 }
@@ -72,6 +78,10 @@ class EventHooks:
     def on(
         self, event: Literal["after_oauth_register"], callback: AfterOAuthRegisterHook
     ) -> None: ...
+    @overload
+    def on(self, event: Literal["after_oauth_link"], callback: AfterOAuthLinkHook) -> None: ...
+    @overload
+    def on(self, event: Literal["after_oauth_unlink"], callback: AfterOAuthLinkHook) -> None: ...
     @overload
     def on(self, event: Literal["send_verification_email"], callback: EmailHook) -> None: ...
     @overload

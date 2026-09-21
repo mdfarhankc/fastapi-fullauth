@@ -148,12 +148,14 @@ If you want to be defensively explicit that no file is ever read, pass `FullAuth
 |--------|------|---------|-------------|
 | `PASSWORD_HASH_ALGORITHM` | `"argon2id" \| "bcrypt"` | `"argon2id"` | Hashing algorithm. |
 | `PASSWORD_MIN_LENGTH` | `int` | `8` | Minimum password length. |
+| `PASSWORD_MAX_LENGTH` | `int` | `4096` | Maximum password length, so a huge body can't be turned into hashing work. bcrypt caps at 72 bytes regardless. |
 
 ### Login
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `LOGIN_FIELD` | `str` | `"email"` | Field used for login (`"email"`, `"username"`, etc.). |
+| `REAUTH_MAX_AGE_SECONDS` | `int` | `300` | How recently credentials must have been checked for a destructive action (deleting the account, setting a first password). Supplying the current password proves it too. `0` accepts only the password, which locks passwordless accounts out of those actions. |
 | `LOCKOUT_ENABLED` | `bool` | `True` | Enable account lockout after failed login attempts. |
 | `LOCKOUT_BACKEND` | `"memory" \| "redis"` | `"memory"` | Lockout storage backend. Use `"redis"` for multi-worker deployments. |
 | `MAX_LOGIN_ATTEMPTS` | `int` | `5` | Failed attempts before account lockout. |
@@ -171,7 +173,7 @@ middleware (`RateLimitMiddleware`) is opt-in; import it from
 | `TRUSTED_PROXY_HEADERS` | `list[str]` | `[]` | Headers to read the real client IP from (e.g. `["X-Forwarded-For"]`). The IP is taken from the right of the chain, not the left; left-most entries are client-supplied and never trusted. |
 | `TRUSTED_PROXY_COUNT` | `int` | `1` | Number of trusted proxy hops in front of the app. The client IP is the entry this many positions from the right of the forwarded chain. Must be `>= 1`. Set it too high and an attacker can spoof their IP; see [Rate Limiting](security/rate-limiting.md#proxy-support). |
 | `AUTH_RATE_LIMIT_ENABLED` | `bool` | `True` | Enable per-route auth rate limits. |
-| `AUTH_RATE_LIMITS` | `AuthRateLimits` | see below | Per-route request caps: `login=5`, `register=3`, `password_reset=3`, `passkey_auth=10`, `refresh=30`. |
+| `AUTH_RATE_LIMITS` | `AuthRateLimits` | see below | Per-route request caps: `login=5`, `register=3`, `password_reset=3`, `passkey_auth=10`, `refresh=30`, `reauth=5`. `reauth` meters the `current_password` check on `DELETE /me` and `/change-password`, in its own bucket so failed attempts cannot exhaust an IP's sign-in budget. |
 | `AUTH_RATE_LIMIT_WINDOW_SECONDS` | `int` | `60` | Rate limit window in seconds. |
 
 Override individual routes without touching the others. In Python, pass an

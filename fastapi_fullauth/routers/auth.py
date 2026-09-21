@@ -153,6 +153,7 @@ def create_auth_router(
                 user=user,
                 hash_algorithm=fullauth.config.PASSWORD_HASH_ALGORITHM,
                 prevent_timing_attacks=fullauth.config.PREVENT_LOGIN_TIMING_ATTACKS,
+                max_password_length=fullauth.config.PASSWORD_MAX_LENGTH,
                 user_agent=user_agent,
                 ip_address=ip_address,
             )

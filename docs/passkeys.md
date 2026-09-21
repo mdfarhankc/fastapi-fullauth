@@ -155,6 +155,12 @@ The server verifies the assertion, checks the sign count (see [Clone detection](
 !!! note
     When an email is provided to `authenticate/begin`, the response always includes an `allowCredentials` list (possibly empty). Callers can't distinguish unknown emails from known ones with no passkeys. This prevents user enumeration.
 
+## Deleting a passkey
+
+`DELETE /auth/passkeys/{id}` refuses with `400` when that passkey is the account's
+only way to sign in, the same rule [unlinking a provider](oauth.md#unlinking-providers)
+follows. Set a password or register a second passkey first.
+
 ## Frontend integration
 
 Here's a minimal JavaScript example for registration and authentication:

@@ -1,4 +1,5 @@
 from collections.abc import Awaitable, Callable
+from datetime import datetime, timezone
 from typing import Any
 
 from fastapi_fullauth.adapters.base import AbstractUserAdapter
@@ -21,23 +22,28 @@ async def issue_token_pair(
     roles: list[str] | None = None,
     user_agent: str | None = None,
     ip_address: str | None = None,
+    auth_time: datetime | None = None,
 ) -> TokenPair:
     """Create an access/refresh token pair for ``user`` and persist the refresh token.
 
     Shared by the login, OAuth, passkey, and refresh-rotation flows. Pass
     ``family_id`` to keep an existing refresh-token family (rotation); omit it
-    to start a new one. Pass ``roles`` to reuse an already-fetched list and skip
+    to start a new one. Pass ``auth_time`` when rotating, to carry the original
+    credential-check time forward. Pass ``roles`` to reuse an already-fetched list and skip
     the lookup. ``user_agent``/``ip_address`` are recorded on the refresh token
     so the session list can show the device and origin of each sign-in.
     """
     if roles is None:
         roles = await adapter.get_user_roles(user.id)
 
+    # A new session means credentials were just checked; a rotation passes the
+    # original time through so refreshing never looks like re-authenticating.
     access, refresh_meta = token_engine.create_token_pair(
         user_id=str(user.id),
         roles=roles,
         extra=extra_claims,
         family_id=family_id,
+        auth_time=auth_time or datetime.now(timezone.utc),
     )
 
     # Only the sha256 digest is persisted: a leaked database must not hand out

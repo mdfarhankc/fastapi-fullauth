@@ -316,9 +316,11 @@ Grouped for readability. All read from env with `FULLAUTH_` prefix.
 ### Passwords
 - `PASSWORD_HASH_ALGORITHM: "argon2id" | "bcrypt" = "argon2id"`
 - `PASSWORD_MIN_LENGTH: int = 8`
+- `PASSWORD_MAX_LENGTH: int = 4096`  (caps hashing work from an oversized body)
 
 ### Login
 - `LOGIN_FIELD: str = "email"`
+- `REAUTH_MAX_AGE_SECONDS: int = 300`  (how recently credentials must have been checked for `DELETE /me` and setting a first password; the current password in the body proves it too)
 - `PREVENT_LOGIN_TIMING_ATTACKS: bool = True`  (dummy verify on unknown-user path, matches configured algorithm)
 
 ### Lockout
@@ -396,8 +398,8 @@ Default prefix `/api/v1/auth`:
 | GET    | `/me`                             | profile  | yes           |
 | GET    | `/me/verified`                    | profile  | yes (verified)|
 | PATCH  | `/me`                             | profile  | yes           |
-| DELETE | `/me`                             | profile  | yes           |
-| POST   | `/change-password`                | profile  | yes           |
+| DELETE | `/me`                             | profile  | yes + recent  |
+| POST   | `/change-password`                | profile  | yes (+ recent, for a first password) |
 | POST   | `/verify-email/request`           | verify   | yes           |
 | POST   | `/verify-email/confirm`           | verify   | no            |
 | POST   | `/password-reset/request`         | verify   | no            |
@@ -410,6 +412,8 @@ Default prefix `/api/v1/auth`:
 | GET    | `/oauth/providers`                | oauth    | no            |
 | GET    | `/oauth/{provider}/authorize`     | oauth    | no            |
 | POST   | `/oauth/{provider}/callback`      | oauth    | no            |
+| GET    | `/oauth/{provider}/link/authorize`| oauth    | yes           |
+| POST   | `/oauth/{provider}/link/callback` | oauth    | yes           |
 | GET    | `/oauth/accounts`                 | oauth    | yes           |
 | DELETE | `/oauth/accounts/{provider}`      | oauth    | yes           |
 | POST   | `/passkeys/register/begin`        | passkey  | yes           |

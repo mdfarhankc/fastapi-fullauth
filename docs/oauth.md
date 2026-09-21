@@ -60,6 +60,8 @@ When OAuth providers are configured, these routes are registered automatically:
 | GET | `/auth/oauth/providers` | List configured providers |
 | GET | `/auth/oauth/{provider}/authorize` | Get authorization URL |
 | POST | `/auth/oauth/{provider}/callback` | Exchange code for tokens |
+| GET | `/auth/oauth/{provider}/link/authorize` | Authorization URL for linking to the signed-in account |
+| POST | `/auth/oauth/{provider}/link/callback` | Link that provider account to the signed-in account |
 | GET | `/auth/oauth/accounts` | List linked OAuth accounts |
 | DELETE | `/auth/oauth/accounts/{provider}` | Unlink a provider |
 
@@ -134,7 +136,7 @@ From this point on, the session works exactly like email/password login. The use
 
 ## Auto-linking by email
 
-By default, if a user registers with `user@example.com` via email/password, then later logs in with Google using the same verified email, the accounts are linked automatically. Disable this with:
+By default, if a user registers with `user@example.com` via email/password, then later logs in with Google using the same verified email, the accounts are linked automatically. If the provider does *not* report the address as verified, the sign-in is refused rather than linked, and the user has to sign in with their password and [link the provider explicitly](#linking-a-provider-while-signed-in). A sign-in that would attach a *second* account from a provider the user already linked is refused for the same reason unlinking gives: one identity per provider per account. Disable auto-linking with:
 
 ```python
 config = FullAuthConfig(
@@ -143,11 +145,78 @@ config = FullAuthConfig(
 )
 ```
 
+## Linking a provider while signed in
+
+Auto-linking only fires when the provider reports the email as verified *and* it already matches
+an account. That leaves out the ordinary cases: a work GitHub account under a different address, a
+provider that does not verify emails, a provider that returns no email at all. For those, a
+signed-in user links the provider explicitly.
+
+The flow mirrors signing in, with two differences: both requests carry the user's access token, and
+the callback returns the linked account instead of a token pair. Linking is not a sign-in, so no
+session is created and nothing about the current session changes.
+
+```
+GET /api/v1/auth/oauth/github/link/authorize?redirect_uri=https://app.example.com/settings/callback
+Authorization: Bearer <access token>
+```
+
+```json
+{
+  "authorization_url": "https://github.com/login/oauth/authorize?...",
+  "binding": "kZ3..."
+}
+```
+
+Store the `binding` exactly as you do when signing in, send the user to `authorization_url`, then
+post what the provider sends back:
+
+```
+POST /api/v1/auth/oauth/github/link/callback
+Authorization: Bearer <access token>
+
+{"code": "...", "state": "...", "binding": "kZ3..."}
+```
+
+```json
+{"provider": "github", "provider_user_id": "1234567", "provider_email": "work@example.com"}
+```
+
+The provider's email is stored for display only. Authorization comes from the session, so the
+address does not have to match the account, and linking never marks the account verified or edits
+the user row.
+
+Two conflicts answer `409` with a message you can show the user:
+
+- the provider account is already linked to a **different** user. It is never moved: that would let
+  anyone attach a victim's identity and then sign in as them.
+- the user already linked a **different** account from the same provider. Unlinking is keyed by
+  provider alone, so a second one would make `DELETE /auth/oauth/accounts/{provider}` ambiguous.
+  Unlink the first one, then link again.
+
+Linking an account the user already has just refreshes the stored provider tokens and returns
+`200`.
+
+Two hooks cover the pair, for audit logging:
+
+```python
+@fullauth.hooks.on("after_oauth_link")
+async def on_link(user, provider):
+    audit.record(user.id, f"linked {provider}")
+
+
+@fullauth.hooks.on("after_oauth_unlink")
+async def on_unlink(user, provider):
+    audit.record(user.id, f"unlinked {provider}")
+```
+
 ## Security model
 
 **State token**: the OAuth `state` parameter is a purpose-scoped JWT with a 5-minute TTL (`OAUTH_STATE_EXPIRE_SECONDS`). If it is missing, expired, or tampered with, the callback is rejected. With the token blacklist enabled (the default) it is single-use.
 
 **Binding to the browser (login CSRF)**: a signed state alone does not stop login CSRF. An attacker can start a login with their own provider account, then make a victim's browser submit the attacker's `code` and `state`, signing the victim into the attacker's account. RFC 9700 (OAuth 2.0 Security Best Current Practice) therefore requires the state to be bound to the user agent. The authorize endpoint returns a random `binding` and puts only its SHA-256 hash in the state; the callback requires the `binding` back and compares it in constant time before touching the code. The victim's browser never had the attacker's binding, so the forged callback fails.
+
+**Linking is bound to the user who started it**: the state for a link flow carries the id of the user it was issued for, and the callback rejects it unless that matches the authenticated caller. Without this, an attacker who completed their own provider flow could have a victim submit the result and end up attached to the victim's account. The id travels in a claim, never as the token's subject: the state passes through the address bar and the provider, so it must stay useless as a session token. A sign-in state and a link state carry different purposes and cannot be swapped.
 
 **Redirect URI validation**: the library validates the `redirect_uri` parameter against the provider's configured `redirect_uris` list. Mismatched URIs are rejected with a 400 error.
 
@@ -174,7 +243,9 @@ Users can unlink an OAuth provider:
 DELETE /api/v1/auth/oauth/accounts/google
 ```
 
-This is blocked if the OAuth account is the user's only login method (no password set, no other OAuth providers). The user must set a password first.
+This is blocked if it would leave the account with no way to sign in. A stored password, any other linked provider, and any registered passkey all count, so a passwordless user with a passkey can unlink freely.
+
+To add one back, see [Linking a provider while signed in](#linking-a-provider-while-signed-in).
 
 ## Adding your own provider
 
@@ -215,7 +286,7 @@ If your provider deviates from the standard flow entirely, subclass the bare `OA
 
 ## Event hooks
 
-Two hooks fire during OAuth flows:
+Four hooks fire during OAuth flows:
 
 - `after_oauth_login` fires on every OAuth login (new and returning users):
 
@@ -233,6 +304,8 @@ async def on_oauth_login(user, provider, is_new_user):
 async def on_oauth_register(user, user_info):
     print(f"New OAuth user: {user.email}, provider data: {user_info.raw}")
 ```
+
+- `after_oauth_link` and `after_oauth_unlink` fire when a signed-in user attaches or removes a provider, both with `(user, provider)`. See [Linking a provider while signed in](#linking-a-provider-while-signed-in).
 
 The `after_register` hook also fires for new OAuth users.
 

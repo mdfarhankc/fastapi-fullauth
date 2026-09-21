@@ -11,7 +11,7 @@ adapters whose ``transaction()`` is best-effort (no atomicity) set
 ``atomic_transactions = False`` in their subclass.
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 import pytest
@@ -248,6 +248,36 @@ class AdapterConformance:
         assert await adapter.revoke_refresh_token("test-token-123") is False
         # revoking an unknown token also returns False
         assert await adapter.revoke_refresh_token("does-not-exist") is False
+
+    async def test_prune_expired_refresh_tokens(self, adapter, make_user):
+        """Only expired rows go. A revoked but unexpired row is what a replayed
+        token is matched against, so removing it early would turn a stolen-token
+        replay into an ordinary rejection and leave the family alive."""
+        user = await make_user("prune@test.com")
+        now = datetime.now(timezone.utc)
+
+        rows = {
+            "prune-live": (now + timedelta(days=1), False),
+            "prune-revoked-live": (now + timedelta(days=1), True),
+            "prune-expired": (now - timedelta(days=1), False),
+            "prune-expired-revoked": (now - timedelta(days=1), True),
+        }
+        for token, (expires_at, revoked) in rows.items():
+            await adapter.store_refresh_token(
+                RefreshToken(
+                    token=token,
+                    user_id=user.id,
+                    expires_at=expires_at,
+                    family_id="prune-family",
+                    revoked=revoked,
+                )
+            )
+
+        assert await adapter.prune_expired_refresh_tokens() == 2
+        assert await adapter.get_refresh_token("prune-live") is not None
+        assert await adapter.get_refresh_token("prune-revoked-live") is not None
+        assert await adapter.get_refresh_token("prune-expired") is None
+        assert await adapter.get_refresh_token("prune-expired-revoked") is None
 
     async def test_revoke_refresh_token_family(self, adapter, make_user):
         user = await make_user("rtf@test.com")

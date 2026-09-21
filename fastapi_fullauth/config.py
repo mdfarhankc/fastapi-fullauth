@@ -35,6 +35,10 @@ class AuthRateLimits:
     password_reset: int = 3
     passkey_auth: int = 10
     refresh: int = 30
+    # Checking `current_password` on a destructive action is a password
+    # oracle for whoever holds the access token, so it is metered. Its own
+    # bucket, so failed attempts cannot exhaust an IP's sign-in budget.
+    reauth: int = 5
 
 
 class FullAuthConfig(BaseSettings):
@@ -67,6 +71,9 @@ class FullAuthConfig(BaseSettings):
 
     PASSWORD_HASH_ALGORITHM: Literal["argon2id", "bcrypt"] = "argon2id"
     PASSWORD_MIN_LENGTH: int = 8
+    # Upper bound so an attacker can't spend the server's CPU hashing a huge
+    # body. bcrypt caps at 72 bytes anyway; argon2 will hash whatever it is given.
+    PASSWORD_MAX_LENGTH: int = 4096
 
     LOGIN_FIELD: str = "email"
     # When True, login runs a dummy password verify on unknown-user / no-password
@@ -74,6 +81,12 @@ class FullAuthConfig(BaseSettings):
     # Costs ~one hash per failed lookup; disable only if that cost matters more
     # than hiding which emails are registered.
     PREVENT_LOGIN_TIMING_ATTACKS: bool = True
+
+    # How recently the account's credentials must have been checked for a
+    # destructive action (deleting the account, setting a first password).
+    # Supplying the current password proves it too. 0 accepts only the password,
+    # which locks passwordless accounts out of those actions.
+    REAUTH_MAX_AGE_SECONDS: int = 300
 
     LOCKOUT_ENABLED: bool = True
     LOCKOUT_BACKEND: Literal["memory", "redis"] = "memory"

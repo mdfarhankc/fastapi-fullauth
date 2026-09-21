@@ -83,6 +83,9 @@ async def refresh(
                     roles=roles,
                     user_agent=user_agent,
                     ip_address=ip_address,
+                    # Never `or now`: a token from before this claim existed
+                    # must not be upgraded to a fresh check by rotating it.
+                    auth_time=payload.auth_time or payload.iat,
                 )
 
         if not won or tokens is None:
@@ -110,6 +113,7 @@ async def refresh(
         roles=roles,
         extra=extra_claims,
         family_id=payload.family_id,
+        auth_time=payload.auth_time or payload.iat,
     )
     return TokenPair(
         access_token=access,

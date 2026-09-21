@@ -43,6 +43,7 @@ async def login(
     prevent_timing_attacks: bool = False,
     user_agent: str | None = None,
     ip_address: str | None = None,
+    max_password_length: int = 0,
 ) -> TokenPair:
     # Adapters normalise emails before lookup; key the lockout on the same value
     # so case or whitespace variants of one address share a single counter.
@@ -51,6 +52,15 @@ async def login(
     if lockout and await lockout.is_locked(lockout_key):
         logger.warning("Login blocked; account locked: %s", identifier)
         raise AccountLockedError("Account is temporarily locked")
+
+    # Rejected before any hashing: this is the unauthenticated path, so an
+    # oversized body would otherwise be turned into hashing work on demand. It
+    # still counts as a failed attempt, so spraying long strings is not free.
+    if max_password_length and len(password) > max_password_length:
+        if lockout:
+            await lockout.record_failure(lockout_key)
+        logger.warning("Login failed; password exceeds the configured maximum length")
+        raise AuthenticationError("Invalid credentials")
 
     if user is None:
         user = await adapter.get_user_by_field(login_field, identifier)

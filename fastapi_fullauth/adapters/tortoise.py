@@ -292,6 +292,11 @@ class TortoiseAdapter(
     async def revoke_all_user_refresh_tokens(self, user_id: UserID) -> None:
         await self._refresh_token_model.filter(user_id=user_id).update(revoked=True)
 
+    async def prune_expired_refresh_tokens(self, before: datetime | None = None) -> int:
+        cutoff = before or datetime.now(timezone.utc)
+        deleted = await self._refresh_token_model.filter(expires_at__lt=cutoff).delete()
+        return int(deleted or 0)
+
     # ── Sessions ─────────────────────────────────────────────────────
 
     async def list_user_sessions(self, user_id: UserID) -> list[SessionInfo]:
