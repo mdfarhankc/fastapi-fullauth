@@ -96,6 +96,28 @@ async def log_logout(user_id):
     audit_log.info("Logout: user_id=%s", user_id)
 ```
 
+### Verification email on registration
+
+Registering does not send a verification email by itself: `/register` only fires `after_register`,
+and `send_verification_email` is emitted by `POST /verify-email/request`, which requires the user
+to be signed in already. To mail a link at signup, mint the token in the hook:
+
+```python
+from fastapi_fullauth.flows import create_email_verification_token
+
+
+@fullauth.hooks.on("after_register")
+async def send_verification(user):
+    token = await create_email_verification_token(
+        fullauth.adapter, fullauth.token_engine, user.id
+    )
+    if token:  # None when the user no longer exists
+        await mailer.send_verification(user.email, token)
+```
+
+This hook runs after the response is sent, so the time your mail provider takes cannot reveal
+whether the address was already registered.
+
 ### Post-registration setup
 
 Create default resources for new users:

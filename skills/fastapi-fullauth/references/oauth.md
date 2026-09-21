@@ -81,11 +81,9 @@ PKCE (S256) is enabled by default for providers that support it (Google, GitHub,
 
 **Security caveat**: as of v0.8.0, auto-link only proceeds when `info.email_verified=True` from the provider. Without this gate, anyone who registers a secondary email on GitHub (which GitHub doesn't verify ownership for) could sign in via GitHub and get attached to the victim's local account.
 
-When the gate fires, the callback returns a 4xx with:
+When the gate fires, the flow raises `OAuthProviderError`. The router collapses it, like every other OAuth failure, into a generic `400 {"detail": "OAuth authentication failed"}`, so the endpoint cannot be used to probe which emails are registered; the specific reason is only in the server log (`fastapi_fullauth.oauth`, "oauth auto-link refused").
 
-> This email is already registered. Sign in with your existing credentials and link your OAuth account from account settings.
-
-UX path: log in with password → `POST /oauth/{provider}/authorize` to get the auth URL → go through the provider flow → `POST /oauth/{provider}/callback`. The callback finds the existing user via the session's authenticated user and links cleanly.
+There is no authenticated "link this provider to my account" endpoint. Linking happens only as a side effect of signing in, on a provider-verified email, so a user whose provider email is unverified or differs from their account email cannot link that provider at all. Tell them to sign in with their password instead. `GET /oauth/accounts` and `DELETE /oauth/accounts/{provider}` list and remove links that already exist.
 
 To disable auto-link entirely: `FULLAUTH_OAUTH_AUTO_LINK_BY_EMAIL=False`. Then every OAuth sign-in either finds an existing linked identity or creates a brand-new user, never cross-links.
 

@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **`/register` no longer claims to have sent a verification email.** With `PREVENT_REGISTRATION_ENUMERATION` on (the default) it answered `202` with "a verification email has been sent", but registration never emits `send_verification_email`: that hook fires only from `POST /verify-email/request`, which requires the user to already be signed in. Unless the application sent its own mail from `after_register`, the person was told to wait for an email that was never sent. The response now reads "If this email isn't already registered, the account has been created.", which is true either way and gives an attacker no more than before. [Sending one at signup](https://mdfarhankc.github.io/fastapi-fullauth/auth/hooks/#verification-email-on-registration) is now documented as a hook recipe. **If you assert on this string in tests, update it.**
+- **Corrected the guidance given when auto-link-by-email is refused.** When a provider returns an unverified email that already belongs to an account, the flow refused the link (correctly) but told the user to "link your OAuth account from account settings", which no endpoint supports. It now says to sign in with a password or verify the address with the provider. The message is internal to `OAuthProviderError`: the router still answers every OAuth failure with a generic `400 OAuth authentication failed`, so nothing about the response changes.
+- **The Agent Skill described routes and flows that do not exist.** `references/rbac.md` and the route table in `references/api-reference.md` listed eight admin routes (user CRUD under `/admin/users`, role and permission routes under `/admin/roles`) that the library has never shipped, and said admin routes accept `require_role("admin")` when they require `is_superuser`. `references/oauth.md` said the OAuth callback links through the caller's session, which it does not. All three now describe what the library actually does.
+
 ## 0.16.0
 
 ### Added

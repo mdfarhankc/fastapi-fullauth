@@ -65,7 +65,9 @@ def create_auth_router(
             "Create a new user account. Returns 202 + a generic message by "
             "default (`PREVENT_REGISTRATION_ENUMERATION=True`) so attackers "
             "can't probe whether an email is registered. Set it to `False` "
-            "for 201 + the created user, and 409 on a duplicate email."
+            "for 201 + the created user, and 409 on a duplicate email. "
+            "No verification email is sent from here; send one from the "
+            "`after_register` hook if you want that."
         ),
     )
     async def register_route(
@@ -80,7 +82,7 @@ def create_auth_router(
         anti_enum = fullauth.config.PREVENT_REGISTRATION_ENUMERATION
         hash_algorithm = fullauth.config.PASSWORD_HASH_ALGORITHM
         generic = message_response_schema(
-            detail="If this email isn't already registered, a verification email has been sent."
+            detail="If this email isn't already registered, the account has been created."
         )
 
         try:
