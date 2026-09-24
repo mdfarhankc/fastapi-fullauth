@@ -82,7 +82,7 @@ class RedisChallengeStore(ChallengeStore):
         self._prefix = "fullauth:challenge:"
 
     async def store(self, key: str, challenge: str, ttl: int = 60) -> None:
-        await self._redis.setex(f"{self._prefix}{key}", ttl, challenge)
+        await self._redis.set(f"{self._prefix}{key}", challenge, ex=ttl)
 
     async def pop(self, key: str) -> str | None:
         redis_key = f"{self._prefix}{key}"

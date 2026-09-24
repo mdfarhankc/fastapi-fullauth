@@ -132,7 +132,7 @@ class RedisLockoutManager(LockoutManager):
             # burst can't observe a half-applied state.
             try:
                 lock_pipe = self._redis.pipeline()
-                lock_pipe.setex(locked_key, self.lockout_seconds, "1")
+                lock_pipe.set(locked_key, "1", ex=self.lockout_seconds)
                 lock_pipe.delete(attempts_key)
                 await lock_pipe.execute()
             except Exception:

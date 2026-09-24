@@ -87,10 +87,10 @@ class RedisTokenBlacklist(TokenBlacklist):
 
     async def add(self, jti: str, ttl_seconds: int | None = None) -> None:
         # Check `is None`, not falsy: a ttl of 0 means "already expired" and must
-        # floor to a 1s entry, never silently fall back to the default. setex
-        # also rejects a 0 ttl outright.
+        # floor to a 1s entry, never silently fall back to the default. Redis
+        # rejects a 0 expiry outright.
         ttl = self._default_ttl if ttl_seconds is None else max(1, ttl_seconds)
-        await self._redis.setex(f"{self._prefix}{jti}", ttl, "1")
+        await self._redis.set(f"{self._prefix}{jti}", "1", ex=ttl)
 
     async def is_blacklisted(self, jti: str) -> bool:
         return await self.is_any_blacklisted(jti)

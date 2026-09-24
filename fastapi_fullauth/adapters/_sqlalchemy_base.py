@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 from typing import Any, TypeVar, cast
 from uuid import UUID
 
-from sqlalchemy import CursorResult, delete, select, update
+from sqlalchemy import CursorResult, Result, delete, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import selectinload
@@ -258,6 +258,22 @@ class _BaseSQLAlchemyAdapter(
                 await session.rollback()
                 raise
 
+    @staticmethod
+    async def _execute(session: AsyncSession, statement: Any) -> Result[Any]:
+        """Run a statement through SQLAlchemy's own ``execute()``.
+
+        SQLModel's ``AsyncSession`` deprecates ``execute()`` in favour of
+        ``exec()``, but ``exec()`` does not exist on a plain SQLAlchemy session
+        and this base serves both. Its override only delegates to the parent, so
+        calling the parent directly is identical and warns for nobody. Results
+        stay ``Row`` objects, hence the ``.scalars()`` calls throughout.
+
+        SQLAlchemy infers the row type from the statement at the call site; it
+        cannot do that through a helper, so a caller that needs the column type
+        narrows it itself.
+        """
+        return await AsyncSession.execute(session, statement)
+
     def _user_query(self) -> Any:
         # Eager-load roles so _to_schema() can read user.roles outside the session
         # without triggering an async refresh.
@@ -278,7 +294,9 @@ class _BaseSQLAlchemyAdapter(
 
     async def get_user_by_id(self, user_id: UserID) -> UserSchemaType | None:
         async with self._begin() as session:
-            result = await session.execute(self._user_query().where(self._user_model.id == user_id))
+            result = await self._execute(
+                session, self._user_query().where(self._user_model.id == user_id)
+            )
             user = result.scalars().first()
             return self._to_schema(user) if user else None
 
@@ -294,7 +312,7 @@ class _BaseSQLAlchemyAdapter(
         if field == "email":
             value = normalize_email(value)
         async with self._begin() as session:
-            result = await session.execute(self._user_query().where(column == value))
+            result = await self._execute(session, self._user_query().where(column == value))
             user = result.scalars().first()
             return self._to_schema(user) if user else None
 
@@ -316,7 +334,9 @@ class _BaseSQLAlchemyAdapter(
                     f"User with email {normalized_email} already exists"
                 ) from e
             # Re-fetch with roles eager-loaded so _to_schema works outside the session.
-            result = await session.execute(self._user_query().where(self._user_model.id == user.id))
+            result = await self._execute(
+                session, self._user_query().where(self._user_model.id == user.id)
+            )
             user = result.scalars().first()
             assert user is not None
             await self._commit(session)
@@ -329,11 +349,14 @@ class _BaseSQLAlchemyAdapter(
             if data:
                 # Skip an empty UPDATE: update(...).values() with no columns is a
                 # compile error in SQLAlchemy. An empty update is a no-op anyway.
-                await session.execute(
-                    update(self._user_model).where(self._user_model.id == user_id).values(**data)
+                await self._execute(
+                    session,
+                    update(self._user_model).where(self._user_model.id == user_id).values(**data),
                 )
                 await self._commit(session)
-            result = await session.execute(self._user_query().where(self._user_model.id == user_id))
+            result = await self._execute(
+                session, self._user_query().where(self._user_model.id == user_id)
+            )
             user = result.scalars().first()
             if user is None:
                 raise ValueError(f"User {user_id} not found")
@@ -341,8 +364,8 @@ class _BaseSQLAlchemyAdapter(
 
     async def delete_user(self, user_id: UserID) -> None:
         async with self._begin() as session:
-            result = await session.execute(
-                select(self._user_model).where(self._user_model.id == user_id)
+            result = await self._execute(
+                session, select(self._user_model).where(self._user_model.id == user_id)
             )
             user = result.scalars().first()
             if user:
@@ -353,7 +376,9 @@ class _BaseSQLAlchemyAdapter(
         if not hasattr(self._user_model, "roles"):
             return []
         async with self._begin() as session:
-            result = await session.execute(self._user_query().where(self._user_model.id == user_id))
+            result = await self._execute(
+                session, self._user_query().where(self._user_model.id == user_id)
+            )
             user = result.scalars().first()
             if user is None:
                 return []
@@ -361,17 +386,19 @@ class _BaseSQLAlchemyAdapter(
 
     async def get_hashed_password(self, user_id: UserID) -> str | None:
         async with self._begin() as session:
-            result = await session.execute(
-                select(self._user_model.hashed_password).where(self._user_model.id == user_id)
+            result = await self._execute(
+                session,
+                select(self._user_model.hashed_password).where(self._user_model.id == user_id),
             )
-            return result.scalars().first()
+            return cast("str | None", result.scalars().first())
 
     async def set_password(self, user_id: UserID, hashed_password: str) -> None:
         async with self._begin() as session:
-            await session.execute(
+            await self._execute(
+                session,
                 update(self._user_model)
                 .where(self._user_model.id == user_id)
-                .values(hashed_password=hashed_password)
+                .values(hashed_password=hashed_password),
             )
             await self._commit(session)
 
@@ -391,10 +418,11 @@ class _BaseSQLAlchemyAdapter(
 
     async def get_refresh_token(self, token_str: str) -> RefreshToken | None:
         async with self._begin() as session:
-            result = await session.execute(
+            result = await self._execute(
+                session,
                 select(self._refresh_token_model).where(
                     self._refresh_token_model.token == token_str
-                )
+                ),
             )
             row = result.scalars().first()
             if row is None:
@@ -413,11 +441,12 @@ class _BaseSQLAlchemyAdapter(
         async with self._begin() as session:
             result = cast(
                 "CursorResult[Any]",
-                await session.execute(
+                await self._execute(
+                    session,
                     update(self._refresh_token_model)
                     .where(self._refresh_token_model.token == token_str)
                     .where(self._refresh_token_model.revoked.is_(False))
-                    .values(revoked=True)
+                    .values(revoked=True),
                 ),
             )
             await self._commit(session)
@@ -425,19 +454,21 @@ class _BaseSQLAlchemyAdapter(
 
     async def revoke_refresh_token_family(self, family_id: str) -> None:
         async with self._begin() as session:
-            await session.execute(
+            await self._execute(
+                session,
                 update(self._refresh_token_model)
                 .where(self._refresh_token_model.family_id == family_id)
-                .values(revoked=True)
+                .values(revoked=True),
             )
             await self._commit(session)
 
     async def revoke_all_user_refresh_tokens(self, user_id: UserID) -> None:
         async with self._begin() as session:
-            await session.execute(
+            await self._execute(
+                session,
                 update(self._refresh_token_model)
                 .where(self._refresh_token_model.user_id == user_id)
-                .values(revoked=True)
+                .values(revoked=True),
             )
             await self._commit(session)
 
@@ -446,10 +477,11 @@ class _BaseSQLAlchemyAdapter(
         async with self._begin() as session:
             result = cast(
                 "CursorResult[Any]",
-                await session.execute(
+                await self._execute(
+                    session,
                     delete(self._refresh_token_model).where(
                         self._refresh_token_model.expires_at < cutoff
-                    )
+                    ),
                 ),
             )
             await self._commit(session)
@@ -459,8 +491,8 @@ class _BaseSQLAlchemyAdapter(
         model = self._refresh_token_model
         now = datetime.now(timezone.utc)
         async with self._begin() as session:
-            result = await session.execute(
-                select(model).where(model.user_id == user_id).order_by(model.created_at)
+            result = await self._execute(
+                session, select(model).where(model.user_id == user_id).order_by(model.created_at)
             )
             rows = result.scalars().all()
 
@@ -496,19 +528,21 @@ class _BaseSQLAlchemyAdapter(
             # rows (re-revoking an already-revoked family) reports rowcount 0,
             # which would wrongly 404 a session the user still owns. The contract
             # is idempotent: True if a row existed for (user_id, family_id).
-            existing = await session.execute(
+            existing = await self._execute(
+                session,
                 select(model.id)
                 .where(model.user_id == user_id)
                 .where(model.family_id == family_id)
-                .limit(1)
+                .limit(1),
             )
             if existing.first() is None:
                 return False
-            await session.execute(
+            await self._execute(
+                session,
                 update(model)
                 .where(model.user_id == user_id)
                 .where(model.family_id == family_id)
-                .values(revoked=True)
+                .values(revoked=True),
             )
             await self._commit(session)
             return True
@@ -518,12 +552,13 @@ class _BaseSQLAlchemyAdapter(
         async with self._begin() as session:
             result = cast(
                 "CursorResult[Any]",
-                await session.execute(
+                await self._execute(
+                    session,
                     update(model)
                     .where(model.user_id == user_id)
                     .where(model.family_id != keep_family_id)
                     .where(model.revoked.is_(False))
-                    .values(revoked=True)
+                    .values(revoked=True),
                 ),
             )
             await self._commit(session)
@@ -531,10 +566,11 @@ class _BaseSQLAlchemyAdapter(
 
     async def set_user_verified(self, user_id: UserID) -> None:
         async with self._begin() as session:
-            await session.execute(
+            await self._execute(
+                session,
                 update(self._user_model)
                 .where(self._user_model.id == user_id)
-                .values(is_verified=True)
+                .values(is_verified=True),
             )
             await self._commit(session)
 
@@ -542,14 +578,18 @@ class _BaseSQLAlchemyAdapter(
         role_model = self._require(self._role_model, "Role assignment")
 
         async with self._begin() as session:
-            result = await session.execute(select(role_model).where(role_model.name == role_name))
+            result = await self._execute(
+                session, select(role_model).where(role_model.name == role_name)
+            )
             role = result.scalars().first()
             if role is None:
                 role = role_model(name=role_name)
                 session.add(role)
                 await session.flush()
 
-            result = await session.execute(self._user_query().where(self._user_model.id == user_id))
+            result = await self._execute(
+                session, self._user_query().where(self._user_model.id == user_id)
+            )
             user = result.scalars().first()
             if user and role not in user.roles:
                 user.roles.append(role)
@@ -558,7 +598,9 @@ class _BaseSQLAlchemyAdapter(
 
     async def remove_role(self, user_id: UserID, role_name: str) -> None:
         async with self._begin() as session:
-            result = await session.execute(self._user_query().where(self._user_model.id == user_id))
+            result = await self._execute(
+                session, self._user_query().where(self._user_model.id == user_id)
+            )
             user = result.scalars().first()
             if user:
                 user.roles = [r for r in user.roles if r.name != role_name]
@@ -573,14 +615,15 @@ class _BaseSQLAlchemyAdapter(
         role_permission_model = self._require(self._role_permission_model, "Permissions")
 
         async with self._begin() as session:
-            result = await session.execute(
+            result = await self._execute(
+                session,
                 select(permission_model.name)
                 .join(
                     role_permission_model,
                     permission_model.id == role_permission_model.permission_id,
                 )
                 .join(role_model, role_model.id == role_permission_model.role_id)
-                .where(role_model.name.in_(role_names))
+                .where(role_model.name.in_(role_names)),
             )
             return list(set(result.scalars().all()))
 
@@ -590,14 +633,15 @@ class _BaseSQLAlchemyAdapter(
         role_permission_model = self._require(self._role_permission_model, "Permissions")
 
         async with self._begin() as session:
-            result = await session.execute(
+            result = await self._execute(
+                session,
                 select(permission_model.name)
                 .join(
                     role_permission_model,
                     permission_model.id == role_permission_model.permission_id,
                 )
                 .join(role_model, role_model.id == role_permission_model.role_id)
-                .where(role_model.name == role_name)
+                .where(role_model.name == role_name),
             )
             return list(result.scalars().all())
 
@@ -607,15 +651,17 @@ class _BaseSQLAlchemyAdapter(
         role_permission_model = self._require(self._role_permission_model, "Permissions")
 
         async with self._begin() as session:
-            result = await session.execute(select(role_model).where(role_model.name == role_name))
+            result = await self._execute(
+                session, select(role_model).where(role_model.name == role_name)
+            )
             role = result.scalars().first()
             if role is None:
                 role = role_model(name=role_name)
                 session.add(role)
                 await session.flush()
 
-            result = await session.execute(
-                select(permission_model).where(permission_model.name == permission)
+            result = await self._execute(
+                session, select(permission_model).where(permission_model.name == permission)
             )
             perm = result.scalars().first()
             if perm is None:
@@ -623,11 +669,12 @@ class _BaseSQLAlchemyAdapter(
                 session.add(perm)
                 await session.flush()
 
-            result = await session.execute(
+            result = await self._execute(
+                session,
                 select(role_permission_model).where(
                     role_permission_model.role_id == role.id,
                     role_permission_model.permission_id == perm.id,
-                )
+                ),
             )
             if result.scalars().first() is None:
                 session.add(role_permission_model(role_id=role.id, permission_id=perm.id))
@@ -639,23 +686,26 @@ class _BaseSQLAlchemyAdapter(
         role_permission_model = self._require(self._role_permission_model, "Permissions")
 
         async with self._begin() as session:
-            result = await session.execute(select(role_model).where(role_model.name == role_name))
+            result = await self._execute(
+                session, select(role_model).where(role_model.name == role_name)
+            )
             role = result.scalars().first()
             if role is None:
                 return
 
-            result = await session.execute(
-                select(permission_model).where(permission_model.name == permission)
+            result = await self._execute(
+                session, select(permission_model).where(permission_model.name == permission)
             )
             perm = result.scalars().first()
             if perm is None:
                 return
 
-            result = await session.execute(
+            result = await self._execute(
+                session,
                 select(role_permission_model).where(
                     role_permission_model.role_id == role.id,
                     role_permission_model.permission_id == perm.id,
-                )
+                ),
             )
             link = result.scalars().first()
             if link:
@@ -678,11 +728,12 @@ class _BaseSQLAlchemyAdapter(
     async def get_oauth_account(self, provider: str, provider_user_id: str) -> OAuthAccount | None:
         oauth_model = self._require(self._oauth_account_model, "OAuth")
         async with self._begin() as session:
-            result = await session.execute(
+            result = await self._execute(
+                session,
                 select(oauth_model).where(
                     oauth_model.provider == provider,
                     oauth_model.provider_user_id == provider_user_id,
-                )
+                ),
             )
             row = result.scalars().first()
             return self._to_oauth_account(row) if row else None
@@ -690,8 +741,8 @@ class _BaseSQLAlchemyAdapter(
     async def get_user_oauth_accounts(self, user_id: UserID) -> list[OAuthAccount]:
         oauth_model = self._require(self._oauth_account_model, "OAuth")
         async with self._begin() as session:
-            result = await session.execute(
-                select(oauth_model).where(oauth_model.user_id == user_id)
+            result = await self._execute(
+                session, select(oauth_model).where(oauth_model.user_id == user_id)
             )
             return [self._to_oauth_account(row) for row in result.scalars().all()]
 
@@ -713,11 +764,12 @@ class _BaseSQLAlchemyAdapter(
                 # Concurrent OAuth callback for the same (provider, provider_user_id)
                 # won the insert. Return the existing row; both callers linked the
                 # same identity, which is the intended outcome.
-                result = await session.execute(
+                result = await self._execute(
+                    session,
                     select(oauth_model).where(
                         oauth_model.provider == data.provider,
                         oauth_model.provider_user_id == data.provider_user_id,
-                    )
+                    ),
                 )
                 existing = result.scalars().first()
                 if existing is not None:
@@ -732,13 +784,14 @@ class _BaseSQLAlchemyAdapter(
         oauth_model = self._require(self._oauth_account_model, "OAuth")
         async with self._begin() as session:
             if data:
-                await session.execute(
+                await self._execute(
+                    session,
                     update(oauth_model)
                     .where(
                         oauth_model.provider == provider,
                         oauth_model.provider_user_id == provider_user_id,
                     )
-                    .values(**data)
+                    .values(**data),
                 )
                 await self._commit(session)
             return await self.get_oauth_account(provider, provider_user_id)
@@ -746,11 +799,12 @@ class _BaseSQLAlchemyAdapter(
     async def delete_oauth_account(self, provider: str, provider_user_id: str) -> None:
         oauth_model = self._require(self._oauth_account_model, "OAuth")
         async with self._begin() as session:
-            result = await session.execute(
+            result = await self._execute(
+                session,
                 select(oauth_model).where(
                     oauth_model.provider == provider,
                     oauth_model.provider_user_id == provider_user_id,
-                )
+                ),
             )
             row = result.scalars().first()
             if row:
@@ -776,8 +830,8 @@ class _BaseSQLAlchemyAdapter(
     async def get_passkey_by_credential_id(self, credential_id: str) -> PasskeyCredential | None:
         passkey_model = self._require(self._passkey_model, "Passkeys")
         async with self._begin() as session:
-            result = await session.execute(
-                select(passkey_model).where(passkey_model.credential_id == credential_id)
+            result = await self._execute(
+                session, select(passkey_model).where(passkey_model.credential_id == credential_id)
             )
             row = result.scalars().first()
             return self._to_passkey(row) if row else None
@@ -785,8 +839,8 @@ class _BaseSQLAlchemyAdapter(
     async def get_user_passkeys(self, user_id: UserID) -> list[PasskeyCredential]:
         passkey_model = self._require(self._passkey_model, "Passkeys")
         async with self._begin() as session:
-            result = await session.execute(
-                select(passkey_model).where(passkey_model.user_id == user_id)
+            result = await self._execute(
+                session, select(passkey_model).where(passkey_model.user_id == user_id)
             )
             return [self._to_passkey(row) for row in result.scalars().all()]
 
@@ -813,11 +867,12 @@ class _BaseSQLAlchemyAdapter(
         async with self._begin() as session:
             result = cast(
                 "CursorResult[Any]",
-                await session.execute(
+                await self._execute(
+                    session,
                     update(passkey_model)
                     .where(passkey_model.credential_id == credential_id)
                     .where(passkey_model.sign_count < sign_count)
-                    .values(sign_count=sign_count, last_used_at=now)
+                    .values(sign_count=sign_count, last_used_at=now),
                 ),
             )
             if result.rowcount == 0:
@@ -825,10 +880,11 @@ class _BaseSQLAlchemyAdapter(
                 # counter (both stored and new are 0) or a concurrent writer already wrote
                 # a value >= ours. Touch last_used_at for the no-counter case; caller
                 # decides whether to reject based on the new_sign_count value.
-                await session.execute(
+                await self._execute(
+                    session,
                     update(passkey_model)
                     .where(passkey_model.credential_id == credential_id)
-                    .values(last_used_at=now)
+                    .values(last_used_at=now),
                 )
                 await self._commit(session)
                 return False
@@ -838,8 +894,8 @@ class _BaseSQLAlchemyAdapter(
     async def delete_passkey(self, passkey_id: UUID) -> None:
         passkey_model = self._require(self._passkey_model, "Passkeys")
         async with self._begin() as session:
-            result = await session.execute(
-                select(passkey_model).where(passkey_model.id == passkey_id)
+            result = await self._execute(
+                session, select(passkey_model).where(passkey_model.id == passkey_id)
             )
             row = result.scalars().first()
             if row:

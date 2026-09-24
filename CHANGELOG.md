@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- **The SQL adapters no longer call an API that SQLModel deprecates.** `_BaseSQLAlchemyAdapter` is shared by the SQLAlchemy and SQLModel adapters, and its 40 `session.execute()` calls emitted a `DeprecationWarning` for anyone using SQLModel's `AsyncSession`, which is one of the two setups the documentation offers. Applications that treat warnings as errors failed on it. `exec()` cannot replace it, because a plain SQLAlchemy session does not have one and the base serves both; the calls now go through a helper that invokes SQLAlchemy's own `execute()` directly. SQLModel's override does nothing but delegate to it, so behaviour is identical and results are still `Row` objects.
+- **Redis writes use `set(..., ex=)` instead of `setex`,** which redis-py has deprecated since 2.6.12. Affects the token blacklist, the passkey challenge store, and the lockout manager. Stored values and expiries are unchanged.
+- **The SQLModel adapter contract runs against both documented session classes.** Every test built its sessions with SQLAlchemy's `AsyncSession`, so the SQLModel one had no coverage at all, which is why the deprecation above reached an application instead of CI. The conformance suite now runs a second time with `class_=AsyncSession` from SQLModel.
+- **The test suite treats deprecations as errors,** with no ignore entries. A deprecation that cannot be fixed yet gets its own line naming what it waits for, rather than a blanket suppression.
+- **Dependencies refreshed and verified against the newest releases,** including uuid-utils 1.0, SQLModel 0.0.47, SQLAlchemy 2.0.54, PyJWT 2.15, Starlette 1.7 and pymdown-extensions 12. The declared version floors are unchanged: they state the oldest release the library works with, not the newest it was tested against, and nothing here requires a newer one.
+
 ## 0.17.0
 
 ### Added
