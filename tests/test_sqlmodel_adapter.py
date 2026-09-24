@@ -4,11 +4,31 @@ The `db` and `adapter` fixtures come from tests/conftest.py; the shared
 contract runs via the AdapterConformance subclass below.
 """
 
+import pytest
+from sqlmodel.ext.asyncio.session import AsyncSession
+
 from tests.adapter_conformance import AdapterConformance
+from tests.conftest import make_engine_and_sessionmaker
 
 
 class TestSQLModelAdapterConformance(AdapterConformance):
-    pass
+    """Against SQLAlchemy's AsyncSession, which the docs offer first."""
+
+
+class TestSQLModelAdapterWithSQLModelSession(AdapterConformance):
+    """Against SQLModel's own AsyncSession, the other documented setup.
+
+    It is not interchangeable with SQLAlchemy's: it overrides `execute()` and
+    deprecates it. Running the whole contract here is what makes the
+    deprecations-as-errors setting mean something for this adapter; without it
+    that setting passes whether or not the adapter calls a deprecated API.
+    """
+
+    @pytest.fixture
+    async def db(self):
+        engine, session_maker = await make_engine_and_sessionmaker(AsyncSession)
+        yield session_maker
+        await engine.dispose()
 
 
 # --- Schema parity with the SQLAlchemy mixins --------------------------

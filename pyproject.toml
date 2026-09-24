@@ -123,6 +123,12 @@ disable_error_code = ["attr-defined", "arg-type"]
 
 [tool.pytest]
 filterwarnings = [
+  # Deprecations are failures, not notes: we find out on our own schedule
+  # instead of when a consumer's upgrade breaks. No ignore entries here by
+  # design - a deprecation we cannot fix yet gets its own line naming what it
+  # waits for, so the list stays reviewable.
+  "error::DeprecationWarning",
+  "error::PendingDeprecationWarning",
   "ignore:In-memory backends in use:UserWarning",
 ]
 testpaths = ["tests"]

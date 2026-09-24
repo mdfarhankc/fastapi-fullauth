@@ -62,8 +62,13 @@ class User(UserMixin, table=True):
     refresh_tokens: list[RefreshToken] = Relationship(cascade_delete=True)
 
 
-@pytest.fixture
-async def db():
+async def make_engine_and_sessionmaker(session_class=None):
+    """A fresh in-memory database and a session maker for it.
+
+    ``session_class`` picks the session type: the default is SQLAlchemy's, and
+    the SQLModel adapter is also documented against SQLModel's own AsyncSession,
+    which behaves differently enough to be worth running the contract against.
+    """
     engine = create_async_engine("sqlite+aiosqlite://", echo=False)
 
     # pysqlite/aiosqlite emit BEGIN lazily, which breaks SAVEPOINT and rollback
@@ -77,9 +82,16 @@ async def db():
     def _sqlite_emit_begin(conn):
         conn.exec_driver_sql("BEGIN")
 
-    session_maker = async_sessionmaker(engine, expire_on_commit=False)
+    extra = {"class_": session_class} if session_class is not None else {}
+    session_maker = async_sessionmaker(engine, expire_on_commit=False, **extra)
     async with engine.begin() as conn:
         await conn.run_sync(SQLModel.metadata.create_all)
+    return engine, session_maker
+
+
+@pytest.fixture
+async def db():
+    engine, session_maker = await make_engine_and_sessionmaker()
     yield session_maker
     await engine.dispose()
 
