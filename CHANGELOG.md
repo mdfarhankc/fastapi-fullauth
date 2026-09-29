@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.17.2
+
+### Fixed
+
+- **The Redis challenge store raised on a non-positive TTL** where the in-memory one wrote an entry that was simply already expired. With `PASSKEY_CHALLENGE_TTL` set to `0`, beginning a passkey sign-in answered `500` on Redis, on a route that needs no account. Both backends now agree: nothing is stored and the next `pop()` returns `None`.
+- **Numeric settings reject values that cannot work.** Durations, expiries, attempt counts and rate-limit caps are validated at construction, so a mistake fails at startup instead of somewhere unrelated later: `MAX_LOGIN_ATTEMPTS=0` locked every account on its first failed login, and `PASSKEY_CHALLENGE_TTL=0` raised from Redis mid-request. The three settings that document a meaningful zero keep it: `JWT_LEEWAY_SECONDS`, `PASSWORD_MAX_LENGTH` and `REAUTH_MAX_AGE_SECONDS`. **If your configuration holds one of these impossible values, the application now refuses to start and says which setting.**
+- **Auth rate limits shared one bucket per IP on Redis.** Each route gets its own limiter with its own cap, but the key was the client IP alone, and every Redis-backed limiter writes into the same keyspace, so all six auth routes counted into a single sorted set. The smallest cap won for all of them: with `register` at 3, any three auth requests, a token refresh or a failed login included, returned `429` on the next registration attempt for the rest of the window. It also broke the separation `reauth` was given in 0.17.0, where failed password checks were meant not to touch the sign-in budget. The key now carries the route name. Only Redis was affected; the in-memory backend keeps its counts per limiter instance, which is why the test suite never saw it, and why the new regression test runs against both backends. **Note:** the key format changed, so existing counters reset once on deploy.
+
 ## 0.17.1
 
 ### Changed

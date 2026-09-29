@@ -278,3 +278,25 @@ async def test_challenge_store_evicts_challenges_that_were_never_used():
         await store.store("fresh", "c", ttl=60)
 
     assert list(store._store) == ["fresh"]
+
+
+@pytest.mark.asyncio
+async def test_challenge_stores_agree_on_a_non_positive_ttl():
+    """Redis rejects a non-positive expiry where the in-memory store writes an
+    entry that is already expired. Production picks the Redis backend whenever
+    REDIS_URL is set, so a divergence here is a 500 on a route that needs no
+    account, reachable by setting PASSKEY_CHALLENGE_TTL badly."""
+    import fakeredis.aioredis
+
+    from fastapi_fullauth.protection.challenges import RedisChallengeStore
+
+    memory = InMemoryChallengeStore()
+    redis = RedisChallengeStore.__new__(RedisChallengeStore)
+    redis._redis = fakeredis.aioredis.FakeRedis(decode_responses=True)
+    redis._prefix = "fullauth:challenge:"
+
+    for ttl in (0, -5):
+        await memory.store("k", "challenge", ttl=ttl)
+        await redis.store("k", "challenge", ttl=ttl)
+        assert await memory.pop("k") is None
+        assert await redis.pop("k") is None

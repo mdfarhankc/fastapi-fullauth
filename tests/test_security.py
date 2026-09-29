@@ -790,3 +790,59 @@ async def test_in_memory_sweep_never_drops_live_entries():
         await blacklist.add("trigger", ttl_seconds=10)
         assert await blacklist.is_blacklisted("long-lived")
         assert "short" not in blacklist._blacklisted
+
+
+# ── Auth rate limits are per route ───────────────────────────────────
+
+
+def _auth_limiter(backend: str):
+    """An AuthRateLimiter on the given backend, with Redis faked in place.
+
+    The Redis limiters are built by the real code path, then pointed at one
+    shared fake server, which is what makes a cross-route collision visible.
+    """
+    from fastapi_fullauth import FullAuthConfig
+    from fastapi_fullauth.protection.ratelimit import AuthRateLimiter
+
+    kwargs = {"SECRET_KEY": "test-secret-key-that-is-long-enough-32b", "BACKEND": backend}
+    if backend == "redis":
+        kwargs["REDIS_URL"] = "redis://rate-limit-test:6379/0"
+    limiter = AuthRateLimiter(FullAuthConfig(**kwargs))
+
+    if backend == "redis":
+        import fakeredis.aioredis
+
+        server = fakeredis.aioredis.FakeServer()
+        for each in limiter._limiters.values():
+            each._redis = fakeredis.aioredis.FakeRedis(server=server, decode_responses=True)
+    return limiter
+
+
+@pytest.mark.parametrize("backend", ["memory", "redis"])
+@pytest.mark.asyncio
+async def test_auth_routes_do_not_share_a_rate_limit_bucket(backend):
+    """Every Redis limiter shares one keyspace, so the key has to carry the
+    route. Keyed on the IP alone, all six routes counted into one bucket and the
+    smallest cap won: three refreshes locked out registration. The in-memory
+    backend counts per instance and never showed it, hence both backends here."""
+    from fastapi import HTTPException
+
+    limiter = _auth_limiter(backend)
+    ip = "203.0.113.9"
+
+    # refresh allows 30; spend enough to exhaust register's cap of 3.
+    for _ in range(5):
+        await limiter.check("refresh", ip)
+
+    # register has not been called at all, so it must still have its full cap.
+    for _ in range(3):
+        await limiter.check("register", ip)
+
+    with pytest.raises(HTTPException) as exc:
+        await limiter.check("register", ip)
+    assert exc.value.status_code == 429
+
+    # And exhausting register must leave the documented separate bucket alone.
+    await limiter.check("reauth", ip)
+
+    await limiter.aclose()

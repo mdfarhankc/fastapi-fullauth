@@ -40,6 +40,14 @@ class AuthRateLimits:
     # bucket, so failed attempts cannot exhaust an IP's sign-in budget.
     reauth: int = 5
 
+    def __post_init__(self) -> None:
+        for name, value in vars(self).items():
+            if value < 1:
+                raise ValueError(
+                    f"AUTH_RATE_LIMITS.{name} must be at least 1; "
+                    f"{value} would reject every request to that route."
+                )
+
 
 class FullAuthConfig(BaseSettings):
     model_config = SettingsConfigDict(
@@ -61,19 +69,20 @@ class FullAuthConfig(BaseSettings):
     SECRET_KEY: str | None = None
     ALGORITHM: Literal["HS256", "HS384", "HS512"] = "HS256"
 
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
-    REFRESH_TOKEN_EXPIRE_DAYS: int = 30
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(default=30, ge=1)
+    REFRESH_TOKEN_EXPIRE_DAYS: int = Field(default=30, ge=1)
     REFRESH_TOKEN_ROTATION: bool = True
-    JWT_LEEWAY_SECONDS: int = 30
+    JWT_LEEWAY_SECONDS: int = Field(default=30, ge=0)
 
-    PASSWORD_RESET_EXPIRE_MINUTES: int = 15
-    EMAIL_VERIFY_EXPIRE_MINUTES: int = 1440
+    PASSWORD_RESET_EXPIRE_MINUTES: int = Field(default=15, ge=1)
+    EMAIL_VERIFY_EXPIRE_MINUTES: int = Field(default=1440, ge=1)
 
     PASSWORD_HASH_ALGORITHM: Literal["argon2id", "bcrypt"] = "argon2id"
-    PASSWORD_MIN_LENGTH: int = 8
+    PASSWORD_MIN_LENGTH: int = Field(default=8, ge=1)
     # Upper bound so an attacker can't spend the server's CPU hashing a huge
     # body. bcrypt caps at 72 bytes anyway; argon2 will hash whatever it is given.
-    PASSWORD_MAX_LENGTH: int = 4096
+    # 0 disables the cap, hence ge=0 rather than ge=1.
+    PASSWORD_MAX_LENGTH: int = Field(default=4096, ge=0)
 
     LOGIN_FIELD: str = "email"
     # When True, login runs a dummy password verify on unknown-user / no-password
@@ -86,12 +95,12 @@ class FullAuthConfig(BaseSettings):
     # destructive action (deleting the account, setting a first password).
     # Supplying the current password proves it too. 0 accepts only the password,
     # which locks passwordless accounts out of those actions.
-    REAUTH_MAX_AGE_SECONDS: int = 300
+    REAUTH_MAX_AGE_SECONDS: int = Field(default=300, ge=0)
 
     LOCKOUT_ENABLED: bool = True
     LOCKOUT_BACKEND: Literal["memory", "redis"] = "memory"
-    MAX_LOGIN_ATTEMPTS: int = 5
-    LOCKOUT_DURATION_MINUTES: int = 15
+    MAX_LOGIN_ATTEMPTS: int = Field(default=5, ge=1)
+    LOCKOUT_DURATION_MINUTES: int = Field(default=15, ge=1)
 
     RATE_LIMIT_BACKEND: Literal["memory", "redis"] = "memory"
     TRUSTED_PROXY_HEADERS: Annotated[list[str], NoDecode] = []
@@ -104,14 +113,14 @@ class FullAuthConfig(BaseSettings):
 
     AUTH_RATE_LIMIT_ENABLED: bool = True
     AUTH_RATE_LIMITS: AuthRateLimits = Field(default_factory=AuthRateLimits)
-    AUTH_RATE_LIMIT_WINDOW_SECONDS: int = 60
+    AUTH_RATE_LIMIT_WINDOW_SECONDS: int = Field(default=60, ge=1)
 
     REDIS_URL: str | None = None
 
     BLACKLIST_ENABLED: bool = True
     BLACKLIST_BACKEND: Literal["memory", "redis"] = "memory"
 
-    OAUTH_STATE_EXPIRE_SECONDS: int = 300
+    OAUTH_STATE_EXPIRE_SECONDS: int = Field(default=300, ge=1)
     OAUTH_AUTO_LINK_BY_EMAIL: bool = True
     OAUTH_PKCE_ENABLED: bool = True
 
@@ -124,7 +133,7 @@ class FullAuthConfig(BaseSettings):
     PASSKEY_RP_NAME: str | None = None
     PASSKEY_ORIGINS: Annotated[list[str], NoDecode] = []
     PASSKEY_CHALLENGE_BACKEND: Literal["memory", "redis"] = "memory"
-    PASSKEY_CHALLENGE_TTL: int = 60
+    PASSKEY_CHALLENGE_TTL: int = Field(default=60, ge=1)
     PASSKEY_REQUIRE_USER_VERIFICATION: bool = True
 
     API_PREFIX: str = "/api/v1"

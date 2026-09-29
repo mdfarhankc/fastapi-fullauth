@@ -1,4 +1,4 @@
-__version__ = "0.17.1"
+__version__ = "0.17.2"
 
 from fastapi_fullauth.config import AuthRateLimits, FullAuthConfig
 from fastapi_fullauth.fullauth import FullAuth
