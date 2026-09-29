@@ -124,6 +124,11 @@ If you want to be defensively explicit that no file is ever read, pass `FullAuth
 
 ## Reference
 
+Durations, expiries, attempt counts and rate-limit caps must be at least 1, and a
+value that cannot work is rejected when the config is constructed rather than
+failing somewhere unrelated later. `JWT_LEEWAY_SECONDS`, `PASSWORD_MAX_LENGTH`
+and `REAUTH_MAX_AGE_SECONDS` accept `0`, which means something for each of them.
+
 ### Core
 
 | Option | Type | Default | Description |

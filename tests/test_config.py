@@ -7,6 +7,7 @@ import warnings
 import pytest
 from fastapi import FastAPI, Request
 from httpx import ASGITransport, AsyncClient
+from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlmodel import SQLModel
 
@@ -14,6 +15,8 @@ from fastapi_fullauth import AuthRateLimits, FullAuth, FullAuthConfig, PasswordV
 from fastapi_fullauth.dependencies import current_user
 from fastapi_fullauth.types import CreateUserSchema, UserSchema
 from tests.conftest import make_test_adapter
+
+SECRET = "test-secret-key-that-is-long-enough-32b"
 
 
 async def _make_db():
@@ -974,3 +977,48 @@ async def test_cookie_backend_with_csrf_no_warning(config, adapter):
     with warnings.catch_warnings():
         warnings.simplefilter("error")
         fa.init_app(app)
+
+
+# ── Numeric settings reject values that cannot work ──────────────────
+
+
+@pytest.mark.parametrize(
+    "setting",
+    [
+        "ACCESS_TOKEN_EXPIRE_MINUTES",
+        "REFRESH_TOKEN_EXPIRE_DAYS",
+        "PASSWORD_RESET_EXPIRE_MINUTES",
+        "EMAIL_VERIFY_EXPIRE_MINUTES",
+        "MAX_LOGIN_ATTEMPTS",
+        "LOCKOUT_DURATION_MINUTES",
+        "AUTH_RATE_LIMIT_WINDOW_SECONDS",
+        "OAUTH_STATE_EXPIRE_SECONDS",
+        "PASSKEY_CHALLENGE_TTL",
+    ],
+)
+def test_non_positive_durations_and_counts_are_rejected(setting):
+    """Zero or negative here is never meaningful, and the failure it causes is
+    remote from the cause: PASSKEY_CHALLENGE_TTL=0 raised from Redis on a public
+    route, and MAX_LOGIN_ATTEMPTS=0 locked every account on its first failure.
+    Fail at construction instead."""
+    with pytest.raises(ValidationError):
+        FullAuthConfig(SECRET_KEY=SECRET, **{setting: 0})
+
+
+def test_the_meaningful_zeros_are_still_accepted():
+    """Three settings document zero as a real choice, so they must keep it."""
+    config = FullAuthConfig(
+        SECRET_KEY=SECRET,
+        JWT_LEEWAY_SECONDS=0,  # clock-sensitive tests rely on this
+        PASSWORD_MAX_LENGTH=0,  # disables the cap
+        REAUTH_MAX_AGE_SECONDS=0,  # accept only the current password
+    )
+    assert config.JWT_LEEWAY_SECONDS == 0
+    assert config.PASSWORD_MAX_LENGTH == 0
+    assert config.REAUTH_MAX_AGE_SECONDS == 0
+
+
+def test_a_rate_limit_cap_below_one_is_rejected():
+    """A cap of 0 rejects every request to that route, which nobody means."""
+    with pytest.raises(ValueError, match="at least 1"):
+        AuthRateLimits(login=0)

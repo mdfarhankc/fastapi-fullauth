@@ -257,10 +257,24 @@ class AuthRateLimiter:
 
     async def check(self, route_name: str, client_ip: str) -> None:
         limiter = self._limiters.get(route_name)
-        if limiter and not await limiter.is_allowed(client_ip):
+        if limiter is None:
+            return
+
+        # The route belongs in the key, not just in the limiter lookup. Every
+        # Redis-backed limiter shares one keyspace, so keying on the IP alone
+        # put all six routes in a single bucket and the smallest cap, register
+        # at 3, became the effective limit for all of them: three refreshes
+        # locked out registration for a minute. The in-memory backend keeps its
+        # counts per instance, which is why only Redis showed it. Namespacing
+        # here rather than inside a backend keeps custom backends working
+        # unchanged, and keeps these buckets clear of any limiter the
+        # application passes to RateLimitMiddleware.
+        key = f"{route_name}:{client_ip}"
+
+        if not await limiter.is_allowed(key):
             from fastapi import HTTPException
 
-            reset_in = await limiter.reset_time(client_ip)
+            reset_in = await limiter.reset_time(key)
             logger.warning("Auth rate limit exceeded: route=%s, ip=%s", route_name, client_ip)
             raise HTTPException(
                 status_code=429,

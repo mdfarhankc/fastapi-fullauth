@@ -82,6 +82,13 @@ class RedisChallengeStore(ChallengeStore):
         self._prefix = "fullauth:challenge:"
 
     async def store(self, key: str, challenge: str, ttl: int = 60) -> None:
+        # Redis rejects a non-positive expiry outright, where the in-memory store
+        # just writes an entry that is already expired. Skip the write instead,
+        # so both backends answer None to the next pop() rather than one of them
+        # raising into a 500 on a route that needs no account.
+        if ttl <= 0:
+            logger.warning("Challenge not stored; ttl=%s is not positive", ttl)
+            return
         await self._redis.set(f"{self._prefix}{key}", challenge, ex=ttl)
 
     async def pop(self, key: str) -> str | None:
