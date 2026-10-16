@@ -1052,6 +1052,8 @@ sqlalchemy-standard = [
 ]
 sqlmodel = [
     { name = "alembic" },
+    { name = "sqlalchemy", version = "2.0.54", source = { registry = "https://pypi.org/simple" }, extra = ["asyncio"], marker = "python_full_version < '3.11'" },
+    { name = "sqlalchemy", version = "2.1.4", source = { registry = "https://pypi.org/simple" }, extra = ["asyncio"], marker = "python_full_version >= '3.11'" },
     { name = "sqlmodel" },
 ]
 sqlmodel-standard = [
@@ -1060,6 +1062,8 @@ sqlmodel-standard = [
     { name = "httpx" },
     { name = "pyotp" },
     { name = "redis" },
+    { name = "sqlalchemy", version = "2.0.54", source = { registry = "https://pypi.org/simple" }, extra = ["asyncio"], marker = "python_full_version < '3.11'" },
+    { name = "sqlalchemy", version = "2.1.4", source = { registry = "https://pypi.org/simple" }, extra = ["asyncio"], marker = "python_full_version >= '3.11'" },
     { name = "sqlmodel" },
     { name = "webauthn" },
 ]
@@ -1132,6 +1136,8 @@ requires-dist = [
     { name = "redis", marker = "extra == 'tortoise-standard'", specifier = ">=7.4.0" },
     { name = "sqlalchemy", extras = ["asyncio"], marker = "extra == 'sqlalchemy'", specifier = ">=2.0.49" },
     { name = "sqlalchemy", extras = ["asyncio"], marker = "extra == 'sqlalchemy-standard'", specifier = ">=2.0.49" },
+    { name = "sqlalchemy", extras = ["asyncio"], marker = "extra == 'sqlmodel'", specifier = ">=2.0.49" },
+    { name = "sqlalchemy", extras = ["asyncio"], marker = "extra == 'sqlmodel-standard'", specifier = ">=2.0.49" },
     { name = "sqlmodel", marker = "extra == 'sqlmodel'", specifier = ">=0.0.38" },
     { name = "sqlmodel", marker = "extra == 'sqlmodel-standard'", specifier = ">=0.0.38" },
     { name = "tortoise-orm", marker = "extra == 'tortoise'", specifier = ">=1.0" },
