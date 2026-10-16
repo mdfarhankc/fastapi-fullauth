@@ -52,6 +52,18 @@ the current password, or credentials checked within `REAUTH_MAX_AGE_SECONDS`
 credentials are checked and carried unchanged through refresh rotation, so
 refreshing a stolen token does not renew it.
 
+## Separating services that share a secret
+
+Without `JWT_ISSUER` and `JWT_AUDIENCE`, any service holding the same `SECRET_KEY`
+accepts tokens minted by any other: an access token for the admin tool works
+against the public API. Set them per service and each one accepts only its own
+tokens, password-reset links included.
+
+They are off by default, and an unset `JWT_AUDIENCE` means the claim is not
+checked, so you can turn it on at the issuing side and roll the verifying side
+forward afterwards. Once a service requires them, tokens minted before they were
+configured no longer validate, so expect one round of sign-outs.
+
 ## Your application's responsibilities
 
 - **Cross-site scripting.** Any token readable by JavaScript can be stolen by XSS. Prefer the cookie backend with `CSRFMiddleware` for browser apps, and use a Content Security Policy.
@@ -64,6 +76,5 @@ refreshing a stolen token does not renew it.
 These are tracked for future releases:
 
 - OAuth provider access and refresh tokens are stored in plaintext.
-- Tokens carry no `iss` or `aud` claim, so services sharing a `SECRET_KEY` accept each other's tokens.
 - Pruning expired refresh tokens is available (`adapter.prune_expired_refresh_tokens()`) but has to be scheduled by the application; nothing runs it for you.
 - A password-reset link is invalidated by a password change, but not by a later reset *request*: the newest link and any still-unused older one both work until one of them is used.

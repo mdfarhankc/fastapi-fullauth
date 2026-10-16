@@ -58,6 +58,7 @@ class TokenEngine:
             payload["family_id"] = family_id
         if auth_time is not None:
             payload["auth_time"] = int(auth_time.timestamp())
+        self._stamp_audience(payload)
         return jwt.encode(payload, self.config.SECRET_KEY, algorithm=self.config.ALGORITHM)
 
     def create_refresh_token(
@@ -83,8 +84,20 @@ class TokenEngine:
         # credential-check time to the next access token.
         if auth_time is not None:
             payload["auth_time"] = int(auth_time.timestamp())
+        self._stamp_audience(payload)
         token = jwt.encode(payload, self.config.SECRET_KEY, algorithm=self.config.ALGORITHM)
         return RefreshTokenMeta(token=token, expires_at=expires_at, family_id=resolved_family_id)
+
+    def _stamp_audience(self, payload: dict[str, Any]) -> None:
+        """Add the configured issuer and audience, if any.
+
+        Applied to every token the engine mints, session or purpose-scoped, so
+        one service cannot redeem another's password-reset link either.
+        """
+        if self.config.JWT_ISSUER is not None:
+            payload["iss"] = self.config.JWT_ISSUER
+        if self.config.JWT_AUDIENCE is not None:
+            payload["aud"] = self.config.JWT_AUDIENCE
 
     async def decode_token(
         self,
@@ -103,13 +116,30 @@ class TokenEngine:
         """
         if self.config.SECRET_KEY is None:
             raise RuntimeError("SECRET_KEY must be set to decode tokens")
+        verify: dict[str, Any] = {}
+        # PyJWT rejects a token carrying `aud` unless the caller names an
+        # audience. Leaving the setting unset has to mean "not checked", or
+        # enabling it on one instance would break every other instance mid
+        # rolling deploy, and nobody could turn it on without downtime.
+        # Typed as a TypedDict by PyJWT; built dynamically here, so Any.
+        options: Any = {"verify_aud": False, "require": ["exp", "iat", "sub"]}
+        # Naming either one is enough: PyJWT raises MissingRequiredClaim when the
+        # token does not carry it, so a token minted before the setting was added
+        # is rejected rather than quietly accepted.
+        if self.config.JWT_ISSUER is not None:
+            verify["issuer"] = self.config.JWT_ISSUER
+        if self.config.JWT_AUDIENCE is not None:
+            verify["audience"] = self.config.JWT_AUDIENCE
+            options["verify_aud"] = True
+
         try:
             data = jwt.decode(
                 token,
                 self.config.SECRET_KEY,
                 algorithms=[self.config.ALGORITHM],
                 leeway=self.config.JWT_LEEWAY_SECONDS,
-                options={"require": ["exp", "iat", "sub"]},
+                options=options,
+                **verify,
             )
         except jwt.ExpiredSignatureError:
             logger.debug("Token decode failed; expired")

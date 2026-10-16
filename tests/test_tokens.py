@@ -192,3 +192,113 @@ async def test_decode_token_tolerates_non_dict_extra(engine):
 
     payload = await engine.decode_token(raw)
     assert payload.extra == {}
+
+
+# ── Issuer and audience ──────────────────────────────────────────────
+
+
+def _engine(**overrides):
+    from fastapi_fullauth.core.tokens import TokenEngine
+
+    return TokenEngine(
+        config=FullAuthConfig(SECRET_KEY="test-secret-key-that-is-long-enough-32b", **overrides)
+    )
+
+
+def _claims(engine, token: str) -> dict:
+    import jwt
+
+    return jwt.decode(
+        token,
+        engine.config.SECRET_KEY,
+        algorithms=[engine.config.ALGORITHM],
+        options={"verify_exp": False, "verify_aud": False},
+    )
+
+
+@pytest.mark.asyncio
+async def test_no_issuer_or_audience_claim_by_default():
+    """The default must stay inert: adding these claims unprompted would reject
+    every token already in the wild."""
+    engine = _engine()
+    claims = _claims(engine, engine.create_access_token(user_id="u1"))
+    assert "iss" not in claims
+    assert "aud" not in claims
+
+
+@pytest.mark.asyncio
+async def test_tokens_carry_the_configured_issuer_and_audience():
+    engine = _engine(JWT_ISSUER="https://auth.example.com", JWT_AUDIENCE="public-api")
+    for token in (
+        engine.create_access_token(user_id="u1"),
+        engine.create_refresh_token(user_id="u1").token,
+    ):
+        claims = _claims(engine, token)
+        assert claims["iss"] == "https://auth.example.com"
+        assert claims["aud"] == "public-api"
+
+
+@pytest.mark.asyncio
+async def test_a_token_from_another_service_is_rejected():
+    """The point of the feature: two services behind one SECRET_KEY must not
+    accept each other's tokens."""
+    from fastapi_fullauth.exceptions import TokenError
+
+    admin = _engine(JWT_ISSUER="https://auth.example.com", JWT_AUDIENCE="admin-tool")
+    public = _engine(JWT_ISSUER="https://auth.example.com", JWT_AUDIENCE="public-api")
+
+    token = admin.create_access_token(user_id="u1")
+    assert await admin.decode_token(token, expected_type="access")
+
+    with pytest.raises(TokenError):
+        await public.decode_token(token, expected_type="access")
+
+    other_issuer = _engine(JWT_ISSUER="https://evil.example.com", JWT_AUDIENCE="public-api")
+    with pytest.raises(TokenError):
+        await public.decode_token(other_issuer.create_access_token(user_id="u1"))
+
+
+@pytest.mark.asyncio
+async def test_tokens_minted_before_the_setting_are_rejected():
+    """PyJWT skips the audience check when a token carries no `aud`, so the
+    claims are required rather than merely verified. Without that, enabling the
+    setting would leave every existing token acceptable."""
+    from fastapi_fullauth.exceptions import TokenError
+
+    before = _engine()
+    after = _engine(JWT_ISSUER="https://auth.example.com", JWT_AUDIENCE="public-api")
+
+    legacy = before.create_access_token(user_id="u1")
+    with pytest.raises(TokenError):
+        await after.decode_token(legacy, expected_type="access")
+
+    # Each claim is required on its own, not only when both are configured.
+    audience_only = _engine(JWT_AUDIENCE="public-api")
+    with pytest.raises(TokenError):
+        await audience_only.decode_token(legacy, expected_type="access")
+
+    issuer_only = _engine(JWT_ISSUER="https://auth.example.com")
+    with pytest.raises(TokenError):
+        await issuer_only.decode_token(legacy, expected_type="access")
+
+
+@pytest.mark.asyncio
+async def test_an_unconfigured_service_still_accepts_claimed_tokens():
+    """Leaving the settings unset means not checking, so a token carrying the
+    claims decodes as it always did."""
+    claimed = _engine(JWT_ISSUER="https://auth.example.com", JWT_AUDIENCE="public-api")
+    plain = _engine()
+
+    payload = await plain.decode_token(
+        claimed.create_access_token(user_id="u1"), expected_type="access"
+    )
+    assert payload.sub == "u1"
+
+
+@pytest.mark.asyncio
+async def test_purpose_scoped_tokens_carry_the_claims_too():
+    """A password-reset link is a token like any other; one service must not be
+    able to redeem another's."""
+    engine = _engine(JWT_ISSUER="https://auth.example.com", JWT_AUDIENCE="public-api")
+    token = engine.create_access_token(user_id="u1", extra={"purpose": "password_reset"})
+    assert _claims(engine, token)["aud"] == "public-api"
