@@ -16,6 +16,7 @@ from fastapi_fullauth import UserSchema
 from fastapi_fullauth.adapters.tortoise import TortoiseAdapter
 from fastapi_fullauth.core.crypto import hash_password
 from fastapi_fullauth.models.tortoise import (
+    MFAMixin,
     OAuthAccountMixin,
     PasskeyMixin,
     PermissionMixin,
@@ -59,6 +60,11 @@ class Passkey(PasskeyMixin):
         table = "fullauth_passkeys"
 
 
+class MFA(MFAMixin):
+    class Meta:
+        table = "fullauth_mfa"
+
+
 class User(UserMixin):
     display_name = fields.CharField(max_length=100, default="")
     roles = fields.ManyToManyField(
@@ -95,6 +101,7 @@ def adapter(tortoise_db):
         permission_model=Permission,
         oauth_account_model=OAuthAccountModel,
         passkey_model=Passkey,
+        mfa_model=MFA,
         user_schema=UserSchemaWithRoles,
     )
 

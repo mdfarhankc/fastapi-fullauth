@@ -42,7 +42,7 @@ app = FastAPI()
 fullauth.init_app(app)         # routers + middleware in one call
 ```
 
-That exposes `/api/v1/auth/{register,login,logout,refresh}`, `/api/v1/auth/me`, `/api/v1/auth/sessions`, and more. See `references/getting-started.md` for a runnable walkthrough.
+That exposes `/api/v1/auth/{register,login,logout,refresh}`, `/api/v1/auth/me`, `/api/v1/auth/sessions`, and more. Opt-in features add their own routes: OAuth, passkeys, and two-factor authentication (`/api/v1/auth/mfa/*`, which also changes what `/login` returns for an account that has it). See `references/getting-started.md` for a runnable walkthrough.
 
 ## Things to get right on day one
 

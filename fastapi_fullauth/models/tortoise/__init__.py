@@ -39,6 +39,7 @@ else:
         RefreshTokenMixin,
         UserMixin,
     )
+    from fastapi_fullauth.models.tortoise.mfa import MFAMixin
     from fastapi_fullauth.models.tortoise.oauth import OAuthAccountMixin
     from fastapi_fullauth.models.tortoise.passkey import PasskeyMixin
     from fastapi_fullauth.models.tortoise.permission import PermissionMixin
@@ -46,6 +47,7 @@ else:
 
     __all__ += [
         "OAuthAccountMixin",
+        "MFAMixin",
         "PasskeyMixin",
         "PermissionMixin",
         "RefreshTokenMixin",

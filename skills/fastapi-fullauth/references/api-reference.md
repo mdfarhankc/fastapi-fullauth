@@ -322,6 +322,9 @@ Grouped for readability. All read from env with `FULLAUTH_` prefix.
 
 ### Login
 - `LOGIN_FIELD: str = "email"`
+- `MFA_ENABLED: bool = False`  (inferred True when MFA_ISSUER is set)
+- `MFA_ISSUER: str | None = None`  (shown beside the code in the authenticator; required when enabled)
+- `MFA_PENDING_EXPIRE_SECONDS: int = 300`
 - `REAUTH_MAX_AGE_SECONDS: int = 300`  (how recently credentials must have been checked for `DELETE /me` and setting a first password; the current password in the body proves it too)
 - `PREVENT_LOGIN_TIMING_ATTACKS: bool = True`  (dummy verify on unknown-user path, matches configured algorithm)
 
@@ -418,6 +421,11 @@ Default prefix `/api/v1/auth`:
 | POST   | `/oauth/{provider}/link/callback` | oauth    | yes           |
 | GET    | `/oauth/accounts`                 | oauth    | yes           |
 | DELETE | `/oauth/accounts/{provider}`      | oauth    | yes           |
+| GET    | `/mfa`                            | mfa      | yes           |
+| POST   | `/mfa/enroll`                     | mfa      | yes + recent  |
+| POST   | `/mfa/confirm`                    | mfa      | yes           |
+| DELETE | `/mfa`                            | mfa      | yes + recent  |
+| POST   | `/mfa/verify`                     | mfa      | pending token |
 | POST   | `/passkeys/register/begin`        | passkey  | yes           |
 | POST   | `/passkeys/register/complete`     | passkey  | yes           |
 | POST   | `/passkeys/authenticate/begin`    | passkey  | no            |

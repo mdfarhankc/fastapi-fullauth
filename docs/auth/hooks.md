@@ -48,6 +48,8 @@ fullauth.hooks.on("after_register", on_register)
 | `after_email_verify` | `async def(user: UserSchema)` | After email is verified |
 | `after_oauth_login` | `async def(user: UserSchema, provider: str, is_new_user: bool)` | After OAuth login succeeds |
 | `after_oauth_register` | `async def(user: UserSchema, user_info: OAuthUserInfo)` | After a new user is created via OAuth |
+| `after_mfa_enabled` | `async def(user: UserSchema)` | After two-factor authentication is turned on |
+| `after_mfa_disabled` | `async def(user: UserSchema)` | After it is turned off |
 | `after_oauth_link` | `async def(user: UserSchema, provider: str)` | After a signed-in user links a provider |
 | `after_oauth_unlink` | `async def(user: UserSchema, provider: str)` | After a signed-in user unlinks a provider |
 | `send_verification_email` | `async def(email: str, token: str)` | When email verification is requested |

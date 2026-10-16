@@ -13,6 +13,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from fastapi_fullauth.adapters.sqlalchemy import SQLAlchemyAdapter
 from fastapi_fullauth.core.crypto import hash_password
 from fastapi_fullauth.models.sqlalchemy import (
+    MFAMixin,
     OAuthAccountMixin,
     PasskeyMixin,
     PermissionMixin,
@@ -61,6 +62,10 @@ class Passkey(PasskeyMixin, Base):
     pass
 
 
+class MFA(MFAMixin, Base):
+    pass
+
+
 class User(UserMixin, Base):
     display_name: Mapped[str] = mapped_column(String(100), default="")
     roles: Mapped[list[Role]] = relationship(secondary="fullauth_user_roles", lazy="selectin")
@@ -104,6 +109,7 @@ def adapter(db):
         role_permission_model=RolePermission,
         oauth_account_model=OAuthAccount,
         passkey_model=Passkey,
+        mfa_model=MFA,
         user_schema=UserSchemaWithRoles,
     )
 

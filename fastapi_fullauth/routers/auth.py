@@ -17,6 +17,7 @@ from fastapi_fullauth.exceptions import (
     TokenError,
     UserAlreadyExistsError,
 )
+from fastapi_fullauth.flows import mfa as mfa_flow
 from fastapi_fullauth.flows.login import login
 from fastapi_fullauth.flows.logout import logout, logout_with_refresh_token
 from fastapi_fullauth.flows.refresh import refresh
@@ -30,6 +31,7 @@ from fastapi_fullauth.routers._schemas import (
     build_login_response_model,
 )
 from fastapi_fullauth.routers._transport import resolve_refresh_token, write_tokens
+from fastapi_fullauth.routers.mfa import PENDING_PURPOSE, MFARequiredResponse
 from fastapi_fullauth.types import (
     CreateUserSchema,
     CreateUserSchemaType,
@@ -119,15 +121,19 @@ def create_auth_router(
     @router.post(
         "/login",
         status_code=200,
-        response_model=LoginResponse,
-        description="Authenticate and get access + refresh tokens.",
+        response_model=LoginResponse | MFARequiredResponse,
+        description=(
+            "Authenticate and get access + refresh tokens. An account with two-factor "
+            "authentication gets 202 and an `mfa_token` instead; exchange it at "
+            "`/mfa/verify` for the pair."
+        ),
     )
     async def login_route(
         data: LoginRequest,  # type: ignore[valid-type]
         request: Request,
         response: Response,
         fullauth: "FullAuth" = Depends(get_fullauth),
-    ) -> TokenPair:
+    ) -> TokenPair | MFARequiredResponse:
         await fullauth.enforce_rate_limit(request, "login")
 
         # LoginRequest is built dynamically via create_model from `login_field`
@@ -159,6 +165,18 @@ def create_auth_router(
             )
         except (AccountLockedError, AuthenticationError):
             raise CREDENTIALS_EXCEPTION
+
+        # A correct password is only the first step for an account with a second
+        # factor: hand back a short-lived token that buys the right to submit a
+        # code and nothing else, never a session.
+        if user is not None and await mfa_flow.is_enabled(fullauth.adapter, user.id):
+            pending = fullauth.token_engine.create_access_token(
+                user_id=str(user.id),
+                extra={"purpose": PENDING_PURPOSE},
+                expire_seconds=fullauth.config.MFA_PENDING_EXPIRE_SECONDS,
+            )
+            response.status_code = 202
+            return MFARequiredResponse(mfa_token=pending)
 
         tokens = await write_tokens(response, fullauth, tokens)
 

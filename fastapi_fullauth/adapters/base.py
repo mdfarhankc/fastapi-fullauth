@@ -11,6 +11,7 @@ from pydantic import BaseModel, TypeAdapter
 
 from fastapi_fullauth.types import (
     CreateUserSchemaType,
+    MFACredential,
     OAuthAccount,
     PasskeyCredential,
     RefreshToken,
@@ -19,7 +20,7 @@ from fastapi_fullauth.types import (
     UserSchemaType,
 )
 
-AdapterFeature = Literal["role", "permission", "oauth", "passkey", "session"]
+AdapterFeature = Literal["role", "permission", "oauth", "passkey", "session", "mfa"]
 
 # Columns only the library may set when creating a user. A CreateUserSchema that
 # exposes them would otherwise let a registering client grant itself admin,
@@ -400,6 +401,46 @@ class PasskeyAdapterMixin(ABC):
     async def delete_passkey(self, passkey_id: UUID) -> None: ...
 
 
+class MFAAdapterMixin(ABC):
+    """Mixin for TOTP second factors. Inherit alongside AbstractUserAdapter."""
+
+    @abstractmethod
+    async def get_mfa(self, user_id: UserID) -> MFACredential | None: ...
+
+    @abstractmethod
+    async def store_mfa(self, data: MFACredential) -> MFACredential:
+        """Create or replace the user's credential.
+
+        Replacing is how a restarted enrolment works, so this must overwrite an
+        unconfirmed row rather than conflict with it.
+        """
+        ...
+
+    @abstractmethod
+    async def confirm_mfa(self, user_id: UserID, recovery_codes: list[str]) -> None:
+        """Mark the credential live and store the hashed recovery codes."""
+        ...
+
+    @abstractmethod
+    async def delete_mfa(self, user_id: UserID) -> None: ...
+
+    @abstractmethod
+    async def advance_mfa_counter(self, user_id: UserID, counter: int) -> bool:
+        """Atomically move the accepted time step forward.
+
+        Must be a compare-and-swap: return True only when this call moved
+        ``last_counter`` to a strictly greater value. A code stays valid for its
+        whole time step, so returning False is what stops the same code being
+        replayed, exactly as the passkey sign-count does.
+        """
+        ...
+
+    @abstractmethod
+    async def consume_recovery_code(self, user_id: UserID, code_hash: str) -> bool:
+        """Atomically remove one hashed recovery code. True if this call removed it."""
+        ...
+
+
 # Maps the feature names used by supports_feature() to the mixin that implements
 # them. Defined after the mixins so the references resolve.
 _FEATURE_MIXINS: dict[str, type] = {
@@ -408,4 +449,5 @@ _FEATURE_MIXINS: dict[str, type] = {
     "oauth": OAuthAdapterMixin,
     "passkey": PasskeyAdapterMixin,
     "session": SessionAdapterMixin,
+    "mfa": MFAAdapterMixin,
 }

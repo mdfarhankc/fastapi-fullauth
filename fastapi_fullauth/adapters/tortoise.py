@@ -25,6 +25,7 @@ from tortoise.transactions import in_transaction
 from fastapi_fullauth.adapters.base import (
     AbstractUserAdapter,
     AdapterFeature,
+    MFAAdapterMixin,
     OAuthAdapterMixin,
     PasskeyAdapterMixin,
     PermissionAdapterMixin,
@@ -34,6 +35,7 @@ from fastapi_fullauth.adapters.base import (
 )
 from fastapi_fullauth.exceptions import UserAlreadyExistsError
 from fastapi_fullauth.models.tortoise import (
+    MFAMixin,
     OAuthAccountMixin,
     PasskeyMixin,
     PermissionMixin,
@@ -44,6 +46,7 @@ from fastapi_fullauth.models.tortoise import (
 from fastapi_fullauth.types import (
     CreateUserSchema,
     CreateUserSchemaType,
+    MFACredential,
     OAuthAccount,
     PasskeyCredential,
     RefreshToken,
@@ -69,6 +72,7 @@ class TortoiseAdapter(
     OAuthAdapterMixin,
     PasskeyAdapterMixin,
     SessionAdapterMixin,
+    MFAAdapterMixin,
 ):
     """Tortoise ORM adapter. Implements core auth plus every feature mixin.
 
@@ -93,6 +97,7 @@ class TortoiseAdapter(
         permission_model: type[PermissionMixin] | None = None,
         oauth_account_model: type[OAuthAccountMixin] | None = None,
         passkey_model: type[PasskeyMixin] | None = None,
+        mfa_model: type[MFAMixin] | None = None,
         user_schema: type[UserSchemaType] = UserSchema,  # type: ignore[assignment]
         create_user_schema: type[CreateUserSchemaType] = CreateUserSchema,  # type: ignore[assignment]
         connection_name: str = "default",
@@ -105,6 +110,7 @@ class TortoiseAdapter(
         self._permission_model = permission_model
         self._oauth_account_model = oauth_account_model
         self._passkey_model = passkey_model
+        self._mfa_model = mfa_model
         self._user_schema = user_schema
         self._create_user_schema = create_user_schema
         self._connection_name = connection_name
@@ -121,6 +127,7 @@ class TortoiseAdapter(
         "Permissions": ("role_model", "permission_model"),
         "OAuth": ("oauth_account_model",),
         "Passkeys": ("passkey_model",),
+        "Two-factor authentication": ("mfa_model",),
     }
 
     def _require(self, model: _T | None, feature: str) -> _T:
@@ -139,6 +146,7 @@ class TortoiseAdapter(
             "permission": self._permission_model is not None,
             "oauth": self._oauth_account_model is not None,
             "passkey": self._passkey_model is not None,
+            "mfa": self._mfa_model is not None,
             "session": True,
         }.get(feature, False)
 
@@ -533,3 +541,69 @@ class TortoiseAdapter(
     async def delete_passkey(self, passkey_id: UUID) -> None:
         passkey_model = self._require(self._passkey_model, "Passkeys")
         await passkey_model.filter(id=passkey_id).delete()
+
+    # ── Two-factor authentication ────────────────────────────────────
+
+    def _to_mfa(self, row: Any) -> MFACredential:
+        return MFACredential(
+            user_id=row.user_id,
+            secret=row.secret,
+            confirmed_at=row.confirmed_at,
+            last_counter=row.last_counter,
+            recovery_codes=row.recovery_codes.split(",") if row.recovery_codes else [],
+            created_at=row.created_at,
+        )
+
+    async def get_mfa(self, user_id: UserID) -> MFACredential | None:
+        mfa_model = self._require(self._mfa_model, "Two-factor authentication")
+        row = await mfa_model.get_or_none(user_id=user_id)
+        return self._to_mfa(row) if row else None
+
+    async def store_mfa(self, data: MFACredential) -> MFACredential:
+        mfa_model = self._require(self._mfa_model, "Two-factor authentication")
+        # Replace rather than conflict: restarting an abandoned enrolment is
+        # normal. A confirmed row is protected by the flow, not here.
+        await mfa_model.filter(user_id=data.user_id).delete()
+        await self._create(
+            mfa_model,
+            user_id=data.user_id,
+            secret=data.secret,
+            confirmed_at=data.confirmed_at,
+            last_counter=data.last_counter,
+            recovery_codes=",".join(data.recovery_codes),
+        )
+        return data
+
+    async def confirm_mfa(self, user_id: UserID, recovery_codes: list[str]) -> None:
+        mfa_model = self._require(self._mfa_model, "Two-factor authentication")
+        await mfa_model.filter(user_id=user_id).update(
+            confirmed_at=datetime.now(timezone.utc),
+            recovery_codes=",".join(recovery_codes),
+        )
+
+    async def delete_mfa(self, user_id: UserID) -> None:
+        mfa_model = self._require(self._mfa_model, "Two-factor authentication")
+        await mfa_model.filter(user_id=user_id).delete()
+
+    async def advance_mfa_counter(self, user_id: UserID, counter: int) -> bool:
+        mfa_model = self._require(self._mfa_model, "Two-factor authentication")
+        updated = await mfa_model.filter(user_id=user_id, last_counter__lt=counter).update(
+            last_counter=counter
+        )
+        return int(updated or 0) == 1
+
+    async def consume_recovery_code(self, user_id: UserID, code_hash: str) -> bool:
+        mfa_model = self._require(self._mfa_model, "Two-factor authentication")
+        row = await mfa_model.get_or_none(user_id=user_id)
+        if row is None or not row.recovery_codes:
+            return False
+        codes = row.recovery_codes.split(",")
+        if code_hash not in codes:
+            return False
+        codes.remove(code_hash)
+        # Conditional on the value read, so two callers redeeming the same code
+        # cannot both win: the loser's filter no longer matches.
+        updated = await mfa_model.filter(user_id=user_id, recovery_codes=row.recovery_codes).update(
+            recovery_codes=",".join(codes)
+        )
+        return int(updated or 0) == 1

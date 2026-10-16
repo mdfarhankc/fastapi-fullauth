@@ -49,6 +49,8 @@ EVENT_PARAMS: dict[str, tuple[str, ...]] = {
     "after_oauth_login": ("user", "provider", "is_new_user"),
     "after_oauth_register": ("user", "user_info"),
     "after_oauth_link": ("user", "provider"),
+    "after_mfa_enabled": ("user",),
+    "after_mfa_disabled": ("user",),
     "after_oauth_unlink": ("user", "provider"),
     "send_verification_email": ("email", "token"),
     "send_password_reset_email": ("email", "token"),
@@ -80,6 +82,10 @@ class EventHooks:
     ) -> None: ...
     @overload
     def on(self, event: Literal["after_oauth_link"], callback: AfterOAuthLinkHook) -> None: ...
+    @overload
+    def on(self, event: Literal["after_mfa_enabled"], callback: AfterUserHook) -> None: ...
+    @overload
+    def on(self, event: Literal["after_mfa_disabled"], callback: AfterUserHook) -> None: ...
     @overload
     def on(self, event: Literal["after_oauth_unlink"], callback: AfterOAuthLinkHook) -> None: ...
     @overload

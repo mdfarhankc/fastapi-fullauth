@@ -65,16 +65,17 @@ fullauth = "fastapi_fullauth.cli:main"
 [project.optional-dependencies]
 bcrypt = ["bcrypt>=4.1.0"]
 beanie = ["beanie>=2.0"]
-beanie-standard = ["fastapi-fullauth[beanie,bcrypt,redis,oauth,passkey]"]
+beanie-standard = ["fastapi-fullauth[beanie,bcrypt,redis,oauth,passkey,mfa]"]
+mfa = ["pyotp>=2.10.0"]
 oauth = ["httpx>=0.28.1"]
 passkey = ["webauthn>=2.7.1"]
 redis = ["redis>=7.4.0"]
 sqlalchemy = ["sqlalchemy[asyncio]>=2.0.49", "alembic>=1.18.4"]
-sqlalchemy-standard = ["fastapi-fullauth[sqlalchemy,bcrypt,redis,oauth,passkey]"]
+sqlalchemy-standard = ["fastapi-fullauth[sqlalchemy,bcrypt,redis,oauth,passkey,mfa]"]
 sqlmodel = ["sqlmodel>=0.0.38", "alembic>=1.18.4"]
-sqlmodel-standard = ["fastapi-fullauth[sqlmodel,bcrypt,redis,oauth,passkey]"]
+sqlmodel-standard = ["fastapi-fullauth[sqlmodel,bcrypt,redis,oauth,passkey,mfa]"]
 tortoise = ["tortoise-orm>=1.0"]
-tortoise-standard = ["fastapi-fullauth[tortoise,bcrypt,redis,oauth,passkey]"]
+tortoise-standard = ["fastapi-fullauth[tortoise,bcrypt,redis,oauth,passkey,mfa]"]
 
 [dependency-groups]
 dev = [
@@ -86,6 +87,7 @@ dev = [
   "mkdocs-llmstxt>=0.5.0",
   "mkdocs-material>=9.7.6",
   "mongomock-motor>=0.0.36",
+  "pyotp>=2.10.0",
   "mypy>=2.1.0",
   "pytest>=9.0.3",
   "pytest-asyncio>=1.3.0",

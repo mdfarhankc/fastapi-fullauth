@@ -279,6 +279,14 @@ fullauth = FullAuth(config=config, adapter=adapter, backends=[backend])
 !!! tip
     Setting `FULLAUTH_REDIS_URL=redis://...` switches all subsystems to Redis at once; you don't also need `FULLAUTH_BACKEND=redis`. Override individual backends as needed (e.g. `LOCKOUT_BACKEND=memory` for local dev), or set `FULLAUTH_BACKEND=memory` to keep everything in-memory despite the URL.
 
+### Two-factor authentication
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `MFA_ENABLED` | `bool` | `False` | Mount the MFA routes and ask for a code at sign-in. Inferred as `True` when `MFA_ISSUER` is set. |
+| `MFA_ISSUER` | `str \| None` | `None` | The name an authenticator app shows beside the code. Required when enabled. |
+| `MFA_PENDING_EXPIRE_SECONDS` | `int` | `300` | How long the token handed out after a correct password stays usable. |
+
 ### Passkeys
 
 | Option | Type | Default | Description |

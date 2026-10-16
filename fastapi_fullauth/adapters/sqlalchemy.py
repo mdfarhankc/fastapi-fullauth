@@ -2,6 +2,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from fastapi_fullauth.adapters._sqlalchemy_base import _BaseSQLAlchemyAdapter
 from fastapi_fullauth.models.sqlalchemy import (
+    MFAMixin,
     OAuthAccountMixin,
     PasskeyMixin,
     PermissionMixin,
@@ -34,6 +35,7 @@ class SQLAlchemyAdapter(_BaseSQLAlchemyAdapter[UserSchemaType, CreateUserSchemaT
         role_permission_model: type[RolePermissionMixin] | None = None,
         oauth_account_model: type[OAuthAccountMixin] | None = None,
         passkey_model: type[PasskeyMixin] | None = None,
+        mfa_model: type[MFAMixin] | None = None,
         user_schema: type[UserSchemaType] = UserSchema,  # type: ignore[assignment]
         create_user_schema: type[CreateUserSchemaType] = CreateUserSchema,  # type: ignore[assignment]
     ) -> None:
@@ -47,6 +49,7 @@ class SQLAlchemyAdapter(_BaseSQLAlchemyAdapter[UserSchemaType, CreateUserSchemaT
             role_permission_model=role_permission_model,
             oauth_account_model=oauth_account_model,
             passkey_model=passkey_model,
+            mfa_model=mfa_model,
             user_schema=user_schema,
             create_user_schema=create_user_schema,
         )

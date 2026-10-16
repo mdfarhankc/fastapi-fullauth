@@ -4,6 +4,18 @@
 
 ### Added
 
+- **Two-factor authentication (TOTP).** The one row where the fastapi-users comparison read "none" for both libraries. Install with the new `mfa` extra, set `MFA_ISSUER`, pass an `mfa_model` to your adapter, and `/auth/mfa/enroll` plus `/auth/mfa/confirm` turn it on for a user; the recovery codes come back from the confirm call and are shown once. A correct password on an account that has it answers `202` with a short-lived `mfa_token` rather than a session, which `/auth/mfa/verify` exchanges for the real token pair along with a code or a recovery code. Enrolling and disabling ask for the same proof of presence as `DELETE /me`. See [the guide](https://mdfarhankc.github.io/fastapi-fullauth/mfa/).
+
+  The ways around a second factor are what make it worth having, so: a code is refused once its time step has been accepted, which also means the code that confirms enrolment is spent and signing in needs the next one; `/mfa/verify` has its own rate-limit bucket and counts failures against the account through the lockout manager, since six digits is a small space; one step of clock drift either side is allowed, as RFC 6238 recommends; the pending token is burned when it buys a session and is rejected anywhere a session token is expected; recovery codes are stored hashed and are single use.
+
+  **MFA gates password sign-in only.** Passkeys are already phishing-resistant and an OAuth provider runs its own second factor, which this library cannot inspect. The TOTP secret is stored in plaintext, as the OAuth provider tokens are; the threat model says so.
+
+- **`after_mfa_enabled` and `after_mfa_disabled` hooks,** both `async def(user)`. Turning a second factor off is what an attacker who has taken an account does first, so it is worth mailing about.
+
+## Unreleased
+
+### Added
+
 - **`JWT_ISSUER` and `JWT_AUDIENCE`.** Several services signing with one `SECRET_KEY` had no way to tell whose token they were holding, so an access token minted for an admin tool was accepted by the public API. Set either one and every token the engine mints carries the claim, purpose-scoped tokens included, and decoding requires it. Both are off by default, and an unset `JWT_AUDIENCE` means the claim is not checked, so a deployment can enable it on the issuing side and roll the verifying side forward afterwards rather than needing both at once. **Once a service requires them, tokens minted before they were configured stop validating, so expect one round of sign-outs.** This closes a limitation the threat model has been carrying.
 
 ### Changed

@@ -9,6 +9,7 @@ from fastapi_fullauth import FullAuth, FullAuthConfig, UserSchema
 from fastapi_fullauth.adapters.sqlmodel import SQLModelAdapter
 from fastapi_fullauth.dependencies import current_user
 from fastapi_fullauth.models.sqlmodel import (
+    MFAMixin,
     OAuthAccountMixin,
     PasskeyMixin,
     PermissionMixin,
@@ -51,6 +52,10 @@ class OAuthAccount(OAuthAccountMixin, table=True):
 
 
 class Passkey(PasskeyMixin, table=True):
+    pass
+
+
+class MFA(MFAMixin, table=True):
     pass
 
 
@@ -118,6 +123,7 @@ def make_test_adapter(session_maker, **overrides):
         "role_permission_model": RolePermission,
         "oauth_account_model": OAuthAccount,
         "passkey_model": Passkey,
+        "mfa_model": MFA,
         "user_schema": UserSchemaWithRoles,
     }
     return SQLModelAdapter(session_maker=session_maker, **{**defaults, **overrides})

@@ -75,6 +75,6 @@ configured no longer validate, so expect one round of sign-outs.
 
 These are tracked for future releases:
 
-- OAuth provider access and refresh tokens are stored in plaintext.
+- OAuth provider access and refresh tokens, and TOTP secrets, are stored in plaintext. A database leak hands over the second factor along with the rest.
 - Pruning expired refresh tokens is available (`adapter.prune_expired_refresh_tokens()`) but has to be scheduled by the application; nothing runs it for you.
 - A password-reset link is invalidated by a password change, but not by a later reset *request*: the newest link and any still-unused older one both work until one of them is used.

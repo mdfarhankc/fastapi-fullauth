@@ -39,6 +39,7 @@ class AuthRateLimits:
     # oracle for whoever holds the access token, so it is metered. Its own
     # bucket, so failed attempts cannot exhaust an IP's sign-in budget.
     reauth: int = 5
+    mfa: int = 5
 
     def __post_init__(self) -> None:
         for name, value in vars(self).items():
@@ -134,6 +135,15 @@ class FullAuthConfig(BaseSettings):
     # response never reveals whether an email is already registered.
     PREVENT_REGISTRATION_ENUMERATION: bool = True
 
+    # Two-factor authentication. Setting MFA_ISSUER is treated as opting in,
+    # the same way PASSKEY_RP_ID is, since the issuer is what an authenticator
+    # app shows next to the code and there is no sensible default for it.
+    MFA_ENABLED: bool = False
+    MFA_ISSUER: str | None = None
+    # How long the token handed out after a correct password stays usable. It
+    # buys only the right to submit a code, so it is short by design.
+    MFA_PENDING_EXPIRE_SECONDS: int = Field(default=300, ge=1)
+
     PASSKEY_ENABLED: bool = False
     PASSKEY_RP_ID: str | None = None
     PASSKEY_RP_NAME: str | None = None
@@ -195,6 +205,9 @@ class FullAuthConfig(BaseSettings):
         if "PASSKEY_ENABLED" not in values and values.get("PASSKEY_RP_ID"):
             values["PASSKEY_ENABLED"] = True
 
+        if "MFA_ENABLED" not in values and values.get("MFA_ISSUER"):
+            values["MFA_ENABLED"] = True
+
         return values
 
     @model_validator(mode="after")
@@ -231,6 +244,15 @@ class FullAuthConfig(BaseSettings):
         elif len(self.SECRET_KEY) < 32:
             raise ValueError(
                 "SECRET_KEY must be at least 32 characters. Generate one with: fullauth secret"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _validate_mfa_config(self) -> "FullAuthConfig":
+        if self.MFA_ENABLED and not self.MFA_ISSUER:
+            raise ValueError(
+                "MFA_ISSUER is required when MFA_ENABLED=True; it is the name an "
+                "authenticator app shows beside the code, usually your product name."
             )
         return self
 

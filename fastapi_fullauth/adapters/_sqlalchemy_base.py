@@ -24,6 +24,7 @@ from sqlalchemy.orm import selectinload
 from fastapi_fullauth.adapters.base import (
     AbstractUserAdapter,
     AdapterFeature,
+    MFAAdapterMixin,
     OAuthAdapterMixin,
     PasskeyAdapterMixin,
     PermissionAdapterMixin,
@@ -34,6 +35,7 @@ from fastapi_fullauth.adapters.base import (
 from fastapi_fullauth.exceptions import UserAlreadyExistsError
 from fastapi_fullauth.types import (
     CreateUserSchemaType,
+    MFACredential,
     OAuthAccount,
     PasskeyCredential,
     RefreshToken,
@@ -67,6 +69,7 @@ class _BaseSQLAlchemyAdapter(
     OAuthAdapterMixin,
     PasskeyAdapterMixin,
     SessionAdapterMixin,
+    MFAAdapterMixin,
 ):
     """Concrete async adapter logic shared by the SQLAlchemy and SQLModel adapters.
 
@@ -92,6 +95,7 @@ class _BaseSQLAlchemyAdapter(
         role_permission_model: Any = None,
         oauth_account_model: Any = None,
         passkey_model: Any = None,
+        mfa_model: Any = None,
         user_schema: type[UserSchemaType],
         create_user_schema: type[CreateUserSchemaType],
     ) -> None:
@@ -115,6 +119,7 @@ class _BaseSQLAlchemyAdapter(
         self._role_permission_model = role_permission_model
         self._oauth_account_model = oauth_account_model
         self._passkey_model = passkey_model
+        self._mfa_model = mfa_model
         self._user_schema = user_schema
         self._create_user_schema = create_user_schema
         self.validate_user_id_type()
@@ -131,6 +136,7 @@ class _BaseSQLAlchemyAdapter(
             self._user_role_model,
             self._oauth_account_model,
             self._passkey_model,
+            self._mfa_model,
         )
         types: dict[str, Any] = {}
         for model in related:
@@ -154,6 +160,7 @@ class _BaseSQLAlchemyAdapter(
         ),
         "OAuth": ("oauth_account_model",),
         "Passkeys": ("passkey_model",),
+        "Two-factor authentication": ("mfa_model",),
     }
 
     def _require(self, model: _T | None, feature: str) -> _T:
@@ -174,6 +181,7 @@ class _BaseSQLAlchemyAdapter(
             "permission": self._permission_model is not None,
             "oauth": self._oauth_account_model is not None,
             "passkey": self._passkey_model is not None,
+            "mfa": self._mfa_model is not None,
             "session": True,
         }.get(feature, False)
 
@@ -903,3 +911,107 @@ class _BaseSQLAlchemyAdapter(
             if row:
                 await session.delete(row)
                 await self._commit(session)
+
+    # ── Two-factor authentication ────────────────────────────────────
+
+    def _to_mfa(self, row: Any) -> MFACredential:
+        return MFACredential(
+            user_id=row.user_id,
+            secret=row.secret,
+            confirmed_at=row.confirmed_at,
+            last_counter=row.last_counter,
+            recovery_codes=row.recovery_codes.split(",") if row.recovery_codes else [],
+            created_at=row.created_at,
+        )
+
+    async def get_mfa(self, user_id: UserID) -> MFACredential | None:
+        mfa_model = self._require(self._mfa_model, "Two-factor authentication")
+        async with self._begin() as session:
+            result = await self._execute(
+                session, select(mfa_model).where(mfa_model.user_id == user_id)
+            )
+            row = result.scalars().first()
+            return self._to_mfa(row) if row else None
+
+    async def store_mfa(self, data: MFACredential) -> MFACredential:
+        mfa_model = self._require(self._mfa_model, "Two-factor authentication")
+        async with self._begin() as session:
+            # Replace rather than conflict: restarting an abandoned enrolment is
+            # normal. A confirmed row is protected by the flow, not here.
+            await self._execute(session, delete(mfa_model).where(mfa_model.user_id == data.user_id))
+            session.add(
+                mfa_model(
+                    user_id=data.user_id,
+                    secret=data.secret,
+                    confirmed_at=data.confirmed_at,
+                    last_counter=data.last_counter,
+                    recovery_codes=",".join(data.recovery_codes),
+                )
+            )
+            await self._commit(session)
+            return data
+
+    async def confirm_mfa(self, user_id: UserID, recovery_codes: list[str]) -> None:
+        mfa_model = self._require(self._mfa_model, "Two-factor authentication")
+        async with self._begin() as session:
+            await self._execute(
+                session,
+                update(mfa_model)
+                .where(mfa_model.user_id == user_id)
+                .values(
+                    confirmed_at=datetime.now(timezone.utc),
+                    recovery_codes=",".join(recovery_codes),
+                ),
+            )
+            await self._commit(session)
+
+    async def delete_mfa(self, user_id: UserID) -> None:
+        mfa_model = self._require(self._mfa_model, "Two-factor authentication")
+        async with self._begin() as session:
+            await self._execute(session, delete(mfa_model).where(mfa_model.user_id == user_id))
+            await self._commit(session)
+
+    async def advance_mfa_counter(self, user_id: UserID, counter: int) -> bool:
+        mfa_model = self._require(self._mfa_model, "Two-factor authentication")
+        async with self._begin() as session:
+            result = cast(
+                "CursorResult[Any]",
+                await self._execute(
+                    session,
+                    update(mfa_model)
+                    .where(mfa_model.user_id == user_id)
+                    .where(mfa_model.last_counter < counter)
+                    .values(last_counter=counter),
+                ),
+            )
+            await self._commit(session)
+            return result.rowcount == 1
+
+    async def consume_recovery_code(self, user_id: UserID, code_hash: str) -> bool:
+        mfa_model = self._require(self._mfa_model, "Two-factor authentication")
+        async with self._begin() as session:
+            result = await self._execute(
+                session, select(mfa_model).where(mfa_model.user_id == user_id)
+            )
+            row = result.scalars().first()
+            if row is None or not row.recovery_codes:
+                return False
+            codes = row.recovery_codes.split(",")
+            if code_hash not in codes:
+                return False
+            codes.remove(code_hash)
+
+            # Conditional on the value we read, so two callers redeeming the same
+            # code cannot both win: the loser's WHERE no longer matches.
+            updated = cast(
+                "CursorResult[Any]",
+                await self._execute(
+                    session,
+                    update(mfa_model)
+                    .where(mfa_model.user_id == user_id)
+                    .where(mfa_model.recovery_codes == row.recovery_codes)
+                    .values(recovery_codes=",".join(codes)),
+                ),
+            )
+            await self._commit(session)
+            return updated.rowcount == 1
