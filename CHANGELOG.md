@@ -21,7 +21,7 @@
 ### Changed
 
 - **The SQLAlchemy model guidance no longer uses `lazy="noload"`.** SQLAlchemy 2.1 deprecates that strategy, so anyone who copied the documented `User` model from here saw a deprecation warning, and a failure outright if they treat warnings as errors. The documentation, the mixin docstring, the example app and the Agent Skill now use `relationship(lazy="raise", passive_deletes=True)`: nothing in the library reads `refresh_tokens`, so an accidental access should be a clear error rather than a lazy query in async code, and the cascade belongs to the `ON DELETE CASCADE` the mixin already declares. If you have the old line in your models, change it.
-- **Dependencies refreshed and verified against the newest releases,** including SQLAlchemy 2.1, pydantic 2.14, pydantic-settings 2.16, FastAPI 0.143, SQLModel 0.0.48, mypy 2.4 and ruff 0.17. The declared floors are unchanged, and `sqlalchemy>=2.0.49` was re-checked by running the adapter suites against 2.0.54 as well as 2.1.4.
+- **Dependencies refreshed and verified against the newest releases,** including SQLAlchemy 2.1, pydantic 2.14, pydantic-settings 2.16, FastAPI 0.143.3, SQLModel 0.0.48, mypy 2.4 and ruff 0.17.1. The declared floors are unchanged, and `sqlalchemy>=2.0.49` was re-checked by running the adapter suites against 2.0.54 as well as 2.1.4.
 
 ## 0.17.2
 
