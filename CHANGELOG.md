@@ -13,6 +13,10 @@
 - **`after_mfa_enabled` and `after_mfa_disabled` hooks,** both `async def(user)`. Turning a second factor off is what an attacker who has taken an account does first, so it is worth mailing about.
 - **`JWT_ISSUER` and `JWT_AUDIENCE`.** Several services signing with one `SECRET_KEY` had no way to tell whose token they were holding, so an access token minted for an admin tool was accepted by the public API. Set either one and every token the engine mints carries the claim, purpose-scoped tokens included, and decoding requires it. Both are off by default, and an unset `JWT_AUDIENCE` means the claim is not checked, so a deployment can enable it on the issuing side and roll the verifying side forward afterwards rather than needing both at once. **Once a service requires them, tokens minted before they were configured stop validating, so expect one round of sign-outs.** This closes a limitation the threat model has been carrying.
 
+### Fixed
+
+- **`pip install "fastapi-fullauth[sqlmodel]"` produced an installation that could not be imported.** The extra took `sqlmodel`, which depends on plain SQLAlchemy, and relied on SQLAlchemy installing greenlet by itself. SQLAlchemy 2.1 no longer does, so a fresh install resolved without greenlet and `import fastapi_fullauth` raised `ImportError` from the asyncio module. The extra now declares `sqlalchemy[asyncio]`, as the `sqlalchemy` extra always did. This affected 0.17.x installs made after SQLAlchemy 2.1 was released, not only this version.
+
 ### Changed
 
 - **The SQLAlchemy model guidance no longer uses `lazy="noload"`.** SQLAlchemy 2.1 deprecates that strategy, so anyone who copied the documented `User` model from here saw a deprecation warning, and a failure outright if they treat warnings as errors. The documentation, the mixin docstring, the example app and the Agent Skill now use `relationship(lazy="raise", passive_deletes=True)`: nothing in the library reads `refresh_tokens`, so an accidental access should be a clear error rather than a lazy query in async code, and the cascade belongs to the `ON DELETE CASCADE` the mixin already declares. If you have the old line in your models, change it.
