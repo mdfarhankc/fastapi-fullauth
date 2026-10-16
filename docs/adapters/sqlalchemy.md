@@ -46,8 +46,17 @@ class User(UserMixin, Base):
     roles: Mapped[list[Role]] = relationship(
         secondary="fullauth_user_roles", lazy="selectin",
     )
-    refresh_tokens: Mapped[list[RefreshToken]] = relationship(lazy="noload")
+    refresh_tokens: Mapped[list[RefreshToken]] = relationship(
+        lazy="raise", passive_deletes=True
+    )
 ```
+
+`roles` is eagerly loaded because the library reads it; `refresh_tokens` is not read
+at all, so `lazy="raise"` turns an accidental access into a clear error instead of
+a lazy query in async code, and `passive_deletes=True` leaves the cascade to the
+`ON DELETE CASCADE` the mixin already declares. (Earlier versions of this page
+used `lazy="noload"`, which SQLAlchemy deprecated in 2.1 because it silently
+returns nothing for related items.)
 
 `UserMixin` provides `id`, `email`, `hashed_password` (nullable; `NULL` for OAuth-only users), `is_active`, `is_verified`, `is_superuser`, `created_at`. For integer or string user keys, see [Choosing a primary key type](index.md#choosing-a-primary-key-type).
 

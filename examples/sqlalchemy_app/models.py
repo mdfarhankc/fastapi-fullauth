@@ -30,4 +30,4 @@ class User(UserMixin, Base):
     phone: Mapped[str] = mapped_column(String(20), default="")
 
     roles: Mapped[list[Role]] = relationship(secondary="fullauth_user_roles", lazy="selectin")
-    refresh_tokens: Mapped[list[RefreshToken]] = relationship(lazy="noload")
+    refresh_tokens: Mapped[list[RefreshToken]] = relationship(lazy="raise", passive_deletes=True)

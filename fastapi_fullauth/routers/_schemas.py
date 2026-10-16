@@ -29,10 +29,13 @@ def build_login_response_model(
     """
     from pydantic import create_model
 
+    # pydantic 2.14 types create_model's field spec as a TypeForm, which a
+    # union built at runtime does not satisfy; the model is dynamic either way.
+    field: Any = (user_schema | None, None)
     model: type[LoginResponse] = create_model(
         "LoginResponse",
         __base__=base,
-        user=(user_schema | None, None),
+        user=field,
     )
     return model
 

@@ -810,9 +810,12 @@ def _auth_limiter(backend: str):
     limiter = AuthRateLimiter(FullAuthConfig(**kwargs))
 
     if backend == "redis":
+        import fakeredis
         import fakeredis.aioredis
 
-        server = fakeredis.aioredis.FakeServer()
+        # One server shared by every limiter, which is what makes a bucket
+        # collision between routes visible.
+        server = fakeredis.FakeServer()
         for each in limiter._limiters.values():
             each._redis = fakeredis.aioredis.FakeRedis(server=server, decode_responses=True)
     return limiter

@@ -64,7 +64,7 @@ class Passkey(PasskeyMixin, Base):
 class User(UserMixin, Base):
     display_name: Mapped[str] = mapped_column(String(100), default="")
     roles: Mapped[list[Role]] = relationship(secondary="fullauth_user_roles", lazy="selectin")
-    refresh_tokens: Mapped[list[RefreshToken]] = relationship(lazy="noload")
+    refresh_tokens: Mapped[list[RefreshToken]] = relationship(lazy="raise", passive_deletes=True)
 
 
 # --- Fixtures ----------------------------------------------------------
