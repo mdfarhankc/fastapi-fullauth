@@ -272,7 +272,9 @@ class _BaseSQLAlchemyAdapter(
         cannot do that through a helper, so a caller that needs the column type
         narrows it itself.
         """
-        return await AsyncSession.execute(session, statement)
+        # Called unbound with an untyped statement, so the stubs widen the
+        # result to Any; the runtime type is the Result this returns.
+        return cast("Result[Any]", await AsyncSession.execute(session, statement))
 
     def _user_query(self) -> Any:
         # Eager-load roles so _to_schema() can read user.roles outside the session

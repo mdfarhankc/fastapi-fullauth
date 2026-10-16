@@ -19,7 +19,9 @@ class UserMixin:
             roles: Mapped[list[Role]] = relationship(
                 secondary="fullauth_user_roles", lazy="selectin"
             )
-            refresh_tokens: Mapped[list[RefreshToken]] = relationship(lazy="noload")
+            refresh_tokens: Mapped[list[RefreshToken]] = relationship(
+                lazy="raise", passive_deletes=True
+            )
 
     Overriding ``__tablename__`` will break the ForeignKey references in the
     other mixins (which point at ``fullauth_users.id``). Keep the default

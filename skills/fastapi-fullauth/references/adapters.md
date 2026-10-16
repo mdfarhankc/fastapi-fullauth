@@ -92,7 +92,9 @@ class UserRole(UserRoleMixin, Base): pass
 class User(UserMixin, Base):
     display_name: Mapped[str] = mapped_column(default="")
     roles: Mapped[list[Role]] = relationship(secondary="fullauth_user_roles", lazy="selectin")
-    refresh_tokens: Mapped[list[RefreshToken]] = relationship(lazy="noload")
+    refresh_tokens: Mapped[list[RefreshToken]] = relationship(
+        lazy="raise", passive_deletes=True
+    )
 
 
 adapter = SQLAlchemyAdapter(
