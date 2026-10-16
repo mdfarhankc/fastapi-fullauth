@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.18.0
 
 ### Added
 
@@ -11,11 +11,6 @@
   **MFA gates password sign-in only.** Passkeys are already phishing-resistant and an OAuth provider runs its own second factor, which this library cannot inspect. The TOTP secret is stored in plaintext, as the OAuth provider tokens are; the threat model says so.
 
 - **`after_mfa_enabled` and `after_mfa_disabled` hooks,** both `async def(user)`. Turning a second factor off is what an attacker who has taken an account does first, so it is worth mailing about.
-
-## Unreleased
-
-### Added
-
 - **`JWT_ISSUER` and `JWT_AUDIENCE`.** Several services signing with one `SECRET_KEY` had no way to tell whose token they were holding, so an access token minted for an admin tool was accepted by the public API. Set either one and every token the engine mints carries the claim, purpose-scoped tokens included, and decoding requires it. Both are off by default, and an unset `JWT_AUDIENCE` means the claim is not checked, so a deployment can enable it on the issuing side and roll the verifying side forward afterwards rather than needing both at once. **Once a service requires them, tokens minted before they were configured stop validating, so expect one round of sign-outs.** This closes a limitation the threat model has been carrying.
 
 ### Changed
