@@ -93,6 +93,7 @@ plugins:
           - auth/hooks.md: Callbacks for auth events such as after_register, after_login, send_verification_email, after_oauth_login
           - auth/custom-claims.md: Embed app-specific data in JWTs via on_create_token_claims, read through payload.extra
           - auth/passwords.md: Custom password rules, hashing algorithms, and transparent rehashing
+          - mfa.md: TOTP second factor; enrolment, recovery codes, the two-step sign-in, replay and brute-force defences
           - passkeys.md: WebAuthn passwordless login; registration and authentication flows, clone detection, frontend integration
           - oauth.md: Google, GitHub, Discord, and GitLab OAuth setup, authorization flow, auto-linking by email, unlinking, custom providers
         Security:
@@ -129,6 +130,7 @@ nav:
       - Custom Token Claims: auth/custom-claims.md
       - Password Validation: auth/passwords.md
   - Passkeys (WebAuthn): passkeys.md
+  - Two-Factor (TOTP): mfa.md
   - OAuth2 Social Login: oauth.md
   - Security:
       - Rate Limiting: security/rate-limiting.md

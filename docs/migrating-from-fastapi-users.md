@@ -16,7 +16,7 @@ The good news first: **password hashes carry over unchanged, and so does your us
 | Lockout, rate limiting, CSRF, security headers | none | built in |
 | User admin CRUD routes | `GET/PATCH/DELETE /{id}` | **not included**; write your own with `require_role`, or call the adapter |
 | Link an OAuth account while signed in | `get_oauth_associate_router` | `/oauth/{provider}/link/authorize` and `/link/callback`; sign-in linking on a provider-verified email is automatic on top |
-| MFA / TOTP | none | none |
+| MFA / TOTP | none | TOTP with recovery codes, [see the guide](mfa.md) |
 
 Read the [threat model](security/threat-model.md) before you commit: it states plainly what the library defends against and what stays your responsibility.
 

@@ -36,6 +36,7 @@ else:
         RefreshTokenDocument,
         UserDocument,
     )
+    from fastapi_fullauth.models.beanie.mfa import MFADocument
     from fastapi_fullauth.models.beanie.oauth import OAuthAccountDocument
     from fastapi_fullauth.models.beanie.passkey import PasskeyDocument
     from fastapi_fullauth.models.beanie.permission import PermissionDocument
@@ -43,6 +44,7 @@ else:
 
     __all__ += [
         "OAuthAccountDocument",
+        "MFADocument",
         "PasskeyDocument",
         "PermissionDocument",
         "RefreshTokenDocument",

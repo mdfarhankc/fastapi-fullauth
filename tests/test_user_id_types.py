@@ -109,6 +109,17 @@ class IntPasskey(SQLModel, table=True):
     last_used_at: datetime | None = None
 
 
+class IntMFA(SQLModel, table=True):
+    __tablename__ = "intkey_mfa"
+    id: UUID = Field(default_factory=uuid7, primary_key=True)
+    user_id: int = Field(foreign_key="intkey_users.id", ondelete="CASCADE", unique=True, index=True)
+    secret: str = Field(max_length=64)
+    confirmed_at: datetime | None = None
+    last_counter: int = 0
+    recovery_codes: str = ""
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
 class IntUserSchema(UserSchema[int]):
     roles: list[str] = Field(default_factory=list)
 
@@ -418,6 +429,7 @@ class TestIntKeyAdapterConformance(AdapterConformance):
             refresh_token_model=IntRefreshToken,
             oauth_account_model=IntOAuthAccount,
             passkey_model=IntPasskey,
+            mfa_model=IntMFA,
             user_schema=IntUserSchema,
         )
 

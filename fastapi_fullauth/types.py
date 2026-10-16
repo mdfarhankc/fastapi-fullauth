@@ -127,6 +127,30 @@ class PasskeyCredential(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class MFACredential(BaseModel):
+    """A user's TOTP second factor.
+
+    ``confirmed_at`` is what makes it live: enrolment stores a secret that does
+    nothing until a first valid code proves the authenticator was set up, so a
+    half-finished enrolment can never lock anyone out. ``last_counter`` is the
+    most recent accepted time step, which is how a code already used is refused
+    for the rest of its window.
+    """
+
+    user_id: UserID
+    secret: str
+    confirmed_at: datetime | None = None
+    last_counter: int = 0
+    recovery_codes: list[str] = Field(default_factory=list)
+    created_at: datetime | None = None
+
+    model_config = {"from_attributes": True}
+
+    @property
+    def is_confirmed(self) -> bool:
+        return self.confirmed_at is not None
+
+
 class SessionInfo(BaseModel):
     """One active sign-in, aggregated from a refresh-token family."""
 
@@ -139,5 +163,5 @@ class SessionInfo(BaseModel):
     current: bool = False
 
 
-RouterName = Literal["auth", "profile", "verify", "admin", "oauth", "passkey", "sessions"]
+RouterName = Literal["auth", "profile", "verify", "admin", "oauth", "passkey", "sessions", "mfa"]
 TokenClaimsBuilder = Callable[[UserSchema], Awaitable[dict[str, Any]]]

@@ -26,6 +26,7 @@ from fastapi_fullauth import UserSchema
 from fastapi_fullauth.adapters.beanie import BeanieAdapter
 from fastapi_fullauth.core.crypto import hash_password
 from fastapi_fullauth.models.beanie import (
+    MFADocument,
     OAuthAccountDocument,
     PasskeyDocument,
     PermissionDocument,
@@ -77,11 +78,15 @@ class Passkey(PasskeyDocument):
     pass
 
 
+class MFA(MFADocument):
+    pass
+
+
 class UserSchemaWithRoles(UserSchema):
     roles: list[str] = Field(default_factory=list)
 
 
-_DOCUMENTS = [User, RefreshTokenModel, Role, Permission, OAuthAccountModel, Passkey]
+_DOCUMENTS = [User, RefreshTokenModel, Role, Permission, OAuthAccountModel, Passkey, MFA]
 
 
 # --- Fixtures ----------------------------------------------------------
@@ -103,6 +108,7 @@ def adapter(beanie_db):
         permission_model=Permission,
         oauth_account_model=OAuthAccountModel,
         passkey_model=Passkey,
+        mfa_model=MFA,
         user_schema=UserSchemaWithRoles,
     )
 

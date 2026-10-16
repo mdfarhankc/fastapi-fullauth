@@ -33,6 +33,7 @@ else:
         RefreshTokenMixin,
         UserMixin,
     )
+    from fastapi_fullauth.models.sqlalchemy.mfa import MFAMixin
     from fastapi_fullauth.models.sqlalchemy.oauth import OAuthAccountMixin
     from fastapi_fullauth.models.sqlalchemy.passkey import PasskeyMixin
     from fastapi_fullauth.models.sqlalchemy.permission import (
@@ -46,6 +47,7 @@ else:
 
     __all__ += [
         "OAuthAccountMixin",
+        "MFAMixin",
         "PasskeyMixin",
         "PermissionMixin",
         "RefreshTokenMixin",

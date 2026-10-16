@@ -94,6 +94,7 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
         self._admin_router: APIRouter | None = None
         self._oauth_router: APIRouter | None = None
         self._passkey_router: APIRouter | None = None
+        self._mfa_router: APIRouter | None = None
         self._sessions_router: APIRouter | None = None
         self._router: APIRouter | None = None
 
@@ -141,6 +142,14 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
                 UserWarning,
                 stacklevel=3,
             )
+        if self.config.MFA_ENABLED and not self.adapter.supports_feature("mfa"):
+            warnings.warn(
+                "MFA_ENABLED is set but the adapter cannot serve two-factor "
+                "authentication (missing MFAAdapterMixin or mfa_model); the MFA routes "
+                "will not be registered and sign-in will not ask for a code.",
+                UserWarning,
+                stacklevel=3,
+            )
         if self.oauth_providers and not self.adapter.supports_feature("oauth"):
             warnings.warn(
                 "OAuth providers are configured but the adapter cannot serve OAuth "
@@ -169,6 +178,8 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
         ]
         if config.PASSKEY_ENABLED:
             parts.append(f"passkey={config.PASSKEY_CHALLENGE_BACKEND}")
+        if config.MFA_ENABLED:
+            parts.append("mfa=on")
         logger.info(
             "fullauth ready: %s | passkeys=%s | oauth=%s",
             " ".join(parts),
@@ -366,6 +377,20 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
         return self._passkey_router
 
     @property
+    def mfa_router(self) -> APIRouter | None:
+        if not self.config.MFA_ENABLED:
+            return None
+        if self._mfa_router is None:
+            from fastapi_fullauth.routers.mfa import create_mfa_router
+
+            self._mfa_router = create_mfa_router(
+                user_schema=self.adapter._user_schema,
+                login_response_schema=self.login_response_schema,
+                message_response_schema=self.message_response_schema,
+            )
+        return self._mfa_router
+
+    @property
     def sessions_router(self) -> APIRouter:
         if self._sessions_router is None:
             from fastapi_fullauth.routers.sessions import create_sessions_router
@@ -381,6 +406,7 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
         "oauth",
         "passkey",
         "sessions",
+        "mfa",
     }
 
     def _build_router(self, exclude: set[str] | None = None) -> APIRouter:
@@ -410,6 +436,12 @@ class FullAuth(Generic[UserSchemaType, CreateUserSchemaType]):
             router.include_router(self.passkey_router)
         if "sessions" not in exclude and self.adapter.supports_feature("session"):
             router.include_router(self.sessions_router)
+        if (
+            "mfa" not in exclude
+            and self.adapter.supports_feature("mfa")
+            and self.mfa_router is not None
+        ):
+            router.include_router(self.mfa_router)
         return router
 
     @property

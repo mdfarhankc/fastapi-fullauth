@@ -29,6 +29,7 @@ from pymongo.errors import DuplicateKeyError
 from fastapi_fullauth.adapters.base import (
     AbstractUserAdapter,
     AdapterFeature,
+    MFAAdapterMixin,
     OAuthAdapterMixin,
     PasskeyAdapterMixin,
     PermissionAdapterMixin,
@@ -38,6 +39,7 @@ from fastapi_fullauth.adapters.base import (
 )
 from fastapi_fullauth.exceptions import UserAlreadyExistsError
 from fastapi_fullauth.models.beanie import (
+    MFADocument,
     OAuthAccountDocument,
     PasskeyDocument,
     PermissionDocument,
@@ -48,6 +50,7 @@ from fastapi_fullauth.models.beanie import (
 from fastapi_fullauth.types import (
     CreateUserSchema,
     CreateUserSchemaType,
+    MFACredential,
     OAuthAccount,
     PasskeyCredential,
     RefreshToken,
@@ -73,6 +76,7 @@ class BeanieAdapter(
     OAuthAdapterMixin,
     PasskeyAdapterMixin,
     SessionAdapterMixin,
+    MFAAdapterMixin,
 ):
     """Beanie (MongoDB) adapter. Implements core auth plus every feature mixin.
 
@@ -94,6 +98,7 @@ class BeanieAdapter(
         permission_model: type[PermissionDocument] | None = None,
         oauth_account_model: type[OAuthAccountDocument] | None = None,
         passkey_model: type[PasskeyDocument] | None = None,
+        mfa_model: type[MFADocument] | None = None,
         user_schema: type[UserSchemaType] = UserSchema,  # type: ignore[assignment]
         create_user_schema: type[CreateUserSchemaType] = CreateUserSchema,  # type: ignore[assignment]
     ) -> None:
@@ -105,6 +110,7 @@ class BeanieAdapter(
         self._permission_model = permission_model
         self._oauth_account_model = oauth_account_model
         self._passkey_model = passkey_model
+        self._mfa_model = mfa_model
         self._user_schema = user_schema
         self._create_user_schema = create_user_schema
         self.validate_user_id_type()
@@ -130,6 +136,7 @@ class BeanieAdapter(
         "Permissions": ("role_model", "permission_model"),
         "OAuth": ("oauth_account_model",),
         "Passkeys": ("passkey_model",),
+        "Two-factor authentication": ("mfa_model",),
     }
 
     def _require(self, model: _T | None, feature: str) -> _T:
@@ -148,6 +155,7 @@ class BeanieAdapter(
             "permission": self._permission_model is not None,
             "oauth": self._oauth_account_model is not None,
             "passkey": self._passkey_model is not None,
+            "mfa": self._mfa_model is not None,
             "session": True,
         }.get(feature, False)
 
@@ -561,3 +569,72 @@ class BeanieAdapter(
         doc = await passkey_model.get(passkey_id)
         if doc is not None:
             await doc.delete()
+
+    # ── Two-factor authentication ────────────────────────────────────
+
+    def _to_mfa(self, doc: Any) -> MFACredential:
+        return MFACredential(
+            user_id=doc.user_id,
+            secret=doc.secret,
+            confirmed_at=doc.confirmed_at,
+            last_counter=doc.last_counter,
+            recovery_codes=list(doc.recovery_codes),
+            created_at=doc.created_at,
+        )
+
+    async def get_mfa(self, user_id: UserID) -> MFACredential | None:
+        mfa_model = self._require(self._mfa_model, "Two-factor authentication")
+        doc = await mfa_model.find_one(mfa_model.user_id == user_id)
+        return self._to_mfa(doc) if doc else None
+
+    async def store_mfa(self, data: MFACredential) -> MFACredential:
+        mfa_model = self._require(self._mfa_model, "Two-factor authentication")
+        # Replace rather than conflict: restarting an abandoned enrolment is
+        # normal. A confirmed document is protected by the flow, not here.
+        await mfa_model.find(mfa_model.user_id == data.user_id).delete()
+        await mfa_model(
+            user_id=data.user_id,
+            secret=data.secret,
+            confirmed_at=data.confirmed_at,
+            last_counter=data.last_counter,
+            recovery_codes=list(data.recovery_codes),
+        ).insert()
+        return data
+
+    async def confirm_mfa(self, user_id: UserID, recovery_codes: list[str]) -> None:
+        mfa_model = self._require(self._mfa_model, "Two-factor authentication")
+        await mfa_model.find(mfa_model.user_id == user_id).update(
+            {
+                "$set": {
+                    "confirmed_at": datetime.now(timezone.utc),
+                    "recovery_codes": recovery_codes,
+                }
+            }
+        )
+
+    async def delete_mfa(self, user_id: UserID) -> None:
+        mfa_model = self._require(self._mfa_model, "Two-factor authentication")
+        await mfa_model.find(mfa_model.user_id == user_id).delete()
+
+    async def advance_mfa_counter(self, user_id: UserID, counter: int) -> bool:
+        mfa_model = self._require(self._mfa_model, "Two-factor authentication")
+        # Through Beanie rather than the raw collection: user_id is a UUID, and
+        # the driver encodes those as binary, so a plain UUID in a raw filter
+        # matches nothing. The passkey counter can use the raw collection only
+        # because it keys on a string.
+        result = await mfa_model.find_one(
+            mfa_model.user_id == user_id, mfa_model.last_counter < counter
+        ).update({"$set": {"last_counter": counter}})
+        return int(getattr(result, "modified_count", 0) or 0) == 1
+
+    async def consume_recovery_code(self, user_id: UserID, code_hash: str) -> bool:
+        mfa_model = self._require(self._mfa_model, "Two-factor authentication")
+        # $pull on a matched element is atomic, so two callers redeeming the same
+        # code cannot both succeed; only one update modifies a document.
+        # The membership clause is a raw filter: in MongoDB this matches a
+        # document whose array contains the value, which a typed comparison
+        # between list[str] and str cannot express.
+        result = await mfa_model.find_one(
+            mfa_model.user_id == user_id, {"recovery_codes": code_hash}
+        ).update({"$pull": {"recovery_codes": code_hash}})
+        return int(getattr(result, "modified_count", 0) or 0) == 1

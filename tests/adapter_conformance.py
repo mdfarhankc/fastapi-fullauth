@@ -603,3 +603,70 @@ class AdapterConformance:
         # assign permission: allowed
         await adapter.assign_permission_to_role("editor", "posts:edit")
         assert (await client.get("/perm-check", headers=headers)).status_code == 200
+
+    # --- Two-factor authentication ---------------------------------------
+
+    async def test_mfa_credential_lifecycle(self, adapter, make_user):
+        """Storing, confirming and removing a second factor."""
+        from fastapi_fullauth.types import MFACredential
+
+        user = await make_user("mfa@test.com")
+        assert await adapter.get_mfa(user.id) is None
+
+        await adapter.store_mfa(MFACredential(user_id=user.id, secret="SECRET123"))
+        stored = await adapter.get_mfa(user.id)
+        assert stored is not None
+        assert stored.secret == "SECRET123"
+        # Unconfirmed until a code proves the authenticator works, so a
+        # half-finished enrolment never gates a sign-in.
+        assert stored.is_confirmed is False
+
+        await adapter.confirm_mfa(user.id, ["hash-a", "hash-b"])
+        stored = await adapter.get_mfa(user.id)
+        assert stored.is_confirmed is True
+        assert sorted(stored.recovery_codes) == ["hash-a", "hash-b"]
+
+        await adapter.delete_mfa(user.id)
+        assert await adapter.get_mfa(user.id) is None
+
+    async def test_mfa_enrollment_can_be_restarted(self, adapter, make_user):
+        """An abandoned enrolment is replaced, not a conflict."""
+        from fastapi_fullauth.types import MFACredential
+
+        user = await make_user("mfa-restart@test.com")
+        await adapter.store_mfa(MFACredential(user_id=user.id, secret="FIRST"))
+        await adapter.store_mfa(MFACredential(user_id=user.id, secret="SECOND"))
+
+        stored = await adapter.get_mfa(user.id)
+        assert stored.secret == "SECOND"
+
+    async def test_mfa_counter_only_moves_forward(self, adapter, make_user):
+        """A TOTP code is valid for its whole time step, so accepting one has to
+        rule out the same code being used again. Only a strictly greater counter
+        wins, which also makes two concurrent uses resolve to one."""
+        from fastapi_fullauth.types import MFACredential
+
+        user = await make_user("mfa-counter@test.com")
+        await adapter.store_mfa(MFACredential(user_id=user.id, secret="S"))
+
+        assert await adapter.advance_mfa_counter(user.id, 100) is True
+        assert await adapter.advance_mfa_counter(user.id, 100) is False
+        assert await adapter.advance_mfa_counter(user.id, 99) is False
+        assert await adapter.advance_mfa_counter(user.id, 101) is True
+
+        stored = await adapter.get_mfa(user.id)
+        assert stored.last_counter == 101
+
+    async def test_mfa_recovery_codes_are_single_use(self, adapter, make_user):
+        from fastapi_fullauth.types import MFACredential
+
+        user = await make_user("mfa-recovery@test.com")
+        await adapter.store_mfa(MFACredential(user_id=user.id, secret="S"))
+        await adapter.confirm_mfa(user.id, ["hash-a", "hash-b"])
+
+        assert await adapter.consume_recovery_code(user.id, "hash-a") is True
+        assert await adapter.consume_recovery_code(user.id, "hash-a") is False
+        assert await adapter.consume_recovery_code(user.id, "never-issued") is False
+
+        stored = await adapter.get_mfa(user.id)
+        assert stored.recovery_codes == ["hash-b"]
