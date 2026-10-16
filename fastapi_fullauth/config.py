@@ -68,6 +68,12 @@ class FullAuthConfig(BaseSettings):
 
     SECRET_KEY: str | None = None
     ALGORITHM: Literal["HS256", "HS384", "HS512"] = "HS256"
+    # Set these when more than one service signs with the same SECRET_KEY:
+    # without them each service accepts the others' tokens. When set, every
+    # token carries the claim and decoding requires it, so a token minted for
+    # another service, or before the setting was added, is rejected.
+    JWT_ISSUER: str | None = None
+    JWT_AUDIENCE: str | None = None
 
     ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(default=30, ge=1)
     REFRESH_TOKEN_EXPIRE_DAYS: int = Field(default=30, ge=1)

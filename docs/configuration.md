@@ -134,6 +134,8 @@ and `REAUTH_MAX_AGE_SECONDS` accept `0`, which means something for each of them.
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `SECRET_KEY` | `str \| None` | `None` | JWT signing key. Auto-generated in dev if not set. |
+| `JWT_ISSUER` | `str \| None` | `None` | Written as `iss` on every token, and required when decoding. Set it when more than one service signs with the same `SECRET_KEY`. |
+| `JWT_AUDIENCE` | `str \| None` | `None` | Written as `aud` on every token, and required when decoding. Left unset, the claim is not checked, so you can enable it on the issuing side first. |
 | `ALGORITHM` | `str` | `"HS256"` | JWT signing algorithm. |
 
 ### Tokens

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Added
+
+- **`JWT_ISSUER` and `JWT_AUDIENCE`.** Several services signing with one `SECRET_KEY` had no way to tell whose token they were holding, so an access token minted for an admin tool was accepted by the public API. Set either one and every token the engine mints carries the claim, purpose-scoped tokens included, and decoding requires it. Both are off by default, and an unset `JWT_AUDIENCE` means the claim is not checked, so a deployment can enable it on the issuing side and roll the verifying side forward afterwards rather than needing both at once. **Once a service requires them, tokens minted before they were configured stop validating, so expect one round of sign-outs.** This closes a limitation the threat model has been carrying.
+
 ### Changed
 
 - **The SQLAlchemy model guidance no longer uses `lazy="noload"`.** SQLAlchemy 2.1 deprecates that strategy, so anyone who copied the documented `User` model from here saw a deprecation warning, and a failure outright if they treat warnings as errors. The documentation, the mixin docstring, the example app and the Agent Skill now use `relationship(lazy="raise", passive_deletes=True)`: nothing in the library reads `refresh_tokens`, so an accidental access should be a clear error rather than a lazy query in async code, and the cascade belongs to the `ON DELETE CASCADE` the mixin already declares. If you have the old line in your models, change it.

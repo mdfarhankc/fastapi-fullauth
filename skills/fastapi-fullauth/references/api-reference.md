@@ -304,6 +304,8 @@ Grouped for readability. All read from env with `FULLAUTH_` prefix.
 ### Secrets / algorithm
 - `SECRET_KEY: str | None = None`
 - `ALGORITHM: str = "HS256"`
+- `JWT_ISSUER: str | None = None`  (writes and requires `iss`)
+- `JWT_AUDIENCE: str | None = None`  (writes and requires `aud`; unset means the claim is not checked, so it can be enabled on the issuing side first)
 
 ### Tokens
 - `ACCESS_TOKEN_EXPIRE_MINUTES: int = 30`
